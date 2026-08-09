@@ -3,6 +3,7 @@ package com.helpdesk.profile.service;
 import com.helpdesk.profile.entity.Student;
 import com.helpdesk.profile.repository.StudentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Optional;
@@ -16,10 +17,12 @@ import java.util.Optional;
 public class StudentService {
 
     private final StudentRepository studentRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Autowired
-    public StudentService(StudentRepository studentRepository) {
+    public StudentService(StudentRepository studentRepository, PasswordEncoder passwordEncoder) {
         this.studentRepository = studentRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // Create (US-03: register a new student account)
@@ -30,6 +33,8 @@ public class StudentService {
         if (studentRepository.existsByEmail(student.getEmail())) {
             throw new IllegalArgumentException("Email already registered");
         }
+        // Never store the plain-text password - hash it before saving.
+        student.setPassword(passwordEncoder.encode(student.getPassword()));
         return studentRepository.save(student);
     }
 
