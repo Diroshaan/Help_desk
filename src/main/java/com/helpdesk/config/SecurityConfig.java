@@ -22,6 +22,12 @@ import org.springframework.security.web.SecurityFilterChain;
  * Overview Diagram in the proposal (API Request (JSON) between frontend and backend).
  *
  * Real login happens through AuthController's POST /api/auth/login instead.
+ *
+ * This class also defines the role-based access rules (RBAC) - which paths
+ * need no login at all, which just need SOME logged-in user, and which need a
+ * SPECIFIC role (e.g. only an Officer can use the support queue). See the
+ * comments inside the authorizeHttpRequests(...) block below for details on
+ * each rule.
  */
 @Configuration
 @EnableWebSecurity
@@ -67,11 +73,48 @@ public class SecurityConfig {
                         // Public: the login endpoint itself
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
 
-                        // --- Extend here as F4/F6 add Officer and Admin endpoints, e.g.: ---
-                        // .requestMatchers("/api/queue/**").hasRole("OFFICER")
-                        // .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // Role-based access rules (RBAC) below.
+                        //
+                        // Being logged in (authenticated) is not the same as being ALLOWED to
+                        // use a given feature - a Student and an Officer both "authenticate"
+                        // the same way via /api/auth/login, but only an Officer should be able
+                        // to work the support queue, and only an Admin should reach admin
+                        // features. hasRole("X") checks that the logged-in user's authorities
+                        // (set up in StudentUserDetailsService as "ROLE_" + student.getRole())
+                        // include "ROLE_X". If they don't, Spring Security rejects the request
+                        // with 403 Forbidden before it ever reaches the controller.
+                        //
+                        // These rules are matched top-to-bottom, and the FIRST matching rule
+                        // wins - that's why the specific "/api/queue/**" and "/api/admin/**"
+                        // rules must be listed here, before the catch-all ".anyRequest()" rule
+                        // below. If they were listed after it, the catch-all would already have
+                        // matched every request first and these two would never be checked.
 
-                        // Everything else requires a logged-in session
+                        // Officer-only: managing/working the student support queue (F4).
+                        .requestMatchers("/api/queue/**").hasRole("OFFICER")
+                        // Admin-only: system administration features (F6).
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        // Officer/Admin-only: listing every student's profile.
+                        //
+                        // Why this needs restricting: GET /api/students returns every
+                        // student's data in one response, with no filtering. That's fine for
+                        // an Officer or Admin who legitimately needs to look students up, but
+                        // it's a privacy problem if any logged-in Student could pull the whole
+                        // student directory just by calling this endpoint - a Student should
+                        // only ever see/edit their own profile, not browse everyone else's.
+                        // Note this exact-path matcher only covers the list endpoint
+                        // (GET /api/students); GET /api/students/{id} falls through to the
+                        // catch-all rule below instead, which only requires SOME logged-in
+                        // user - the extra "is this actually your own id (or are you staff)?"
+                        // check for that single-student lookup is done in StudentController's
+                        // findById(), not here, since it depends on the {id} in the URL rather
+                        // than the path shape alone.
+                        .requestMatchers(HttpMethod.GET, "/api/students").hasAnyRole("OFFICER", "ADMIN")
+
+                        // Catch-all: anything not covered by a rule above just needs SOME
+                        // logged-in user - no specific role required. This is what protects
+                        // endpoints like /api/students/{id} once a session exists.
                         .anyRequest().authenticated()
                 )
 
