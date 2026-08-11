@@ -33,6 +33,23 @@ public class StudentService {
         if (studentRepository.existsByEmail(student.getEmail())) {
             throw new IllegalArgumentException("Email already registered");
         }
+
+        // Force every self-registered account to be a STUDENT, no matter what the
+        // caller put in the "role" field of the request body.
+        //
+        // Why this matters: unlike "password" (which is marked WRITE_ONLY so it's
+        // rejected from responses but still readable from requests), "role" has no
+        // such protection on the Student entity - the JSON body is bound straight
+        // onto the entity's fields. That means a request like
+        //   POST /api/students { ..., "role": "ADMIN" }
+        // would otherwise let anyone grant themselves Officer/Admin privileges just
+        // by adding one extra field to a public, unauthenticated endpoint. This is
+        // a classic "mass assignment" vulnerability. Setting the role here, AFTER
+        // validation and BEFORE save, means whatever the client sent is discarded
+        // and self-registration can only ever produce a STUDENT account. Creating
+        // Officer/Admin accounts will need its own, access-controlled path (F6).
+        student.setRole("STUDENT");
+
         // Never store the plain-text password - hash it before saving.
         student.setPassword(passwordEncoder.encode(student.getPassword()));
         return studentRepository.save(student);
