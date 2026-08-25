@@ -1,12 +1,16 @@
 package com.helpdesk.profile.controller;
 
+import com.helpdesk.profile.dto.ProfileUpdateRequest;
 import com.helpdesk.profile.entity.Student;
 import com.helpdesk.profile.service.StudentService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -58,6 +62,25 @@ public class StudentController {
         return studentService.findAll();
     }
 
+    // GET /api/students/me -> fetch the CURRENTLY LOGGED-IN student's own profile.
+    //
+    // Why this exists: the frontend (e.g. profile.html) knows who's logged in
+    // only via the session cookie - it has no way to know that student's
+    // numeric id up front, and guessing/enumerating ids is exactly what
+    // isOwnProfile() below exists to prevent. This reuses that same pattern -
+    // authentication.getName() is the email the student logged in with (see
+    // StudentUserDetailsService), so looking them up by email is the direct
+    // equivalent of isOwnProfile()'s email comparison, just without needing an
+    // {id} in the URL first. Any authenticated user can call this for
+    // themselves; there's no cross-student access risk since the lookup is
+    // always tied to whoever the session belongs to, not to caller input.
+    @GetMapping("/me")
+    public ResponseEntity<Student> getCurrentStudent(Authentication authentication) {
+        return studentService.findByEmail(authentication.getName())
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     // GET /api/students/{id} -> fetch one student's profile, e.g. for a dashboard view.
     // Returns 404 if no student exists with that id.
     //
@@ -81,9 +104,19 @@ public class StudentController {
     // PUT /api/students/{id} -> edit your own profile details (US-01).
     // "authentication" is filled in automatically by Spring Security with whoever
     // is logged in for the current request (from the session set up at login).
+    //
+    // Takes a ProfileUpdateRequest, not the Student entity itself - see the
+    // comment on ProfileUpdateRequest for the full reasoning. Briefly: reusing
+    // Student here (as this endpoint originally did) meant its @NotBlank
+    // password field applied to profile edits too, even though this endpoint
+    // never changes the password and GET responses never return one to send
+    // back (it's WRITE_ONLY). It also meant email/studentId/role could be
+    // included in the request body and would just be silently dropped by
+    // the service, which is a confusing API shape. A dedicated request type
+    // only exposes the fields this endpoint actually edits.
     @PutMapping("/{id}")
     public ResponseEntity<Student> updateProfile(@PathVariable Long id,
-                                                  @Valid @RequestBody Student updatedDetails,
+                                                  @Valid @RequestBody ProfileUpdateRequest updatedDetails,
                                                   Authentication authentication) {
         if (!isOwnProfile(id, authentication)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -95,11 +128,32 @@ public class StudentController {
     // Soft-delete only: see StudentService.deactivate, which flips an "active" flag
     // instead of removing the row from the database.
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deactivate(@PathVariable Long id, Authentication authentication) {
+    public ResponseEntity<Void> deactivate(@PathVariable Long id, Authentication authentication,
+                                            HttpServletRequest request) {
         if (!isOwnProfile(id, authentication)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         studentService.deactivate(id);
+
+        // Flipping the "active" flag in the database only blocks FUTURE login
+        // attempts (StudentUserDetailsService checks it via .disabled(...),
+        // enforced by DaoAuthenticationProvider) - it does nothing to a
+        // session that was already authenticated before this call. Spring
+        // Security doesn't re-run the UserDetailsService check on every
+        // request by default; it trusts whatever Authentication object is
+        // already sitting in the session. Without explicitly ending the
+        // session here, a student who deactivates their own account while
+        // logged in could keep using that same session/cookie normally until
+        // it naturally expires, even though they're now "deactivated". This
+        // mirrors AuthController.logout()'s invalidate-session-and-clear-
+        // context pattern, run immediately as part of deactivation instead of
+        // waiting for an explicit logout call.
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+        SecurityContextHolder.clearContext();
+
         return ResponseEntity.noContent().build();
     }
 

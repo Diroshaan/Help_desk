@@ -32,6 +32,14 @@ public class Student {
     @NotBlank(message = "Full name is required")
     private String fullName;
 
+    // @NotBlank is required IN ADDITION to @Email: Hibernate Validator's @Email
+    // deliberately treats both null and "" as valid (it validates format only, and
+    // leaves "is this field required?" to @NotBlank). Without it, {"email": ""}
+    // registers an account with a blank login identity, and {"email": null} passes
+    // validation only to hit the nullable=false column constraint below - surfacing
+    // as a 500 instead of a clean 400, since GlobalExceptionHandler has no handler
+    // for DataIntegrityViolationException.
+    @NotBlank(message = "Email is required")
     @Email(message = "Must be a valid email address")
     @Column(unique = true, nullable = false)
     private String email;

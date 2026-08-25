@@ -73,6 +73,22 @@ public class SecurityConfig {
                         // Public: the login endpoint itself
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
 
+                        // Public: static frontend pages (register.html, login.html, and their
+                        // CSS/JS) served straight out of src/main/resources/static.
+                        //
+                        // Why this is needed: the catch-all rule at the bottom of this chain
+                        // (".anyRequest().authenticated()") applies to EVERY request Spring
+                        // Security sees - including requests for static files, not just
+                        // /api/** endpoints. Without an explicit permitAll() here, a browser
+                        // hitting GET /register.html gets rejected with 403 before the page
+                        // ever loads, even though the API it POSTs to (POST /api/students) is
+                        // already public - you'd be stuck unable to reach the registration
+                        // form that lets you create an account in the first place. Static
+                        // assets contain no sensitive data (unlike the API responses), so
+                        // there's no privacy/ownership reason to gate them the way profile
+                        // endpoints are gated above.
+                        .requestMatchers("/", "/*.html", "/*.css", "/*.js").permitAll()
+
                         // Role-based access rules (RBAC) below.
                         //
                         // Being logged in (authenticated) is not the same as being ALLOWED to
