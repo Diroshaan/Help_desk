@@ -1,0 +1,165 @@
+<!-- US-06 / WBHD-12 - F1 - Diroshaan S. IT25101580 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Account Required - Helpdesk</title>
+<style>
+  /* Basic reset so margins/padding are predictable across browsers */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #f4f6f8;
+    color: #1f2937;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .welcome-card {
+    background: #ffffff;
+    width: 100%;
+    max-width: 420px;
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .subtitle {
+    font-size: 0.9rem;
+    color: #6b7280;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+
+  /* Informational panel explaining why an account is needed - reuses the
+     same neutral gray already used for read-only/summary boxes elsewhere
+     on the site (see profile.html's readonly inputs), just applied here
+     to a block of explanatory text instead of a form field. */
+  .info-panel {
+    background-color: #f3f4f6;
+    border-radius: 4px;
+    padding: 16px;
+    font-size: 0.9rem;
+  }
+
+  .info-panel p {
+    margin-bottom: 10px;
+  }
+
+  .info-panel ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .info-panel li {
+    padding-left: 20px;
+    position: relative;
+    margin-bottom: 8px;
+  }
+
+  .info-panel li:last-child {
+    margin-bottom: 0;
+  }
+
+  .info-panel li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: #2563eb;
+    font-weight: bold;
+  }
+
+  /* Shared button base - same sizing/shape as the buttons on
+     register.html/login.html, just split into primary/secondary variants
+     here since this page offers two actions instead of one form submit. */
+  .btn {
+    display: block;
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .btn-primary {
+    background-color: #2563eb;
+    color: #ffffff;
+    border: none;
+  }
+
+  .btn-primary:hover {
+    background-color: #1d4ed8;
+  }
+
+  .btn-secondary {
+    background-color: #ffffff;
+    color: #2563eb;
+    border: 1px solid #2563eb;
+  }
+
+  .btn-secondary:hover {
+    background-color: #eff6ff;
+  }
+</style>
+</head>
+<body>
+
+<div class="welcome-card">
+  <h1>Account Required</h1>
+  <p class="subtitle">University Help Desk</p>
+
+  <!-- Explains why a visitor can't just browse the portal, and what
+       having an account actually gets them. -->
+  <div class="info-panel">
+    <p>You need a student account to use the help desk portal. With an account you can:</p>
+    <ul>
+      <li>Submit support tickets to the right department</li>
+      <li>Track the status of every request you send</li>
+      <li>Manage your profile and notification preferences</li>
+    </ul>
+  </div>
+
+  <a href="register.html" class="btn btn-primary">Create an Account</a>
+  <a href="login.html" class="btn btn-secondary">I already have an account</a>
+</div>
+
+<script>
+  // If a visitor lands here while already logged in (e.g. they had a
+  // session open and followed an old link), there's no reason to show
+  // them a registration pitch - send them straight to their profile
+  // instead. If the check fails for any reason (not logged in, network
+  // issue, server down), just leave this page showing normally - that's
+  // the correct fallback for a page whose whole purpose is "you're not
+  // logged in yet".
+  fetch('/api/students/me', { credentials: 'include' })
+    .then(function (response) {
+      if (response.ok) {
+        window.location.href = 'profile.html';
+      }
+    })
+    .catch(function () {
+      // Network/server error - do nothing, the prompt below stays visible.
+    });
+</script>
+
+</body>
+</html>
