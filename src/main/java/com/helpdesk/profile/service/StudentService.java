@@ -1,5 +1,7 @@
 package com.helpdesk.profile.service;
 
+import com.helpdesk.common.exception.DuplicateResourceException;
+import com.helpdesk.profile.dto.ProfileUpdateRequest;
 import com.helpdesk.profile.entity.Student;
 import com.helpdesk.profile.repository.StudentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,11 +30,31 @@ public class StudentService {
     // Create (US-03: register a new student account)
     public Student register(Student student) {
         if (studentRepository.existsByStudentId(student.getStudentId())) {
-            throw new IllegalArgumentException("Student ID already registered");
+            throw new DuplicateResourceException("Student ID already registered");
         }
         if (studentRepository.existsByEmail(student.getEmail())) {
-            throw new IllegalArgumentException("Email already registered");
+            throw new DuplicateResourceException("Email already registered");
         }
+
+        // Never trust a client-supplied primary key.
+        //
+        // Why this matters: @RequestBody binds EVERY field of Student straight from
+        // the JSON, "id" included - and Spring Data JPA decides insert-vs-update
+        // purely by asking "is the id null?" (SimpleJpaRepository.save() calls
+        // persist() when it is, merge() when it isn't). So a request like
+        //   POST /api/students { "id": 1, "studentId": "NEW001", "email": "x@y.com", ... }
+        // passes BOTH duplicate checks above (that studentId and email genuinely
+        // aren't taken), then calls merge() - which loads student #1 and overwrites
+        // that row with the caller's details, including their password hash. The
+        // original owner loses their account and the caller can log in as them.
+        // Clearing the id here forces a genuine insert every time.
+        //
+        // "active" gets the same treatment for the same reason: it's the soft-delete
+        // flag behind US-02, not something a registration request has any business
+        // setting. This is the same mass-assignment class of bug as the "role" field
+        // handled just below.
+        student.setId(null);
+        student.setActive(true);
 
         // Force every self-registered account to be a STUDENT, no matter what the
         // caller put in the "role" field of the request body.
@@ -64,12 +86,29 @@ public class StudentService {
         return studentRepository.findById(id);
     }
 
+    // Used by GET /api/students/me - looks a student up by the email they
+    // logged in with (Authentication.getName()), rather than by a numeric id
+    // the frontend would otherwise have no way to know.
+    public Optional<Student> findByEmail(String email) {
+        return studentRepository.findByEmail(email);
+    }
+
     // Update (US-01: edit profile details and notification preferences)
-    public Student updateProfile(Long id, Student updatedDetails) {
+    //
+    // Takes a ProfileUpdateRequest rather than a Student entity - see the
+    // comment on that class for why. In short: this method only ever needs
+    // to touch the six fields listed below, so accepting anything wider
+    // (the full Student, with its password/email/role/studentId) would let
+    // callers send fields that either shouldn't be editable here at all, or
+    // that would be silently ignored - both confusing outcomes. Sticking to
+    // a purpose-built request type makes "what this endpoint can change"
+    // obvious just from its method signature.
+    public Student updateProfile(Long id, ProfileUpdateRequest updatedDetails) {
         Student existing = studentRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Student not found"));
 
         existing.setFullName(updatedDetails.getFullName());
+        existing.setDepartment(updatedDetails.getDepartment());
         existing.setContactNumber(updatedDetails.getContactNumber());
         existing.setProfilePictureUrl(updatedDetails.getProfilePictureUrl());
         existing.setEmailNotificationsEnabled(updatedDetails.isEmailNotificationsEnabled());

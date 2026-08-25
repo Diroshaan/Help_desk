@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
@@ -61,6 +62,14 @@ public class AuthController {
             securityContextRepository.saveContext(context, httpRequest, httpResponse);
 
             return ResponseEntity.ok("Login successful");
+        } catch (DisabledException e) {
+            // Thrown by DaoAuthenticationProvider because StudentUserDetailsService
+            // builds the UserDetails with .disabled(!student.isActive()) - so an
+            // account that self-deactivated (see StudentService.deactivate) fails
+            // authentication here even with the correct password. Without this
+            // catch block, DisabledException would fall through as an unhandled
+            // exception and surface as a generic 500 instead of a clear rejection.
+            return ResponseEntity.status(401).body("This account has been deactivated");
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(401).body("Invalid email or password");
         }

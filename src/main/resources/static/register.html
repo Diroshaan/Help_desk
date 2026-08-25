@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Registration - Helpdesk</title>
+<style>
+  /* Basic reset so margins/padding are predictable across browsers */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #f4f6f8;
+    color: #1f2937;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .register-card {
+    background: #ffffff;
+    width: 100%;
+    max-width: 420px;
+    padding: 32px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .subtitle {
+    font-size: 0.9rem;
+    color: #6b7280;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+
+  label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: bold;
+    margin-bottom: 4px;
+    margin-top: 14px;
+  }
+
+  input, select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.95rem;
+  }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: #2563eb;
+  }
+
+  button {
+    width: 100%;
+    margin-top: 24px;
+    padding: 12px;
+    background-color: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  button:hover {
+    background-color: #1d4ed8;
+  }
+
+  button:disabled {
+    background-color: #93c5fd;
+    cursor: not-allowed;
+  }
+
+  /* Message box shown after the form is submitted - hidden until needed */
+  #message {
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    display: none;
+  }
+
+  #message.success {
+    display: block;
+    background-color: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+  }
+
+  #message.error {
+    display: block;
+    background-color: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+  }
+
+  #message a {
+    color: #166534;
+    font-weight: bold;
+  }
+
+  /* Terminal success state shown in place of the form after a 201 Created. */
+  .success-panel {
+    background-color: #dcfce7;
+    border: 1px solid #86efac;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .success-panel h2 {
+    font-size: 1.15rem;
+    color: #166534;
+    margin-bottom: 6px;
+  }
+
+  .success-panel p {
+    font-size: 0.9rem;
+    color: #166534;
+  }
+
+  /* Matches the Register button's shape and weight, so the student's next
+     step is as obvious as the one they just completed. */
+  .primary-action {
+    display: block;
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px;
+    background-color: #2563eb;
+    color: #ffffff;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  .primary-action:hover {
+    background-color: #1d4ed8;
+  }
+
+  .login-link {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 0.85rem;
+  }
+
+  .login-link a {
+    color: #2563eb;
+    text-decoration: none;
+  }
+
+  .login-link a:hover {
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+
+<div class="register-card">
+  <h1>Create an Account</h1>
+  <p class="subtitle">Register as a student to submit and track helpdesk tickets</p>
+
+  <!-- Registration form. JavaScript intercepts the submit event below,
+       so this never actually does a normal browser form POST. -->
+  <form id="registerForm" novalidate>
+
+    <label for="studentId">Student ID</label>
+    <input type="text" id="studentId" name="studentId" required>
+
+    <label for="fullName">Full Name</label>
+    <input type="text" id="fullName" name="fullName" required>
+
+    <label for="department">Department</label>
+    <input type="text" id="department" name="department" required>
+
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required>
+
+    <label for="contactNumber">Contact Number</label>
+    <input type="tel" id="contactNumber" name="contactNumber">
+
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" required>
+
+    <button type="submit" id="submitBtn">Register</button>
+
+    <!-- Success/error feedback is written into this box after the fetch call resolves -->
+    <div id="message"></div>
+  </form>
+
+  <p class="login-link" id="loginLink">
+    Already have an account? <a href="login.html">Log in</a>
+  </p>
+
+  <!-- Shown INSTEAD of the form once registration succeeds. Leaving the form on
+       screen after a successful POST is misleading - nothing signals the task is
+       finished, and the form stays live, so a second click on Register just
+       produces a 409 "Student ID already registered" for an account that was
+       created correctly a moment ago. Replacing the form with a terminal success
+       state removes that dead end and makes the next step a single obvious
+       action. -->
+  <div id="successPanel" style="display: none;">
+    <div class="success-panel">
+      <h2>Account created</h2>
+      <p>Your student account is ready. Log in to start submitting tickets.</p>
+    </div>
+    <a href="login.html" class="primary-action">Log In</a>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('registerForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const messageBox = document.getElementById('message');
+  const successPanel = document.getElementById('successPanel');
+  const loginLink = document.getElementById('loginLink');
+
+  form.addEventListener('submit', async function (event) {
+    // Stop the browser's default full-page form submission - we handle it
+    // ourselves with fetch() so the page never reloads.
+    event.preventDefault();
+
+    // Clear any message from a previous attempt and disable the button
+    // while the request is in flight, to avoid duplicate submissions.
+    messageBox.className = '';
+    messageBox.textContent = '';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Registering...';
+
+    // Build the JSON body expected by POST /api/students. Field names must
+    // match the Student entity exactly (studentId, fullName, department,
+    // email, contactNumber, password).
+    const payload = {
+      studentId: document.getElementById('studentId').value.trim(),
+      fullName: document.getElementById('fullName').value.trim(),
+      department: document.getElementById('department').value.trim(),
+      email: document.getElementById('email').value.trim(),
+      contactNumber: document.getElementById('contactNumber').value.trim(),
+      password: document.getElementById('password').value
+    };
+
+    try {
+      const response = await fetch('/api/students', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        // 201 Created - the account exists now, so registration is finished and
+        // this form has nothing left to do. Swap it out for the success panel
+        // rather than leaving a live form on screen with a small inline notice:
+        // re-submitting would only earn a 409 for the account just created, and
+        // the redundant "Already have an account?" prompt makes no sense once
+        // they demonstrably do. Deliberately NOT auto-redirecting - the student
+        // should get to read the confirmation and choose to move on.
+        form.reset();
+        form.style.display = 'none';
+        loginLink.style.display = 'none';
+        successPanel.style.display = 'block';
+      } else {
+        // Registration failed (e.g. duplicate email/student ID, or a
+        // validation error). Try to pull a useful message out of the
+        // response body; fall back to a generic message if the server
+        // didn't send one we can parse.
+        let errorText = 'Registration failed. Please check your details and try again.';
+        try {
+          const data = await response.json();
+          if (data && data.message) {
+            errorText = data.message;
+          }
+        } catch (parseError) {
+          // Response wasn't JSON - keep the generic message above.
+        }
+        messageBox.className = 'error';
+        messageBox.textContent = errorText;
+      }
+    } catch (networkError) {
+      // fetch() itself failed - e.g. server unreachable or network dropped.
+      messageBox.className = 'error';
+      messageBox.textContent = 'Could not reach the server. Please check your connection and try again.';
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Register';
+    }
+  });
+</script>
+
+</body>
+</html>
