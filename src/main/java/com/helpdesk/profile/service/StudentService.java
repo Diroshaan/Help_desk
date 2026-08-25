@@ -3,6 +3,7 @@ package com.helpdesk.profile.service;
 import com.helpdesk.profile.entity.Student;
 import com.helpdesk.profile.repository.StudentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Optional;
@@ -16,10 +17,12 @@ import java.util.Optional;
 public class StudentService {
 
     private final StudentRepository studentRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Autowired
-    public StudentService(StudentRepository studentRepository) {
+    public StudentService(StudentRepository studentRepository, PasswordEncoder passwordEncoder) {
         this.studentRepository = studentRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // Create (US-03: register a new student account)
@@ -30,6 +33,25 @@ public class StudentService {
         if (studentRepository.existsByEmail(student.getEmail())) {
             throw new IllegalArgumentException("Email already registered");
         }
+
+        // Force every self-registered account to be a STUDENT, no matter what the
+        // caller put in the "role" field of the request body.
+        //
+        // Why this matters: unlike "password" (which is marked WRITE_ONLY so it's
+        // rejected from responses but still readable from requests), "role" has no
+        // such protection on the Student entity - the JSON body is bound straight
+        // onto the entity's fields. That means a request like
+        //   POST /api/students { ..., "role": "ADMIN" }
+        // would otherwise let anyone grant themselves Officer/Admin privileges just
+        // by adding one extra field to a public, unauthenticated endpoint. This is
+        // a classic "mass assignment" vulnerability. Setting the role here, AFTER
+        // validation and BEFORE save, means whatever the client sent is discarded
+        // and self-registration can only ever produce a STUDENT account. Creating
+        // Officer/Admin accounts will need its own, access-controlled path (F6).
+        student.setRole("STUDENT");
+
+        // Never store the plain-text password - hash it before saving.
+        student.setPassword(passwordEncoder.encode(student.getPassword()));
         return studentRepository.save(student);
     }
 

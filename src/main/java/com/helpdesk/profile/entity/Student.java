@@ -1,5 +1,6 @@
 package com.helpdesk.profile.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -34,6 +35,20 @@ public class Student {
     @Email(message = "Must be a valid email address")
     @Column(unique = true, nullable = false)
     private String email;
+
+    // WRITE_ONLY: accepted on registration (JSON in), but never included in a JSON
+    // response back out. This is important - never let a password (even hashed)
+    // leak into an API response. Compare this with @JsonIgnore, which would block
+    // it in BOTH directions and break registration entirely.
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @NotBlank(message = "Password is required")
+    private String password;
+
+    // Kept as a plain String (not a Java enum) for now, deliberately - Officer and
+    // Admin accounts don't exist as entities yet (that's F6, Sprint 3). Defaulting
+    // everyone who registers through this endpoint to "STUDENT" keeps this scoped
+    // correctly to what Sprint 1 actually needs.
+    private String role = "STUDENT";
 
     @NotBlank(message = "Department is required")
     private String department;
@@ -89,6 +104,22 @@ public class Student {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 
     public String getDepartment() {
