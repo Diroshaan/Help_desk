@@ -5,19 +5,11 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
-/**
- * F3 - Ticket Lifecycle & Interaction Portal (Amarasinghe S. D, IT25103424)
- *
- * A student-created folder used to organise bookmarked tickets (see
- * TicketPortalService's "folder organization" logic).
- *
- * studentId is kept as a plain Long reference (not @ManyToOne), matching the
- * same pattern used by Feedback, so this stays decoupled from the profile
- * package.
- */
-
 @Entity
-@Table(name = "bookmark_folders")
+@Table(
+    name = "bookmark_folders",
+    uniqueConstraints = @UniqueConstraint(columnNames = {"studentId", "name"})
+)
 public class BookmarkFolder {
 
     @Id
