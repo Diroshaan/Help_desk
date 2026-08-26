@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
     name = "bookmark_folders",
-    uniqueConstraints = @UniqueConstraint(columnNames = {"studentId", "name"})
+    uniqueConstraints = @UniqueConstraint(columnNames = {"student_id", "name"})
 )
 public class BookmarkFolder {
 

@@ -6,16 +6,6 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
-/**
- * F3 - Ticket Lifecycle & Interaction Portal (Amarasinghe S. D, IT25103424)
- *
- * A student's rating/feedback left on a resolved ticket.
- *
- * ticketId and studentId are kept as plain Long references (not @ManyToOne)
- * because the Ticket entity (F2) doesn't exist yet - once it's built, these
- * can be upgraded to real JPA relationships.
- */
-
 @Entity
 @Table(name = "feedback")
 public class Feedback {
