@@ -11,5 +11,7 @@ public interface BookmarkFolderRepository extends JpaRepository<BookmarkFolder, 
 
     Optional<BookmarkFolder> findByStudentIdAndName(Long studentId, String name);
 
-    boolean existsByStudentIdAndName(Long studentId, String name);
+    boolean existsByStudentIdAndNameIgnoreCase(Long studentId, String name);
+
+    boolean existsByStudentIdAndNameIgnoreCaseAndIdNot(Long studentId, String name, Long id);
 }
