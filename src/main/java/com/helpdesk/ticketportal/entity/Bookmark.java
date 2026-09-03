@@ -4,16 +4,6 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
-/**
- * F3 - Ticket Lifecycle & Interaction Portal (Amarasinghe S. D, IT25103424)
- *
- * A student's saved/bookmarked ticket, optionally filed under a BookmarkFolder.
- *
- * ticketId and studentId are kept as plain Long references (not @ManyToOne),
- * matching the same pattern used by Feedback, so this stays decoupled from
- * the ticket and profile packages.
- */
-
 @Entity
 @Table(name = "bookmarks")
 public class Bookmark {
