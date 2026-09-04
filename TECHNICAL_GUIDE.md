@@ -141,7 +141,7 @@ Look at `profile/entity/Student.java`, `profile/repository/StudentRepository.jav
 |---|---|---|
 | F1 — Student Profile | Diroshaan | Registration, profile edit, deactivation built. Auth/RBAC scaffold built. |
 | F2 — Ticket Request Engine | Chamikara | Not started |
-| F3 — Ticket Lifecycle Portal | Amarasinghe | Not started |
+| F3 — Ticket Lifecycle Portal | Amarasinghe | Bookmark folders built (entity, repository, service, controller, DTOs — create/rename/delete, ownership checks, case-insensitive uniqueness). Bookmark and Feedback entities/repositories built; no service/controller yet for either. Status tracking not started. No tests or frontend yet. |
 | F4 — Queue & Resolution | Weerabaddana | Not started |
 | F5 — Knowledge Base | Tharmithan | Not started |
 | F6 — Analytics/Admin | Perera | Not started |
