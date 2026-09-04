@@ -38,6 +38,9 @@ public class BookmarkFolder {
     private String colour;
 
     //prevents duplicate folder names based off case
+    // MIGRATION NOTE: adding this as NOT NULL to a populated MySQL table will
+    // fail. Add it nullable, backfill with UPDATE ... SET name_key = LOWER(name),
+    // then apply the NOT NULL constraint
     @Column(name = "name_key", nullable = false, length = 60)
     private String nameKey;
 
