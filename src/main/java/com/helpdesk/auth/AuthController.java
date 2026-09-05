@@ -71,7 +71,7 @@ public class AuthController {
             // exception and surface as a generic 500 instead of a clear rejection.
             return ResponseEntity.status(401).body("This account has been deactivated");
         } catch (BadCredentialsException e) {
-            return ResponseEntity.status(401).body("Invalid email or password");
+            return ResponseEntity.status(401).body("Invalid Student ID, email or password");
         }
     }
 

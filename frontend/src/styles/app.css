@@ -1102,3 +1102,144 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
     .account__label { display: none; }
     .account__btn { padding: 5px 8px 5px 6px; }
 }
+
+/* ==========================================================================
+   14. HOW IT WORKS — the video portal on the landing page
+   Text and chapters on the left, the player on the right. Same hairline
+   treatment as the rest of the page: no card, no shadow.
+   ========================================================================== */
+.howto {
+    padding: 46px 40px 50px;
+    border-top: 1px solid var(--line);
+}
+
+.howto__inner {
+    max-width: 1240px;
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: 56px;
+    align-items: start;
+}
+
+.howto h2 {
+    margin-top: 14px;
+    font-size: clamp(26px, 2.6vw, 34px);
+    line-height: 1.12;
+    letter-spacing: -.022em;
+    font-weight: 700;
+    max-width: 16ch;
+}
+
+.howto__lede {
+    margin-top: 12px;
+    font-size: 15px;
+    color: var(--ink-2);
+    max-width: 46ch;
+}
+
+/* ---- Chapter list ---- */
+.chapters { margin-top: 24px; display: grid; gap: 2px; list-style: none; padding: 0; }
+
+.chapters button {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    width: 100%;
+    padding: 9px 12px 9px 0;
+    background: none;
+    border: 0;
+    border-top: 1px solid var(--line-soft);
+    font-size: 14.5px;
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+    transition: color .15s var(--ease), padding-left .18s var(--ease);
+}
+.chapters li:last-child button { border-bottom: 1px solid var(--line-soft); }
+
+.chapters button:hover { color: var(--teal); padding-left: 6px; }
+
+.chapters button[aria-current="true"] {
+    color: var(--teal);
+    font-weight: 500;
+    padding-left: 6px;
+}
+
+.chapters__t {
+    flex: 0 0 42px;
+    font-size: 12.5px;
+    color: var(--ink-3);
+}
+.chapters button:hover .chapters__t,
+.chapters button[aria-current="true"] .chapters__t { color: var(--teal); }
+
+/* ---- Player ---- */
+.howto__player {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    background: #10322c;          /* darker than the brand teal, so bars read as film */
+    aspect-ratio: 16 / 9;
+}
+
+.howto__player video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Shown when the video file is not there yet. */
+.howto__missing {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 10px;
+    padding: 32px;
+    text-align: center;
+    color: var(--on-teal-2);
+    background: #10322c;
+}
+
+.howto__missing strong {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.howto__missing code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12.5px;
+    padding: 4px 8px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, .1);
+    color: #fff;
+}
+
+@media (max-width: 900px) {
+    .howto { padding: 34px 22px 38px; }
+    .howto__inner { grid-template-columns: 1fr; gap: 26px; }
+    .howto h2 { max-width: none; }
+}
+
+/* ==========================================================================
+   15. SCROLL REVEAL
+   Sections lift into place the first time they come into view, once each.
+   The class is added by JavaScript, so a page with scripting off shows
+   everything normally rather than a blank screen.
+   ========================================================================== */
+.reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .5s var(--ease), transform .5s var(--ease);
+}
+
+.reveal.is-visible { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+}

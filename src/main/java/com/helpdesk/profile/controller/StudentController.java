@@ -1,6 +1,7 @@
 package com.helpdesk.profile.controller;
 
 import com.helpdesk.profile.dto.ProfileUpdateRequest;
+import com.helpdesk.profile.dto.RegistrationRequest;
 import com.helpdesk.profile.entity.Student;
 import com.helpdesk.profile.service.StudentService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,9 +43,15 @@ public class StudentController {
 
     // POST /api/students -> register a brand new student account (US-03).
     // Public endpoint (see SecurityConfig) - you can't log in before your account exists.
+    //
+    // Takes a RegistrationRequest rather than the Student entity directly (which
+    // this endpoint originally did) - see the comment on RegistrationRequest for
+    // why: the password complexity rule can only be checked against the raw,
+    // not-yet-hashed password, and RegistrationRequest is the only place that
+    // value exists before StudentService hashes it.
     @PostMapping
-    public ResponseEntity<Student> register(@Valid @RequestBody Student student) {
-        Student saved = studentService.register(student);
+    public ResponseEntity<Student> register(@Valid @RequestBody RegistrationRequest request) {
+        Student saved = studentService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
@@ -74,11 +81,21 @@ public class StudentController {
     // {id} in the URL first. Any authenticated user can call this for
     // themselves; there's no cross-student access risk since the lookup is
     // always tied to whoever the session belongs to, not to caller input.
+    //
+    // 403, not 404, when no student matches: this only happens when a session
+    // authenticated successfully but the row behind it has since disappeared
+    // (e.g. the account was deleted after the session was issued). That's the
+    // same "doesn't exist" -> "forbidden" choice isOwnProfile() makes below,
+    // for the same reason - treating it as a plain 404 here would read like
+    // "this endpoint doesn't exist" rather than "your session no longer
+    // corresponds to a real account", and would throw if callers ever started
+    // assuming a 404 body always means "resource not found" rather than
+    // "identity gone".
     @GetMapping("/me")
     public ResponseEntity<Student> getCurrentStudent(Authentication authentication) {
         return studentService.findByEmail(authentication.getName())
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElse(ResponseEntity.status(HttpStatus.FORBIDDEN).build());
     }
 
     // GET /api/students/{id} -> fetch one student's profile, e.g. for a dashboard view.

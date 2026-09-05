@@ -44,6 +44,21 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    // StudentService.updateProfile() and .deactivate() both throw this when the
+    // {id} in the URL doesn't belong to any student (see their
+    // .orElseThrow(() -> new IllegalArgumentException("Student not found"))).
+    // Without a handler here, that exception isn't caught by anything in this
+    // class, so it propagates all the way up as an unhandled exception - Spring
+    // Boot's default error handling then reports it as a 500 Internal Server
+    // Error, which wrongly tells the caller "something broke on the server"
+    // when the real problem is "you sent an id that doesn't refer to anything",
+    // i.e. a mistake in THEIR request. Mapping it to 400 Bad Request here
+    // reports it as what it actually is.
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     private ResponseEntity<Map<String, Object>> buildResponse(HttpStatus status, String message) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", LocalDateTime.now());
