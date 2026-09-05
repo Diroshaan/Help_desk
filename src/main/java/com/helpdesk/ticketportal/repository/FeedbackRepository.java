@@ -11,5 +11,7 @@ public interface FeedbackRepository extends JpaRepository<Feedback, Long> {
 
     Optional<Feedback> findByTicketId(Long ticketId);
 
+    List<Feedback> findByTicketIdIn(List<Long> ticketIds);
+
     boolean existsByTicketId(Long ticketId);
 }
