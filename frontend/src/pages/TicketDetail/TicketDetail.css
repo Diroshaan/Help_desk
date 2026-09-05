@@ -1,0 +1,19 @@
+/* Layout only - visual tokens (color/type/spacing) come from styles/theme.css
+   and are applied inline where the handoff specified exact inline styles,
+   to keep this file a 1:1 match with design_handoff_ticket_detail. */
+
+.ticket-detail__body {
+  display: grid;
+  grid-template-columns: 1.85fr 1fr;
+}
+
+@media (max-width: 900px) {
+  .ticket-detail__body {
+    grid-template-columns: 1fr;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

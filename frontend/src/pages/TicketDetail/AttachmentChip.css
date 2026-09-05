@@ -1,0 +1,20 @@
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.attachment-chip:hover {
+  background: var(--background);
+}
+
+.attachment-chip__icon {
+  font-size: 14px;
+}
