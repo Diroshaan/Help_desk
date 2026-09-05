@@ -1,3 +1,29 @@
+/* ==============================================================================
+   SUPERSEDED — kept for reference only.
+
+   UNIHELP · SE2030 Web-Based Help Desk System · Group MLBB8G204
+   F1 — Student Profile & Preferences Management · Diroshaan S (IT25101580)
+
+   The shared helpers for the plain-HTML pages: the API endpoint table, the
+   fetch wrapper, the notice and field-error helpers, initials() and logout().
+
+   REPLACED BY
+     frontend/src/api.js               — API, request(), errorMessage(),
+                                         fieldErrors(), initials()
+     frontend/src/hooks/useSession.jsx — the session, including sign-out
+
+   The logic is the same; only the delivery changed. request() is almost
+   identical in both, because the reasons behind it did not change: Spring
+   Security is session based, so every call must send its cookie, and callers
+   should never have to guess what shape a response came back in.
+
+   What React did change is WHERE the answer to "who is logged in?" lives. Here,
+   every page asked the server for itself — five pages, five requests, five
+   chances to disagree. In the React app one context asks once and shares it.
+
+   Loaded only by the old .html pages. The React bundle does not touch it.
+   ============================================================================== */
+
 /* ==========================================================================
    UNIHELP — shared front-end helpers
    F1: Student Profile & Preferences Management
