@@ -1,164 +1,341 @@
-<!-- US-06 / WBHD-12 - F1 - Diroshaan S. IT25101580 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Account Required - Helpdesk</title>
-<style>
-  /* Basic reset so margins/padding are predictable across browsers */
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    background-color: #f4f6f8;
-    color: #1f2937;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    padding: 24px;
-  }
-
-  .welcome-card {
-    background: #ffffff;
-    width: 100%;
-    max-width: 420px;
-    padding: 32px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-  }
-
-  h1 {
-    font-size: 1.5rem;
-    margin-bottom: 4px;
-    text-align: center;
-  }
-
-  .subtitle {
-    font-size: 0.9rem;
-    color: #6b7280;
-    text-align: center;
-    margin-bottom: 24px;
-  }
-
-  /* Informational panel explaining why an account is needed - reuses the
-     same neutral gray already used for read-only/summary boxes elsewhere
-     on the site (see profile.html's readonly inputs), just applied here
-     to a block of explanatory text instead of a form field. */
-  .info-panel {
-    background-color: #f3f4f6;
-    border-radius: 4px;
-    padding: 16px;
-    font-size: 0.9rem;
-  }
-
-  .info-panel p {
-    margin-bottom: 10px;
-  }
-
-  .info-panel ul {
-    list-style: none;
-    padding: 0;
-  }
-
-  .info-panel li {
-    padding-left: 20px;
-    position: relative;
-    margin-bottom: 8px;
-  }
-
-  .info-panel li:last-child {
-    margin-bottom: 0;
-  }
-
-  .info-panel li::before {
-    content: "✓";
-    position: absolute;
-    left: 0;
-    color: #2563eb;
-    font-weight: bold;
-  }
-
-  /* Shared button base - same sizing/shape as the buttons on
-     register.html/login.html, just split into primary/secondary variants
-     here since this page offers two actions instead of one form submit. */
-  .btn {
-    display: block;
-    width: 100%;
-    margin-top: 16px;
-    padding: 12px;
-    border-radius: 4px;
-    font-size: 1rem;
-    font-weight: bold;
-    text-align: center;
-    text-decoration: none;
-    cursor: pointer;
-  }
-
-  .btn-primary {
-    background-color: #2563eb;
-    color: #ffffff;
-    border: none;
-  }
-
-  .btn-primary:hover {
-    background-color: #1d4ed8;
-  }
-
-  .btn-secondary {
-    background-color: #ffffff;
-    color: #2563eb;
-    border: 1px solid #2563eb;
-  }
-
-  .btn-secondary:hover {
-    background-color: #eff6ff;
-  }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UNIHELP · University Help Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 
-<div class="welcome-card">
-  <h1>Account Required</h1>
-  <p class="subtitle">University Help Desk</p>
+<!-- ============ Top bar ============
+     The right-hand side changes once the visitor is logged in — see the
+     script at the bottom of the page. -->
+<header class="topbar">
+    <a class="topbar__brand" href="welcome.html">
+        <span class="brand">UNIHELP</span>
+        <span class="topbar__tag">University Help Desk</span>
+    </a>
 
-  <!-- Explains why a visitor can't just browse the portal, and what
-       having an account actually gets them. -->
-  <div class="info-panel">
-    <p>You need a student account to use the help desk portal. With an account you can:</p>
-    <ul>
-      <li>Submit support tickets to the right department</li>
-      <li>Track the status of every request you send</li>
-      <li>Manage your profile and notification preferences</li>
-    </ul>
-  </div>
+    <nav class="topbar__nav">
+        <a href="#topics">Browse FAQ</a>
 
-  <a href="register.html" class="btn btn-primary">Create an Account</a>
-  <a href="login.html" class="btn btn-secondary">I already have an account</a>
-</div>
+        <!-- Guest -->
+        <a href="login.html" id="navLogin">Login</a>
+        <a class="btn btn--primary" href="register.html" id="navRegister">Register</a>
 
+        <!-- Signed in: the account chip and its menu. Hidden until the server
+             confirms there is a session behind it. -->
+        <div class="account" id="account" hidden>
+            <button class="account__btn" id="accountBtn" type="button"
+                    aria-expanded="false" aria-haspopup="true" aria-controls="accountMenu">
+                <span class="avatar avatar--sm" id="chipAvatar">–</span>
+                <span class="account__label" id="chipName">Account</span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+                     stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 9l7 7 7-7"></path>
+                </svg>
+            </button>
+
+            <div class="account__menu" id="accountMenu" hidden>
+                <div class="account__head">
+                    <span class="avatar" id="menuAvatar">–</span>
+                    <div class="account__who">
+                        <strong id="menuName"></strong>
+                        <span class="mono" id="menuStudentId"></span>
+                        <span id="menuEmail"></span>
+                    </div>
+                </div>
+
+                <a href="profile.html">My profile</a>
+                <a href="profile.html#preferences">Notification preferences</a>
+                <a href="profile.html#activity">Recent activity</a>
+
+                <hr>
+                <button type="button" class="danger" id="menuLogout">Log out</button>
+            </div>
+        </div>
+    </nav>
+</header>
+
+<!-- ============ Hero ============ -->
+<section class="hero">
+    <div class="hero__inner rise rise-1">
+
+        <p class="eyebrow">Student support · One place</p>
+
+        <h1>Get help from your university, in one place.</h1>
+
+        <p class="hero__lede">
+            Search the knowledge base first — most questions are already answered.
+            If not, submit a ticket and it routes straight to the right department.
+        </p>
+
+        <form class="searchbar" id="searchForm" role="search">
+            <span class="searchbar__icon" aria-hidden="true">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="M20 20l-3.6-3.6"></path>
+                </svg>
+            </span>
+            <label class="sr-only" for="q">Search FAQs and self-service guides</label>
+            <input type="search" id="q" name="q" placeholder="Search FAQs and self-service guides…">
+            <button type="submit">Search</button>
+        </form>
+
+        <div class="notice search-note" id="searchNote" hidden></div>
+    </div>
+</section>
+
+<!-- ============ Three routes ============ -->
+<section class="routes rise rise-2">
+
+    <article class="route">
+        <span class="route__num">01</span>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 4.5h7a3 3 0 0 1 3 3V20a2.5 2.5 0 0 0-2.5-2.5H2z"></path>
+            <path d="M22 4.5h-7a3 3 0 0 0-3 3V20a2.5 2.5 0 0 1 2.5-2.5H22z"></path>
+        </svg>
+
+        <h2>Search the Knowledge Base</h2>
+        <p>Guides, policies and step-by-steps from every department. No account needed.</p>
+
+        <div class="route__action">
+            <a class="btn btn--ghost" href="#topics">Browse articles</a>
+        </div>
+    </article>
+
+    <article class="route">
+        <span class="route__num">02</span>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2.5H7a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5z"></path>
+            <path d="M14 2.5v5h5"></path>
+            <path d="M12 11.5v6M9 14.5h6"></path>
+        </svg>
+
+        <h2>Submit a Ticket</h2>
+        <p>Describe the problem once. It is routed and tracked against your Student ID.</p>
+
+        <div class="route__action">
+            <a class="btn btn--ghost" href="register.html" data-guest-href="register.html"
+               data-user-href="profile.html">Submit a ticket</a>
+            <span class="route__gate">Requires an account</span>
+        </div>
+    </article>
+
+    <article class="route">
+        <span class="route__num">03</span>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6.5l2 2 3-3.5"></path>
+            <path d="M3 13l2 2 3-3.5"></path>
+            <path d="M3 19.5l2 2 3-3.5"></path>
+            <path d="M12 7h9M12 13.5h9M12 20h9"></path>
+        </svg>
+
+        <h2>Track Your Request</h2>
+        <p>Follow every status change, officer response and resolution in one thread.</p>
+
+        <div class="route__action">
+            <a class="btn btn--ghost" href="register.html" data-guest-href="register.html"
+               data-user-href="profile.html">Track requests</a>
+            <span class="route__gate">Requires an account</span>
+        </div>
+    </article>
+
+</section>
+
+<!-- ============ Popular topics ============ -->
+<section class="topics" id="topics">
+    <p class="topics__label">Popular help topics</p>
+
+    <!-- Clicking a chip drops it into the search box and runs the search, so
+         a student who does not know what to type still gets somewhere. -->
+    <div class="chips">
+        <button class="chip" type="button">Reset my portal password</button>
+        <button class="chip" type="button">Connect to eduroam</button>
+        <button class="chip" type="button">Request an official transcript</button>
+        <button class="chip" type="button">Fee payment methods</button>
+        <button class="chip" type="button">Library loan limits</button>
+        <button class="chip" type="button">Change my registered modules</button>
+        <button class="chip" type="button">Hostel maintenance requests</button>
+        <button class="chip" type="button">Exam re-sit application</button>
+    </div>
+</section>
+
+<!-- ============ Call to action ============
+     This is US-06: an unregistered student is told, plainly, that an account
+     is what stands between them and a ticket. -->
+<section class="cta">
+    <div class="cta__inner">
+        <h2 id="ctaHeading">Still stuck? Register and your ticket reaches the right desk in seconds.</h2>
+        <a class="btn" href="register.html" id="ctaButton">Create an account</a>
+    </div>
+</section>
+
+<!-- ============ Footer ============ -->
+<footer class="site-foot">
+    <div class="site-foot__inner">
+
+        <div class="desk">
+            <strong>IT Services</strong>
+            <a href="mailto:itdesk@university.lk">itdesk@university.lk</a>
+            <span>+94 11 000 0001</span>
+        </div>
+
+        <div class="desk">
+            <strong>Registration</strong>
+            <a href="mailto:registrar@university.lk">registrar@university.lk</a>
+            <span>+94 11 000 0002</span>
+        </div>
+
+        <div class="desk">
+            <strong>Financial Aid</strong>
+            <a href="mailto:finaid@university.lk">finaid@university.lk</a>
+            <span>+94 11 000 0003</span>
+        </div>
+
+        <div class="foot-links">
+            <a href="#">Accessibility</a>
+            <a href="#">Privacy policy</a>
+        </div>
+
+    </div>
+
+    <p class="site-foot__legal">SE2030 · Web-Based Help Desk System · Group MLBB8G204</p>
+</footer>
+
+<script src="js/app.js"></script>
 <script>
-  // If a visitor lands here while already logged in (e.g. they had a
-  // session open and followed an old link), there's no reason to show
-  // them a registration pitch - send them straight to their profile
-  // instead. If the check fails for any reason (not logged in, network
-  // issue, server down), just leave this page showing normally - that's
-  // the correct fallback for a page whose whole purpose is "you're not
-  // logged in yet".
-  fetch('/api/students/me', { credentials: 'include' })
-    .then(function (response) {
-      if (response.ok) {
-        window.location.href = 'profile.html';
-      }
-    })
-    .catch(function () {
-      // Network/server error - do nothing, the prompt below stays visible.
+/* --------------------------------------------------------------------------
+   Landing page behaviour
+
+   US-06 says an unregistered student must be prompted to register. That is
+   what the "Requires an account" gates and the call-to-action band do.
+
+   A student who is already logged in should not be asked to register again,
+   so instead of redirecting them away from a page that is genuinely useful
+   to everyone, the page changes: the nav offers the profile and a log out,
+   the gates disappear, and the band welcomes them back.
+   -------------------------------------------------------------------------- */
+
+/* ---- Work out who is looking at the page ---- */
+(async function identify() {
+    let result;
+
+    try {
+        result = await request(API.me);
+    } catch (e) {
+        return;   // server not running; leave the page in its guest state
+    }
+
+    // A guest gets 403 here: SecurityConfig enables neither formLogin nor
+    // httpBasic, so Spring answers an anonymous request with 403, not 401.
+    if (!result.ok || !result.data || !result.data.id) return;
+
+    showSignedIn(result.data);
+})();
+
+function showSignedIn(user) {
+    document.getElementById('navLogin').hidden    = true;
+    document.getElementById('navRegister').hidden = true;
+    document.getElementById('account').hidden     = false;
+
+    // The chip shows initials and a first name; the menu shows everything.
+    const fullName = user.fullName || '';
+    const marks    = initials(fullName);
+
+    document.getElementById('chipAvatar').textContent = marks;
+    document.getElementById('chipName').textContent   = fullName.split(' ')[0] || 'My account';
+
+    document.getElementById('menuAvatar').textContent    = marks;
+    document.getElementById('menuName').textContent      = fullName || '(no name set)';
+    document.getElementById('menuStudentId').textContent = user.studentId || '';
+    document.getElementById('menuEmail').textContent     = user.email || '';
+
+    // The two gated buttons now point somewhere useful.
+    document.querySelectorAll('[data-user-href]').forEach(link => {
+        link.setAttribute('href', link.dataset.userHref);
     });
+    document.querySelectorAll('.route__gate').forEach(gate => { gate.hidden = true; });
+
+    const firstName = (user.fullName || '').split(' ')[0];
+    document.getElementById('ctaHeading').textContent =
+        firstName ? 'Welcome back, ' + firstName + '. Pick up where you left off.'
+                  : 'Welcome back. Pick up where you left off.';
+
+    const button = document.getElementById('ctaButton');
+    button.textContent = 'Go to my profile';
+    button.setAttribute('href', 'profile.html');
+}
+
+/* ---- The account menu ----
+   Opened by click rather than hover so it works the same on a phone, and
+   closed by a click anywhere else or by Escape — the two things every user
+   already tries. aria-expanded is kept in step for screen readers. */
+const accountBtn  = document.getElementById('accountBtn');
+const accountMenu = document.getElementById('accountMenu');
+
+function setMenuOpen(open) {
+    accountMenu.hidden = !open;
+    accountBtn.setAttribute('aria-expanded', String(open));
+}
+
+accountBtn.addEventListener('click', (event) => {
+    event.stopPropagation();          // do not trip the outside-click handler below
+    setMenuOpen(accountMenu.hidden);
+});
+
+document.addEventListener('click', (event) => {
+    if (!accountMenu.hidden && !document.getElementById('account').contains(event.target)) {
+        setMenuOpen(false);
+    }
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !accountMenu.hidden) {
+        setMenuOpen(false);
+        accountBtn.focus();
+    }
+});
+
+document.getElementById('menuLogout').addEventListener('click', logout);
+
+/* ---- Search ----
+   The knowledge base is F5 and is not built yet. Rather than a button that
+   appears broken, the page says what will happen and where to go instead. */
+const note = document.getElementById('searchNote');
+
+document.getElementById('searchForm').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const query = document.getElementById('q').value.trim();
+
+    if (!query) {
+        showNotice(note, 'Type a few words about your problem, or pick one of the topics below.');
+        return;
+    }
+
+    showNotice(note,
+        'Knowledge base search arrives with the FAQ portal in Sprint 4. ' +
+        'In the meantime, submit a ticket describing “' + query + '” and it will reach the right desk.');
+});
+
+/* ---- Topic chips ---- */
+document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+        const input = document.getElementById('q');
+        input.value = chip.textContent.trim();
+        input.focus();
+        document.getElementById('searchForm')
+                .dispatchEvent(new Event('submit', { cancelable: true }));
+    });
+});
 </script>
 
 </body>

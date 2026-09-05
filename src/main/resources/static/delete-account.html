@@ -2,294 +2,184 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Delete Account - Helpdesk</title>
-<style>
-  /* Basic reset so margins/padding are predictable across browsers */
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    background-color: #f4f6f8;
-    color: #1f2937;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    padding: 24px;
-  }
-
-  .delete-card {
-    background: #ffffff;
-    width: 100%;
-    max-width: 420px;
-    padding: 32px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-  }
-
-  h1 {
-    font-size: 1.5rem;
-    margin-bottom: 4px;
-    text-align: center;
-  }
-
-  .subtitle {
-    font-size: 0.9rem;
-    color: #6b7280;
-    text-align: center;
-    margin-bottom: 24px;
-  }
-
-  /* Shows who's about to be deleted, so there's no doubt which account this
-     action applies to. */
-  .account-summary {
-    background-color: #f3f4f6;
-    border-radius: 4px;
-    padding: 12px 14px;
-    margin-bottom: 20px;
-    font-size: 0.9rem;
-  }
-
-  .account-summary strong {
-    display: block;
-    font-size: 1rem;
-    margin-bottom: 2px;
-  }
-
-  /* Warning banner explaining the consequences before any action is possible */
-  .warning-box {
-    background-color: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fde68a;
-    border-radius: 4px;
-    padding: 12px 14px;
-    font-size: 0.85rem;
-    margin-bottom: 20px;
-  }
-
-  .checkbox-row {
-    display: flex;
-    align-items: flex-start;
-    margin-bottom: 20px;
-  }
-
-  .checkbox-row input {
-    width: auto;
-    margin-right: 8px;
-    margin-top: 3px;
-  }
-
-  .checkbox-row label {
-    font-weight: normal;
-    font-size: 0.9rem;
-  }
-
-  button {
-    width: 100%;
-    padding: 12px;
-    border: none;
-    border-radius: 4px;
-    font-size: 1rem;
-    font-weight: bold;
-    cursor: pointer;
-  }
-
-  /* Deliberately red, distinct from the blue "primary action" buttons on the
-     other pages - this is a destructive action, not a routine one. */
-  #confirmDeleteBtn {
-    background-color: #dc2626;
-    color: #ffffff;
-  }
-
-  #confirmDeleteBtn:hover:not(:disabled) {
-    background-color: #b91c1c;
-  }
-
-  #confirmDeleteBtn:disabled {
-    background-color: #fca5a5;
-    cursor: not-allowed;
-  }
-
-  /* Message box used both for load errors (not logged in) and the final
-     success/failure result of the delete request - hidden until needed */
-  #message {
-    margin-top: 16px;
-    padding: 12px;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    display: none;
-  }
-
-  #message.success {
-    display: block;
-    background-color: #dcfce7;
-    color: #166534;
-    border: 1px solid #86efac;
-  }
-
-  #message.error {
-    display: block;
-    background-color: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fca5a5;
-  }
-
-  #message a {
-    font-weight: bold;
-  }
-
-  #message.success a {
-    color: #166534;
-  }
-
-  #message.error a {
-    color: #991b1b;
-  }
-
-  /* Deliberately understated: the safe option shouldn't shout louder than the
-     destructive one, but it must always be visible. */
-  .cancel-row {
-    text-align: center;
-    margin-top: 16px;
-    font-size: 0.9rem;
-  }
-
-  .cancel-row a {
-    color: #6b7280;
-  }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delete my account · UNIHELP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 
-<div class="delete-card">
-  <h1>Delete Account</h1>
-  <p class="subtitle">This will deactivate your student account</p>
+<div class="split">
 
-  <!-- Load errors (e.g. "not logged in") and the final delete result both
-       appear here. Shown above the form so it's visible whichever state
-       the page is in. -->
-  <div id="message"></div>
+    <!-- ============ Left: brand panel ============ -->
+    <aside class="brand-panel">
+        <a class="brand" href="profile.html">UNIHELP</a>
 
-  <!-- Hidden until GET /api/students/me succeeds, so no one sees the delete
-       button before we've confirmed whose account it would delete. -->
-  <div id="deleteSection" style="display: none;">
+        <div class="brand-panel__body rise rise-1">
+            <h1>Before you close your account.</h1>
+            <ul class="brand-points">
+                <li>Requests you have already raised stay with the departments that handled them.</li>
+                <li>Your saved folders and bookmarks are removed.</li>
+                <li>You will not be able to log in again with this Student ID.</li>
+            </ul>
+        </div>
 
-    <!-- Filled in from /me so the student can see exactly whose account
-         they're about to remove before doing anything irreversible. -->
-    <div class="account-summary">
-      <strong id="accountName"></strong>
-      <span id="accountEmail"></span>
-    </div>
+        <p class="brand-panel__foot">SE2030 · Web-Based Help Desk System</p>
+    </aside>
 
-    <div class="warning-box">
-      Deleting your account will deactivate it and you will no longer be able
-      to log in or use the helpdesk portal. This action cannot be undone.
-    </div>
+    <!-- ============ Right: confirmation ============ -->
+    <main class="form-side">
+        <div class="form-col rise rise-2">
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="confirmCheckbox">
-      <label for="confirmCheckbox">I understand this cannot be undone.</label>
-    </div>
+            <a class="back-link" href="profile.html">&larr; Back to my profile</a>
 
-    <!-- Disabled by default - only enabled once the checkbox above is
-         checked, so a single accidental click can't delete the account. -->
-    <button type="button" id="confirmDeleteBtn" disabled>Delete My Account</button>
+            <h1>Delete my account</h1>
+            <p class="lede">This cannot be undone. Please read the panel on the left first.</p>
 
-    <!-- A way out that isn't deletion. A destructive-action page should always
-         offer a cancel path, otherwise the only routes off this screen are the
-         browser Back button or going through with it. -->
-    <p class="cancel-row"><a href="profile.html">Cancel and go back to my profile</a></p>
-  </div>
+            <div id="notice" class="notice" hidden style="margin-top:22px"></div>
+
+            <!-- Who is about to be deleted. Showing it prevents deleting the
+                 wrong account on a shared computer. -->
+            <div class="detail-list" style="margin-top:26px">
+                <div>
+                    <dt>Account</dt>
+                    <dd id="accName">Loading…</dd>
+                </div>
+                <div>
+                    <dt>Student ID</dt>
+                    <dd class="mono" id="accId"></dd>
+                </div>
+                <div>
+                    <dt>Email</dt>
+                    <dd id="accEmail"></dd>
+                </div>
+            </div>
+
+            <form class="form" id="deleteForm" novalidate>
+
+                <!-- Typing the Student ID is the confirmation step. A checkbox
+                     is too easy to tick by reflex for something irreversible. -->
+                <div class="field">
+                    <label for="confirmId">
+                        Type your Student ID to confirm
+                    </label>
+                    <input type="text" id="confirmId" name="confirmId" class="mono"
+                           autocomplete="off" placeholder="ITxxxxxxxx">
+                    <p class="field-error"></p>
+                </div>
+
+                <div class="field">
+                    <label for="password">Your password</label>
+                    <input type="password" id="password" name="password"
+                           autocomplete="current-password">
+                    <p class="field-error"></p>
+                </div>
+
+                <div class="btn-row">
+                    <button type="submit" class="btn btn--danger" id="confirmBtn" disabled>
+                        Delete my account
+                    </button>
+                    <a class="btn btn--ghost" href="profile.html">Cancel</a>
+                </div>
+            </form>
+
+            <!-- Shown after the account is gone. -->
+            <div id="donePanel" hidden style="margin-top:28px">
+                <div class="notice">
+                    <strong>Your account has been deleted.</strong><br>
+                    You have been signed out. Thank you for using the help desk.
+                </div>
+                <a class="btn btn--primary" href="welcome.html" style="margin-top:22px">Back to the help desk</a>
+            </div>
+
+        </div>
+    </main>
+
 </div>
 
+<script src="js/app.js"></script>
 <script>
-  const messageBox = document.getElementById('message');
-  const deleteSection = document.getElementById('deleteSection');
-  const confirmCheckbox = document.getElementById('confirmCheckbox');
-  const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+/* --------------------------------------------------------------------------
+   Delete account page
 
-  // Filled in once GET /api/students/me resolves - DELETE /api/students/{id}
-  // needs this numeric id, which the frontend has no other way to know.
-  let currentStudentId = null;
+   The button stays disabled until the typed Student ID matches the one on
+   the account. That is a deliberate speed bump for an irreversible action.
+   -------------------------------------------------------------------------- */
+let student = null;
 
-  function showMessage(text, isError) {
-    messageBox.className = isError ? 'error' : 'success';
-    messageBox.innerHTML = text;
-  }
+const notice    = document.getElementById('notice');
+const form      = document.getElementById('deleteForm');
+const confirmBtn = document.getElementById('confirmBtn');
+const confirmId  = document.getElementById('confirmId');
 
-  // Confirm who's logged in and show their details before allowing deletion.
-  async function loadAccount() {
+/* ---- Load the account being deleted -------------------------------------- */
+(async function load() {
+    let result;
+
     try {
-      const response = await fetch('/api/students/me', {
-        method: 'GET',
-        // Sends the session cookie set at login, so the server knows who's asking.
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        // No session / expired session - there's no account to delete from
-        // here, so send the student to the registration prompt instead.
-        window.location.href = 'welcome.html';
+        result = await request(API.me);
+    } catch (e) {
+        showNotice(notice, 'Could not reach the server. Check that the application is running.', 'error');
         return;
-      }
-
-      const student = await response.json();
-      currentStudentId = student.id;
-
-      document.getElementById('accountName').textContent = student.fullName || '';
-      document.getElementById('accountEmail').textContent = student.email || '';
-
-      // Only reveal the warning/checkbox/button once we know whose account
-      // this actually is.
-      deleteSection.style.display = 'block';
-    } catch (networkError) {
-      showMessage('Could not reach the server. Please check your connection and try again.', true);
     }
-  }
 
-  // The confirm button only becomes clickable once the "I understand" box
-  // is checked - this is the "not just one click" safeguard the delete flow
-  // needs, on top of the button's own click.
-  confirmCheckbox.addEventListener('change', function () {
-    confirmDeleteBtn.disabled = !confirmCheckbox.checked;
-  });
+    if (!result.ok || !result.data || !result.data.id) {
+        window.location.replace('welcome.html');
+        return;
+    }
 
-  confirmDeleteBtn.addEventListener('click', async function () {
-    confirmDeleteBtn.disabled = true;
-    confirmDeleteBtn.textContent = 'Deleting...';
+    student = result.data;
+    document.getElementById('accName').textContent  = student.fullName || '(no name set)';
+    document.getElementById('accId').textContent    = student.studentId || '';
+    document.getElementById('accEmail').textContent = student.email || '';
+    confirmId.placeholder = student.studentId || '';
+})();
+
+/* ---- Enable the button only on an exact match ---------------------------- */
+confirmId.addEventListener('input', () => {
+    const typed = confirmId.value.trim();
+    confirmBtn.disabled = !student || typed !== student.studentId;
+});
+
+/* ---- Delete --------------------------------------------------------------- */
+form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    clearFieldErrors(form);
+    hideNotice(notice);
+
+    const password = document.getElementById('password').value;
+    if (!password) {
+        const field = document.getElementById('password').closest('.field');
+        field.classList.add('is-invalid');
+        field.querySelector('.field-error').textContent = 'Enter your password to confirm.';
+        return;
+    }
+
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Deleting…';
 
     try {
-      const response = await fetch('/api/students/' + currentStudentId, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
+        const result = await request(API.student(student.id), { method: 'DELETE' });
 
-      if (response.ok) {
-        // StudentController's DELETE endpoint is a soft delete (it flips an
-        // "active" flag rather than removing the row - see
-        // StudentService.deactivate), so "deactivated" is the accurate word
-        // here, not "deleted".
-        deleteSection.style.display = 'none';
-        showMessage('Your account has been deactivated. You will no longer be able to log in. <a href="login.html">Return to login</a>', false);
-      } else {
-        showMessage('Could not delete your account. Please try again.', true);
-        confirmDeleteBtn.disabled = false;
-        confirmDeleteBtn.textContent = 'Delete My Account';
-      }
-    } catch (networkError) {
-      showMessage('Could not reach the server. Please check your connection and try again.', true);
-      confirmDeleteBtn.disabled = false;
-      confirmDeleteBtn.textContent = 'Delete My Account';
+        if (result.ok || result.status === 204) {
+            form.hidden = true;
+            document.getElementById('donePanel').hidden = false;
+
+            // The session belongs to an account that no longer exists, so end it.
+            await request(API.logout, { method: 'POST' });
+            return;
+        }
+
+        showNotice(notice, errorMessage(result, 'We could not delete the account.'), 'error');
+    } catch (e) {
+        showNotice(notice, 'Could not reach the server. The account was not deleted.', 'error');
+    } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Delete my account';
     }
-  });
-
-  // Kick off the initial account check as soon as the page is ready.
-  loadAccount();
+});
 </script>
 
 </body>

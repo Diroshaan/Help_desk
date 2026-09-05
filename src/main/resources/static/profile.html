@@ -2,377 +2,393 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>My Profile - Helpdesk</title>
-<style>
-  /* Basic reset so margins/padding are predictable across browsers */
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    background-color: #f4f6f8;
-    color: #1f2937;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    padding: 24px;
-  }
-
-  .profile-card {
-    background: #ffffff;
-    width: 100%;
-    max-width: 420px;
-    padding: 32px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-  }
-
-  h1 {
-    font-size: 1.5rem;
-    margin-bottom: 4px;
-    text-align: center;
-  }
-
-  .subtitle {
-    font-size: 0.9rem;
-    color: #6b7280;
-    text-align: center;
-    margin-bottom: 24px;
-  }
-
-  label {
-    display: block;
-    font-size: 0.85rem;
-    font-weight: bold;
-    margin-bottom: 4px;
-    margin-top: 14px;
-  }
-
-  input {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    font-size: 0.95rem;
-  }
-
-  input:focus {
-    outline: none;
-    border-color: #2563eb;
-  }
-
-  /* Fields the student can't edit (id, email) - visually distinct from
-     editable fields so it's obvious why they can't be changed */
-  input[readonly] {
-    background-color: #f3f4f6;
-    color: #6b7280;
-    cursor: not-allowed;
-  }
-
-  .field-hint {
-    font-size: 0.75rem;
-    color: #9ca3af;
-    margin-top: 2px;
-  }
-
-  .checkbox-row {
-    display: flex;
-    align-items: center;
-    margin-top: 14px;
-  }
-
-  .checkbox-row input {
-    width: auto;
-    margin-right: 8px;
-  }
-
-  .checkbox-row label {
-    margin: 0;
-    font-weight: normal;
-    font-size: 0.9rem;
-  }
-
-  button {
-    width: 100%;
-    margin-top: 24px;
-    padding: 12px;
-    background-color: #2563eb;
-    color: #ffffff;
-    border: none;
-    border-radius: 4px;
-    font-size: 1rem;
-    font-weight: bold;
-    cursor: pointer;
-  }
-
-  button:hover {
-    background-color: #1d4ed8;
-  }
-
-  button:disabled {
-    background-color: #93c5fd;
-    cursor: not-allowed;
-  }
-
-  /* Message box shown after fetching/saving the profile - hidden until needed */
-  #message {
-    margin-top: 16px;
-    padding: 12px;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    display: none;
-  }
-
-  #message.success {
-    display: block;
-    background-color: #dcfce7;
-    color: #166534;
-    border: 1px solid #86efac;
-  }
-
-  #message.error {
-    display: block;
-    background-color: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fca5a5;
-  }
-
-  #message a {
-    color: #991b1b;
-    font-weight: bold;
-  }
-
-  /* Account actions row - separated from the form above by a rule, so it
-     reads as "things you can do to this account" rather than more fields. */
-  .account-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 24px;
-    padding-top: 16px;
-    border-top: 1px solid #e5e7eb;
-  }
-
-  /* Styled as a link, not a button, so it doesn't compete visually with
-     "Save Changes" - logging out isn't the primary action on this page. */
-  .link-btn {
-    background: none;
-    border: none;
-    padding: 0;
-    font-size: 0.9rem;
-    font-family: inherit;
-    color: #2563eb;
-    cursor: pointer;
-    text-decoration: underline;
-  }
-
-  .danger-link {
-    font-size: 0.9rem;
-    color: #991b1b;
-    text-decoration: none;
-  }
-
-  .danger-link:hover {
-    text-decoration: underline;
-  }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My profile · UNIHELP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 
-<div class="profile-card">
-  <h1>My Profile</h1>
-  <p class="subtitle">View and update your account details</p>
+<div class="shell">
 
-  <!-- Feedback for the initial GET /api/students/me load (e.g. "not logged
-       in") and for PUT save results both appear here. -->
-  <div id="message"></div>
+    <!-- ============ Sidebar ============ -->
+    <aside class="sidebar">
+        <!-- The wordmark is a link, the same way it is on every other page. -->
+        <a class="brand" href="welcome.html">UNIHELP</a>
 
-  <!-- Hidden until GET /api/students/me succeeds and the fields are filled in,
-       so the student never sees a flash of empty inputs before data loads. -->
-  <form id="profileForm" novalidate style="display: none;">
+        <nav class="side-nav">
+            <!-- Out of the account area and back to the help desk itself. Without
+                 these the profile page is a dead end: the only way back to the
+                 knowledge base or a new ticket was editing the address bar. -->
+            <p class="side-nav__label">Help desk</p>
+            <a href="welcome.html">Home</a>
+            <a href="welcome.html#topics">Browse FAQ</a>
+            <a href="#" id="newTicket">Submit a ticket</a>
 
-    <label for="studentId">Student ID</label>
-    <input type="text" id="studentId" readonly>
+            <p class="side-nav__label">My account</p>
+            <a href="profile.html" aria-current="page">My profile</a>
+            <a href="#preferences">Preferences</a>
+            <a href="#activity">Recent activity</a>
+        </nav>
 
-    <label for="email">Email</label>
-    <input type="email" id="email" readonly>
-    <p class="field-hint">Email can't be changed here - it's tied to your login.</p>
+        <div class="side-foot">
+            <p class="side-user">
+                <span id="sideName">Loading…</span>
+                <span id="sideId" class="mono"></span>
+            </p>
+            <button class="side-logout" id="logoutBtn" type="button">Log out</button>
+        </div>
+    </aside>
 
-    <label for="fullName">Full Name</label>
-    <input type="text" id="fullName" required>
+    <!-- ============ Content ============ -->
+    <main class="content">
+        <div class="content-col rise rise-1">
 
-    <label for="department">Department</label>
-    <input type="text" id="department" required>
+            <div class="page-head">
+                <h1>My profile</h1>
+            </div>
 
-    <label for="contactNumber">Contact Number</label>
-    <input type="tel" id="contactNumber">
+            <!-- One notice block, reused by every action on the page. -->
+            <div id="notice" class="notice" hidden style="margin:18px 0 0"></div>
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="emailNotificationsEnabled">
-      <label for="emailNotificationsEnabled">Email notifications</label>
-    </div>
+            <!-- ---------- Identity ---------- -->
+            <section class="section">
+                <div class="identity">
+                    <div class="avatar" id="avatar">–</div>
+                    <div>
+                        <p class="identity__name" id="displayName">Loading…</p>
+                        <p class="identity__meta">
+                            <span class="mono" id="displayStudentId"></span>
+                            <span id="displayStatus"></span>
+                        </p>
+                    </div>
+                </div>
+            </section>
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="portalNotificationsEnabled">
-      <label for="portalNotificationsEnabled">Portal notifications</label>
-    </div>
+            <!-- ---------- Personal details ---------- -->
+            <section class="section">
+                <h2>Personal details</h2>
 
-    <!-- No password field here on purpose. PUT /api/students/{id} now takes a
-         ProfileUpdateRequest on the backend (not the full Student entity),
-         which only has the fields this form actually edits - it has no
-         password requirement to satisfy, so there's nothing to collect. -->
+                <form class="form" id="profileForm" novalidate style="margin-top:0">
 
-    <button type="submit" id="submitBtn">Save Changes</button>
-  </form>
+                    <div class="field">
+                        <label for="fullName">Full name</label>
+                        <input type="text" id="fullName" name="fullName" autocomplete="name">
+                        <p class="field-error"></p>
+                    </div>
 
-  <!-- Account actions (Minor Function: "navigation and interface controls").
-       Kept OUTSIDE the form so these are plain navigation/actions rather than
-       form submissions, but revealed at the same time as the form - there's
-       nothing to log out of or delete until we know who's logged in.
+                    <div class="field-row">
+                        <div class="field">
+                            <label for="studentId">Student ID</label>
+                            <input type="text" id="studentId" name="studentId" class="mono" disabled>
+                            <p class="hint">Issued by the university. It cannot be changed here.</p>
+                        </div>
 
-       Deleting is a link rather than a button here on purpose: it navigates to
-       delete-account.html, which carries the actual confirmation step (checkbox
-       + disabled button). Nothing destructive happens from this page. -->
-  <div id="accountActions" class="account-actions" style="display: none;">
-    <button type="button" id="logoutBtn" class="link-btn">Log Out</button>
-    <a href="delete-account.html" class="danger-link">Delete my account</a>
-  </div>
+                        <div class="field">
+                            <label for="phone">Phone</label>
+                            <input type="tel" id="phone" name="phone" autocomplete="tel">
+                            <p class="field-error"></p>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="email">University email</label>
+                        <input type="email" id="email" name="email" autocomplete="email">
+                        <p class="field-error"></p>
+                    </div>
+
+                    <div class="field">
+                        <label for="department">Faculty or department</label>
+                        <select id="department" name="department">
+                            <option value="">Not set</option>
+                            <option>Faculty of Computing</option>
+                            <option>Faculty of Engineering</option>
+                            <option>Faculty of Business</option>
+                            <option>Faculty of Humanities &amp; Sciences</option>
+                            <option>Other</option>
+                        </select>
+                        <p class="field-error"></p>
+                    </div>
+
+                    <div class="btn-row">
+                        <button type="submit" class="btn btn--primary" id="saveProfile">Save changes</button>
+                        <button type="button" class="btn btn--ghost" id="resetProfile">Discard</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- ---------- Preferences ---------- -->
+            <section class="section" id="preferences">
+                <h2>Notification preferences</h2>
+                <p class="section-note">
+                    Choose when the help desk should email you. These apply to every
+                    request you raise.
+                </p>
+
+                <div class="pref">
+                    <div class="pref__text">
+                        <strong>A support officer replies</strong>
+                        <span>Email me as soon as someone answers one of my requests.</span>
+                    </div>
+                    <label class="switch">
+                        <span class="sr-only">Email me when an officer replies</span>
+                        <input type="checkbox" id="notifyReply" checked>
+                    </label>
+                </div>
+
+                <div class="pref">
+                    <div class="pref__text">
+                        <strong>My request changes status</strong>
+                        <span>Open, In progress, Resolved or Closed.</span>
+                    </div>
+                    <label class="switch">
+                        <span class="sr-only">Email me on status changes</span>
+                        <input type="checkbox" id="notifyStatus" checked>
+                    </label>
+                </div>
+
+                <div class="pref">
+                    <div class="pref__text">
+                        <strong>Weekly summary</strong>
+                        <span>One email on Monday listing anything still open.</span>
+                    </div>
+                    <label class="switch">
+                        <span class="sr-only">Send me a weekly summary</span>
+                        <input type="checkbox" id="notifyDigest">
+                    </label>
+                </div>
+
+                <div class="btn-row" style="margin-top:22px">
+                    <button type="button" class="btn btn--primary" id="savePrefs">Save preferences</button>
+                </div>
+            </section>
+
+            <!-- ---------- Activity ---------- -->
+            <section class="section" id="activity">
+                <h2>Recent activity</h2>
+
+                <ul class="timeline" id="timeline" hidden></ul>
+
+                <p class="empty" id="timelineEmpty">
+                    Nothing here yet. Actions on your account — profile edits, password
+                    changes and logins — will appear here once activity logging is switched on.
+                </p>
+            </section>
+
+            <!-- ---------- Danger zone ---------- -->
+            <section class="danger-zone">
+                <h2>Close your account</h2>
+                <p class="section-note">
+                    Your requests stay on record for the departments that handled them,
+                    but you will no longer be able to log in.
+                </p>
+                <a class="danger-link" href="delete-account.html">Delete my account</a>
+            </section>
+
+        </div>
+    </main>
+
 </div>
 
+<script src="js/app.js"></script>
 <script>
-  const messageBox = document.getElementById('message');
-  const form = document.getElementById('profileForm');
-  const submitBtn = document.getElementById('submitBtn');
-  const accountActions = document.getElementById('accountActions');
-  const logoutBtn = document.getElementById('logoutBtn');
+/* --------------------------------------------------------------------------
+   Profile page behaviour
 
-  // Ends the session server-side via POST /api/auth/logout (which invalidates
-  // the HTTP session and clears the SecurityContext - see AuthController), then
-  // sends the visitor to welcome.html. Clearing the session on the server
-  // matters: simply navigating away would leave the session cookie valid, so
-  // anyone returning to profile.html in the same browser would still be logged
-  // in. Redirect happens either way - if the request fails, the safest thing is
-  // still to leave the logged-in view rather than pretend nothing happened.
-  logoutBtn.addEventListener('click', async function () {
-    logoutBtn.disabled = true;
+   The page has three jobs:
+     1. find out who is logged in, and send guests away
+     2. show that student's details and let them edit the ones they own
+     3. save preferences
+
+   `student` holds the last copy loaded from the server. Discard restores
+   from it, so the user can back out of an edit without a reload.
+   -------------------------------------------------------------------------- */
+let student = null;
+
+const notice = document.getElementById('notice');
+const form   = document.getElementById('profileForm');
+
+/* ---- 1. Load ------------------------------------------------------------- */
+async function load() {
+    let result;
+
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    } finally {
-      window.location.href = 'welcome.html';
-    }
-  });
-
-  // Filled in once GET /api/students/me resolves - PUT /api/students/{id}
-  // needs this numeric id, which the frontend has no other way to know.
-  let currentStudentId = null;
-
-  function showMessage(text, isError) {
-    messageBox.className = isError ? 'error' : 'success';
-    messageBox.textContent = text;
-  }
-
-  // Fetch the logged-in student's own profile and pre-fill the form.
-  async function loadProfile() {
-    try {
-      const response = await fetch('/api/students/me', {
-        method: 'GET',
-        // Sends the session cookie set at login, so the server knows who's asking.
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        // Most likely a 401/403 because no one is logged in (no session
-        // cookie, or it expired) - send them to the registration prompt
-        // instead of showing a confusing empty form here.
-        window.location.href = 'welcome.html';
+        result = await request(API.me);
+    } catch (e) {
+        showNotice(notice, 'Could not reach the server. Check that the application is running.', 'error');
         return;
-      }
-
-      const student = await response.json();
-      currentStudentId = student.id;
-
-      document.getElementById('studentId').value = student.studentId || '';
-      document.getElementById('email').value = student.email || '';
-      document.getElementById('fullName').value = student.fullName || '';
-      document.getElementById('department').value = student.department || '';
-      document.getElementById('contactNumber').value = student.contactNumber || '';
-      document.getElementById('emailNotificationsEnabled').checked = !!student.emailNotificationsEnabled;
-      document.getElementById('portalNotificationsEnabled').checked = !!student.portalNotificationsEnabled;
-
-      // Only reveal the form once it's actually populated with real data.
-      form.style.display = 'block';
-      // Same reasoning for the account actions - there's nothing to log out
-      // of or delete until we've confirmed whose session this is.
-      accountActions.style.display = 'flex';
-    } catch (networkError) {
-      showMessage('Could not reach the server. Please check your connection and try again.', true);
     }
-  }
 
-  form.addEventListener('submit', async function (event) {
-    // Stop the browser's default full-page form submission - we handle it
-    // ourselves with fetch() so the page never reloads.
+    /* A guest gets 403 here. Sending them to the welcome page is friendlier
+       than showing an empty profile with an error on it. */
+    if (!result.ok || !result.data || !result.data.id) {
+        window.location.replace('welcome.html');
+        return;
+    }
+
+    student = result.data;
+    fill(student);
+}
+
+/* ---- 2. Paint the page from a student object ----------------------------- */
+function fill(data) {
+    const name = data.fullName || '';
+
+    document.getElementById('displayName').textContent      = name || '(no name set)';
+    document.getElementById('displayStudentId').textContent = data.studentId || '';
+    document.getElementById('sideName').textContent         = name.split(' ')[0] || 'Student';
+    document.getElementById('sideId').textContent           = data.studentId || '';
+
+    // Avatar: the uploaded picture if there is one, initials if there is not.
+    const avatar = document.getElementById('avatar');
+    if (data.profilePictureUrl) {
+        avatar.innerHTML = '<img src="' + data.profilePictureUrl + '" alt="">';
+    } else {
+        avatar.textContent = initials(name);
+    }
+
+    // Status pill
+    const status = document.getElementById('displayStatus');
+    if (data.active === false) {
+        status.innerHTML = ' · <span class="pill pill--muted">Suspended</span>';
+    } else {
+        status.innerHTML = ' · <span class="pill">Active</span>';
+    }
+
+    // Form values
+    document.getElementById('fullName').value   = data.fullName   || '';
+    document.getElementById('studentId').value  = data.studentId  || '';
+    document.getElementById('phone').value      = data.phone      || '';
+    document.getElementById('email').value      = data.email      || '';
+    document.getElementById('department').value = data.department || '';
+
+    // Preferences
+    if (data.notifyOnReply  !== undefined) document.getElementById('notifyReply').checked  = data.notifyOnReply;
+    if (data.notifyOnStatus !== undefined) document.getElementById('notifyStatus').checked = data.notifyOnStatus;
+    if (data.weeklyDigest   !== undefined) document.getElementById('notifyDigest').checked = data.weeklyDigest;
+
+    // Activity log — rendered only when the server actually sends one.
+    if (Array.isArray(data.activityLog) && data.activityLog.length) {
+        renderTimeline(data.activityLog);
+    }
+}
+
+function renderTimeline(entries) {
+    const list  = document.getElementById('timeline');
+    const empty = document.getElementById('timelineEmpty');
+
+    list.innerHTML = entries.map(entry => {
+        // textContent-style escaping, done by building the node rather than
+        // pasting the string straight into innerHTML.
+        const li   = document.createElement('li');
+        const time = document.createElement('time');
+        const p    = document.createElement('p');
+        time.textContent = entry.timestamp || '';
+        p.textContent    = entry.description || '';
+        li.appendChild(time);
+        li.appendChild(p);
+        return li.outerHTML;
+    }).join('');
+
+    list.hidden  = false;
+    empty.hidden = true;
+}
+
+/* ---- 3. Save personal details -------------------------------------------- */
+form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    clearFieldErrors(form);
+    hideNotice(notice);
 
-    messageBox.className = '';
-    messageBox.textContent = '';
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Saving...';
+    const button = document.getElementById('saveProfile');
+    button.disabled = true;
+    button.textContent = 'Saving…';
 
-    // Build the JSON body expected by PUT /api/students/{id}. This now maps
-    // onto ProfileUpdateRequest on the backend, not the full Student entity -
-    // studentId/email are deliberately left out, since that endpoint no
-    // longer accepts (or needs) them.
+    /* Student ID is deliberately not in this payload. It is issued by the
+       university, the input is disabled, and sending it would invite the
+       server to trust a value the student controls. */
     const payload = {
-      fullName: document.getElementById('fullName').value.trim(),
-      department: document.getElementById('department').value.trim(),
-      contactNumber: document.getElementById('contactNumber').value.trim(),
-      emailNotificationsEnabled: document.getElementById('emailNotificationsEnabled').checked,
-      portalNotificationsEnabled: document.getElementById('portalNotificationsEnabled').checked
+        fullName:   document.getElementById('fullName').value.trim(),
+        email:      document.getElementById('email').value.trim(),
+        phone:      document.getElementById('phone').value.trim(),
+        department: document.getElementById('department').value
     };
 
     try {
-      const response = await fetch('/api/students/' + currentStudentId, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
+        const result = await request(API.student(student.id), { method: 'PUT', body: payload });
 
-      if (response.ok) {
-        showMessage('Profile updated successfully.', false);
-      } else {
-        // GlobalExceptionHandler returns { message: "..." } for validation
-        // (400) and other handled errors; fall back to a generic message
-        // for anything else (e.g. 403 if this somehow isn't your own profile).
-        let errorText = 'Could not save your changes. Please check your details and try again.';
-        try {
-          const data = await response.json();
-          if (data && data.message) {
-            errorText = data.message;
-          }
-        } catch (parseError) {
-          // Response wasn't JSON - keep the generic message above.
+        if (result.ok) {
+            student = result.data || Object.assign({}, student, payload);
+            fill(student);
+            showNotice(notice, 'Your profile has been updated.');
+            return;
         }
-        showMessage(errorText, true);
-      }
-    } catch (networkError) {
-      showMessage('Could not reach the server. Please check your connection and try again.', true);
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Save Changes';
-    }
-  });
 
-  // Kick off the initial profile load as soon as the page is ready.
-  loadProfile();
+        if (!applyFieldErrors(form, result.data)) {
+            showNotice(notice, errorMessage(result, 'We could not save those changes.'), 'error');
+        }
+    } catch (e) {
+        showNotice(notice, 'Could not reach the server. Your changes were not saved.', 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Save changes';
+    }
+});
+
+/* ---- 4. Discard ---------------------------------------------------------- */
+document.getElementById('resetProfile').addEventListener('click', () => {
+    clearFieldErrors(form);
+    hideNotice(notice);
+    if (student) fill(student);
+});
+
+/* ---- 5. Save preferences -------------------------------------------------- */
+document.getElementById('savePrefs').addEventListener('click', async () => {
+    hideNotice(notice);
+
+    const button = document.getElementById('savePrefs');
+    button.disabled = true;
+    button.textContent = 'Saving…';
+
+    const payload = {
+        notifyOnReply:  document.getElementById('notifyReply').checked,
+        notifyOnStatus: document.getElementById('notifyStatus').checked,
+        weeklyDigest:   document.getElementById('notifyDigest').checked
+    };
+
+    try {
+        const result = await request(API.student(student.id), { method: 'PUT', body: payload });
+
+        if (result.ok) {
+            if (result.data) student = result.data;
+            showNotice(notice, 'Your notification preferences have been saved.');
+        } else {
+            showNotice(notice, errorMessage(result, 'We could not save your preferences.'), 'error');
+        }
+    } catch (e) {
+        showNotice(notice, 'Could not reach the server. Your preferences were not saved.', 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Save preferences';
+    }
+});
+
+/* ---- 6. Submit a ticket ---------------------------------------------------
+   F2 owns ticket submission and it is not built yet. A link that silently goes
+   nowhere is worse than one that explains itself. */
+document.getElementById('newTicket').addEventListener('click', (event) => {
+    event.preventDefault();
+    showNotice(notice, 'Ticket submission is part of F2 and arrives in Sprint 3. ' +
+                       'Until then, the department contacts are listed at the bottom of the help desk home page.');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+/* ---- 7. Log out ----------------------------------------------------------- */
+document.getElementById('logoutBtn').addEventListener('click', logout);
+
+load();
 </script>
 
 </body>
