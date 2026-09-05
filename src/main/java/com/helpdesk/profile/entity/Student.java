@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import java.time.LocalDateTime;
 
 /**
@@ -25,7 +26,17 @@ public class Student {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // @NotBlank alone accepts literally any non-empty string, so "x" or "not an id"
+    // would register a real account. @Pattern pins it to the university's actual
+    // format - two letters then eight digits, e.g. IT25101580.
+    //
+    // Safe to put directly on the entity (unlike the password rule below): unlike
+    // password, studentId is never transformed after input - ProfileUpdateRequest
+    // doesn't even expose it for editing - so whatever value passes this check at
+    // registration keeps satisfying it on every later save. There's no equivalent
+    // of "the hash won't match the plaintext pattern" risk here.
     @NotBlank(message = "Student ID is required")
+    @Pattern(regexp = "^[A-Z]{2}\\d{8}$", message = "Student ID must be two letters followed by eight digits, e.g. IT25101580")
     @Column(unique = true, nullable = false)
     private String studentId;
 
@@ -58,9 +69,28 @@ public class Student {
     // correctly to what Sprint 1 actually needs.
     private String role = "STUDENT";
 
-    @NotBlank(message = "Department is required")
+    // No @NotBlank here, deliberately: the faculty dropdown's first option is
+    // "Not set" with value "" (see DEPARTMENTS in Register.jsx / Profile.jsx),
+    // so a student clearing their faculty via a profile update is a legitimate
+    // save, not an invalid one - see the identical note on
+    // ProfileUpdateRequest.department. This constraint has to live off the
+    // entity for that to actually work: Hibernate re-validates every field of
+    // Student on every save (registration AND later profile edits alike), so
+    // even with the DTO-level check removed, a @NotBlank here would still
+    // reject a save that sets this field to "" - which is exactly what
+    // clearing the faculty needs to do.
     private String department;
 
+    // The frontend calls this field "phone" in every JSON payload it sends and
+    // reads (Register.jsx, Profile.jsx) - never "contactNumber". @JsonProperty
+    // fixes both directions at once: without it, an incoming "phone" key
+    // silently fails to bind (Jackson ignores unrecognised properties instead
+    // of erroring), and an outgoing response serialises this field as
+    // "contactNumber", which the frontend's `student.phone` read never finds -
+    // so the phone box on the profile page rendered empty even when a number
+    // was genuinely stored. The Java-side name stays contactNumber (matching
+    // the rest of this codebase); only the wire format changes.
+    @JsonProperty("phone")
     private String contactNumber;
 
     private String profilePictureUrl;
