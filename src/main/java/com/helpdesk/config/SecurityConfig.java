@@ -1,5 +1,6 @@
 package com.helpdesk.config;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -66,6 +67,26 @@ public class SecurityConfig {
                 .headers(headers -> headers.frameOptions(frame -> frame.disable()))
 
                 .authorizeHttpRequests(auth -> auth
+                        // Public: Spring's own internal forward to /error when a request
+                        // fails - a controller throws, or the path just doesn't exist.
+                        //
+                        // Without this, that internal forward is itself just another
+                        // request as far as authorizeHttpRequests is concerned, and falls
+                        // through to ".anyRequest().authenticated()" below like anything
+                        // else - so it gets rejected with 403 before BasicErrorController
+                        // ever gets to report what actually went wrong. That means a real
+                        // exception anywhere in the application - a NullPointerException, a
+                        // bad SQL query, whatever - is masked as a permissions failure
+                        // instead of surfacing its real status and message, and a request
+                        // for a path that simply doesn't exist comes back as 403 instead of
+                        // 404. Both make every bug in the project harder to diagnose.
+                        //
+                        // dispatcherTypeMatchers (rather than adding "/error" to the
+                        // permitAll list below) only opens up this internal forward - it
+                        // does not make /error reachable as a public URL a client could
+                        // hit directly.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.FORWARD).permitAll()
+
                         // Public: browsing the dev database
                         .requestMatchers("/h2-console/**").permitAll()
                         // Public: creating a new account (you can't log in before you exist)
@@ -74,7 +95,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
 
                         // Public: static frontend pages (register.html, login.html, and their
-                        // CSS/JS) served straight out of src/main/resources/static.
+                        // CSS/JS) served straight out of src/main/resources/static, plus the
+                        // React app's index.html and its built assets/ bundle, and images/media.
                         //
                         // Why this is needed: the catch-all rule at the bottom of this chain
                         // (".anyRequest().authenticated()") applies to EVERY request Spring
@@ -87,7 +109,25 @@ public class SecurityConfig {
                         // assets contain no sensitive data (unlike the API responses), so
                         // there's no privacy/ownership reason to gate them the way profile
                         // endpoints are gated above.
-                        .requestMatchers("/", "/*.html", "/*.css", "/*.js").permitAll()
+                        //
+                        // More fundamentally, these all have to be public because they load
+                        // BEFORE anyone has logged in: the browser fetches index.html plus its
+                        // JS/CSS bundle to render the login screen itself, so if those requests
+                        // required an authenticated session, nobody could ever reach a page
+                        // capable of creating that session in the first place.
+                        //
+                        // (This used to be split into a second class, StaticResourceSecurityConfig,
+                        // which used web.ignoring() for the same reason. Folded back in here as
+                        // permitAll() so every access rule lives in one place.)
+                        .requestMatchers(
+                                "/", "/*.html", "/*.css", "/*.js",
+                                "/css/**", "/js/**",
+                                "/images/**",     // reserved for the avatar upload work in F1
+                                "/media/**",      // the walkthrough video on the landing page
+                                "/assets/**",     // the React bundle Vite writes on npm run build
+                                "/index.html",    // the single page the React app is served from
+                                "/favicon.ico"
+                        ).permitAll()
 
                         // Role-based access rules (RBAC) below.
                         //
