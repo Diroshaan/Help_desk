@@ -33,8 +33,15 @@ public class Feedback {
 
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    private LocalDateTime updatedAt = LocalDateTime.now();
+
     //Constructors
     public Feedback() {}    // Required no-argument constructor for JPA
+
+    @PreUpdate
+    private void touchUpdatedAt() {
+        this.updatedAt = LocalDateTime.now();
+    }
 
     //Getters and setters
     public Long getId() {
@@ -72,5 +79,11 @@ public class Feedback {
     }
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
     }
 }
