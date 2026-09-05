@@ -33,9 +33,10 @@ public class StudentUserDetailsService implements UserDetailsService {
     }
 
     @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        Student student = studentRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("No account found for email: " + email));
+    public UserDetails loadUserByUsername(String login) throws UsernameNotFoundException {
+        Student student = studentRepository.findByEmail(login)
+                .or(() -> studentRepository.findByStudentId(login))
+                .orElseThrow(() -> new UsernameNotFoundException("No account found for email: " + login));
 
         // "ROLE_" prefix is a Spring Security convention - hasRole("STUDENT") internally
         // checks for the authority "ROLE_STUDENT". This is what lets you later write
