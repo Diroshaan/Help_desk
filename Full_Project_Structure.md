@@ -14,7 +14,7 @@ helpdesk-system/
     │
     ├── profile/            ← F1: Diroshaan (Student Profile & Preferences)
     ├── ticket/              ← F2: Chamikara (Advanced Ticket Request Engine)
-    ├── ticketportal/        ← F3: Amarasinghe (Ticket Lifecycle & Interaction Portal)
+    ├── ticketportal/        ← F3: Amarasinghe (Ticket Lifecycle & Feedback)
     ├── queue/               ← F4: Weerabaddana (Ticket Resolution & Queue Engine)
     ├── knowledgebase/       ← F5: Tharmithan (Knowledge Base & FAQ Portal)
     ├── admin/               ← F6: Perera (Analytics, Provisioning & Announcements)
@@ -59,7 +59,7 @@ helpdesk-system/
 
 ---
 
-### `ticketportal/` — F3: Ticket Lifecycle & Interaction Portal (Amarasinghe) ⬜
+### `ticketportal/` — F3: Ticket Lifecycle & Feedback (Amarasinghe) ⬜
 
 | File | Purpose | Status |
 |---|---|---|
