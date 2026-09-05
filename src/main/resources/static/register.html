@@ -2,308 +2,344 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Student Registration - Helpdesk</title>
-<style>
-  /* Basic reset so margins/padding are predictable across browsers */
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    background-color: #f4f6f8;
-    color: #1f2937;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    padding: 24px;
-  }
-
-  .register-card {
-    background: #ffffff;
-    width: 100%;
-    max-width: 420px;
-    padding: 32px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
-  }
-
-  h1 {
-    font-size: 1.5rem;
-    margin-bottom: 4px;
-    text-align: center;
-  }
-
-  .subtitle {
-    font-size: 0.9rem;
-    color: #6b7280;
-    text-align: center;
-    margin-bottom: 24px;
-  }
-
-  label {
-    display: block;
-    font-size: 0.85rem;
-    font-weight: bold;
-    margin-bottom: 4px;
-    margin-top: 14px;
-  }
-
-  input, select {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    font-size: 0.95rem;
-  }
-
-  input:focus, select:focus {
-    outline: none;
-    border-color: #2563eb;
-  }
-
-  button {
-    width: 100%;
-    margin-top: 24px;
-    padding: 12px;
-    background-color: #2563eb;
-    color: #ffffff;
-    border: none;
-    border-radius: 4px;
-    font-size: 1rem;
-    font-weight: bold;
-    cursor: pointer;
-  }
-
-  button:hover {
-    background-color: #1d4ed8;
-  }
-
-  button:disabled {
-    background-color: #93c5fd;
-    cursor: not-allowed;
-  }
-
-  /* Message box shown after the form is submitted - hidden until needed */
-  #message {
-    margin-top: 16px;
-    padding: 12px;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    display: none;
-  }
-
-  #message.success {
-    display: block;
-    background-color: #dcfce7;
-    color: #166534;
-    border: 1px solid #86efac;
-  }
-
-  #message.error {
-    display: block;
-    background-color: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fca5a5;
-  }
-
-  #message a {
-    color: #166534;
-    font-weight: bold;
-  }
-
-  /* Terminal success state shown in place of the form after a 201 Created. */
-  .success-panel {
-    background-color: #dcfce7;
-    border: 1px solid #86efac;
-    border-radius: 4px;
-    padding: 20px;
-    text-align: center;
-  }
-
-  .success-panel h2 {
-    font-size: 1.15rem;
-    color: #166534;
-    margin-bottom: 6px;
-  }
-
-  .success-panel p {
-    font-size: 0.9rem;
-    color: #166534;
-  }
-
-  /* Matches the Register button's shape and weight, so the student's next
-     step is as obvious as the one they just completed. */
-  .primary-action {
-    display: block;
-    width: 100%;
-    margin-top: 16px;
-    padding: 12px;
-    background-color: #2563eb;
-    color: #ffffff;
-    border-radius: 4px;
-    font-size: 1rem;
-    font-weight: bold;
-    text-align: center;
-    text-decoration: none;
-  }
-
-  .primary-action:hover {
-    background-color: #1d4ed8;
-  }
-
-  .login-link {
-    text-align: center;
-    margin-top: 16px;
-    font-size: 0.85rem;
-  }
-
-  .login-link a {
-    color: #2563eb;
-    text-decoration: none;
-  }
-
-  .login-link a:hover {
-    text-decoration: underline;
-  }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Create an account · UNIHELP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 
-<div class="register-card">
-  <h1>Create an Account</h1>
-  <p class="subtitle">Register as a student to submit and track helpdesk tickets</p>
+<div class="split">
 
-  <!-- Registration form. JavaScript intercepts the submit event below,
-       so this never actually does a normal browser form POST. -->
-  <form id="registerForm" novalidate>
+    <!-- ============ Left: brand panel ============ -->
+    <aside class="brand-panel">
+        <a class="brand" href="welcome.html">UNIHELP</a>
 
-    <label for="studentId">Student ID</label>
-    <input type="text" id="studentId" name="studentId" required>
+        <div class="brand-panel__body rise rise-1">
+            <h1>Ask once. We take it from there.</h1>
+            <ul class="brand-points">
+                <li><strong>One account, every desk.</strong> IT, Finance, the Registrar
+                    and Hostel services — no separate logins to remember.</li>
+                <li><strong>Nothing happens in the dark.</strong> See who picked your
+                    request up, what they changed, and when.</li>
+                <li><strong>You decide how we reach you.</strong> Turn each kind of
+                    notification on or off from your profile.</li>
+            </ul>
+        </div>
 
-    <label for="fullName">Full Name</label>
-    <input type="text" id="fullName" name="fullName" required>
+        <p class="brand-panel__foot">SE2030 · Web-Based Help Desk System</p>
+    </aside>
 
-    <label for="department">Department</label>
-    <input type="text" id="department" name="department" required>
+    <!-- ============ Right: the form ============ -->
+    <main class="form-side">
+        <div class="form-col form-col--wide rise rise-2">
 
-    <label for="email">Email</label>
-    <input type="email" id="email" name="email" required>
+            <a class="back-link" href="welcome.html">&larr; Back to help desk</a>
 
-    <label for="contactNumber">Contact Number</label>
-    <input type="tel" id="contactNumber" name="contactNumber">
+            <h1>Create an account</h1>
+            <p class="lede">Registration is open to enrolled students only.</p>
 
-    <label for="password">Password</label>
-    <input type="password" id="password" name="password" required>
+            <div id="notice" class="notice" hidden style="margin-top:22px"></div>
 
-    <button type="submit" id="submitBtn">Register</button>
+            <!-- ---------- The form ---------- -->
+            <form class="form" id="registerForm" novalidate>
 
-    <!-- Success/error feedback is written into this box after the fetch call resolves -->
-    <div id="message"></div>
-  </form>
+                <div class="field">
+                    <label for="fullName">Full name</label>
+                    <input type="text" id="fullName" name="fullName"
+                           autocomplete="name" required>
+                    <p class="field-error"></p>
+                </div>
 
-  <p class="login-link" id="loginLink">
-    Already have an account? <a href="login.html">Log in</a>
-  </p>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="studentId">Student ID</label>
+                        <input type="text" id="studentId" name="studentId"
+                               class="mono" placeholder="ITxxxxxxxx" required>
+                        <p class="field-error"></p>
+                    </div>
 
-  <!-- Shown INSTEAD of the form once registration succeeds. Leaving the form on
-       screen after a successful POST is misleading - nothing signals the task is
-       finished, and the form stays live, so a second click on Register just
-       produces a 409 "Student ID already registered" for an account that was
-       created correctly a moment ago. Replacing the form with a terminal success
-       state removes that dead end and makes the next step a single obvious
-       action. -->
-  <div id="successPanel" style="display: none;">
-    <div class="success-panel">
-      <h2>Account created</h2>
-      <p>Your student account is ready. Log in to start submitting tickets.</p>
-    </div>
-    <a href="login.html" class="primary-action">Log In</a>
-  </div>
+                    <div class="field">
+                        <label for="phone">Phone <span class="hint">(optional)</span></label>
+                        <input type="tel" id="phone" name="phone" autocomplete="tel">
+                        <p class="field-error"></p>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="email">University email</label>
+                    <input type="email" id="email" name="email"
+                           autocomplete="email" required>
+                    <p class="field-error"></p>
+                </div>
+
+                <div class="field">
+                    <label for="department">Faculty or department</label>
+                    <select id="department" name="department">
+                        <option value="">Choose one</option>
+                        <option>Faculty of Computing</option>
+                        <option>Faculty of Engineering</option>
+                        <option>Faculty of Business</option>
+                        <option>Faculty of Humanities &amp; Sciences</option>
+                        <option>Other</option>
+                    </select>
+                    <p class="field-error"></p>
+                </div>
+
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password"
+                           autocomplete="new-password" required>
+
+                    <!-- Strength meter. This is a courtesy for the student;
+                         the rule that actually protects the account is the one
+                         on the server. -->
+                    <div class="row-between" style="gap:10px">
+                        <div style="flex:1;height:3px;background:var(--line);border-radius:2px;overflow:hidden">
+                            <div id="strengthBar"
+                                 style="height:100%;width:0;background:var(--danger);transition:width .22s cubic-bezier(.22,.61,.36,1),background .22s"></div>
+                        </div>
+                        <span class="hint" id="strengthText">At least 8 characters</span>
+                    </div>
+                    <p class="field-error"></p>
+                </div>
+
+                <div class="field">
+                    <label for="confirm">Confirm password</label>
+                    <input type="password" id="confirm" name="confirm"
+                           autocomplete="new-password" required>
+                    <p class="field-error"></p>
+                </div>
+
+                <label class="check">
+                    <input type="checkbox" id="terms" required>
+                    I agree to the acceptable use policy for university IT services.
+                </label>
+
+                <button type="submit" class="btn btn--primary btn--block" id="submit">Create account</button>
+            </form>
+
+            <!-- ---------- Shown in place of the form after a 201 ---------- -->
+            <div class="success-panel" id="successPanel" hidden>
+                <div class="notice" id="successNote">
+                    <strong>Your account is ready.</strong><br>
+                    Log in with your Student ID or university email to open your first request.
+                </div>
+
+                <!-- Repeating the details back confirms what was actually saved,
+                     and gives the student their Student ID to log in with. -->
+                <div class="detail-list" style="margin-top:22px">
+                    <div>
+                        <dt>Student ID</dt>
+                        <dd class="mono" id="doneStudentId"></dd>
+                    </div>
+                    <div>
+                        <dt>University email</dt>
+                        <dd id="doneEmail"></dd>
+                    </div>
+                </div>
+
+                <div class="btn-row" style="margin-top:24px">
+                    <a class="btn btn--primary" href="login.html" id="goLogin">Log in now</a>
+                    <a class="btn btn--ghost" href="welcome.html" id="goHome">Back to help desk</a>
+                </div>
+
+                <p class="hint" style="margin-top:14px" id="countdown"></p>
+            </div>
+
+            <hr class="rule" id="footRule">
+
+            <p class="foot-note" id="footNote">
+                Already registered? <a href="login.html">Log in</a>
+            </p>
+        </div>
+    </main>
+
 </div>
 
+<script src="js/app.js"></script>
 <script>
-  const form = document.getElementById('registerForm');
-  const submitBtn = document.getElementById('submitBtn');
-  const messageBox = document.getElementById('message');
-  const successPanel = document.getElementById('successPanel');
-  const loginLink = document.getElementById('loginLink');
+/* --------------------------------------------------------------------------
+   Registration page behaviour
+   -------------------------------------------------------------------------- */
+const form    = document.getElementById('registerForm');
+const notice  = document.getElementById('notice');
+const submit  = document.getElementById('submit');
+const panel   = document.getElementById('successPanel');
 
-  form.addEventListener('submit', async function (event) {
-    // Stop the browser's default full-page form submission - we handle it
-    // ourselves with fetch() so the page never reloads.
+/* ---- Password strength ---------------------------------------------------
+   Four things make a password harder to guess: length, and the presence of
+   lower case, upper case, digits and symbols. Each one scores a point. This
+   only informs the student — it never blocks the submit, because the server
+   is the thing that decides. */
+const bar  = document.getElementById('strengthBar');
+const text = document.getElementById('strengthText');
+
+function scorePassword(value) {
+    let score = 0;
+    if (value.length >= 8)  score++;
+    if (value.length >= 12) score++;
+    if (/[a-z]/.test(value) && /[A-Z]/.test(value)) score++;
+    if (/[0-9]/.test(value)) score++;
+    if (/[^A-Za-z0-9]/.test(value)) score++;
+    return score;   // 0 to 5
+}
+
+document.getElementById('password').addEventListener('input', (event) => {
+    const value = event.target.value;
+
+    if (!value) {
+        bar.style.width = '0';
+        text.textContent = 'At least 8 characters';
+        return;
+    }
+
+    const score = scorePassword(value);
+    bar.style.width = (score / 5 * 100) + '%';
+
+    if (score <= 2) {
+        bar.style.background = 'var(--danger)';
+        text.textContent = 'Weak';
+    } else if (score <= 3) {
+        bar.style.background = 'var(--warn)';
+        text.textContent = 'Fair';
+    } else {
+        bar.style.background = 'var(--teal)';
+        text.textContent = 'Strong';
+    }
+});
+
+/* ---- Submit -------------------------------------------------------------- */
+form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    clearFieldErrors(form);
+    hideNotice(notice);
 
-    // Clear any message from a previous attempt and disable the button
-    // while the request is in flight, to avoid duplicate submissions.
-    messageBox.className = '';
-    messageBox.textContent = '';
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Registering...';
+    const password = document.getElementById('password').value;
+    const confirm  = document.getElementById('confirm').value;
 
-    // Build the JSON body expected by POST /api/students. Field names must
-    // match the Student entity exactly (studentId, fullName, department,
-    // email, contactNumber, password).
+    // The two-password check has no server equivalent — the server only ever
+    // receives one — so it has to happen here.
+    if (password !== confirm) {
+        const field = document.getElementById('confirm').closest('.field');
+        field.classList.add('is-invalid');
+        field.querySelector('.field-error').textContent = 'The two passwords do not match.';
+        return;
+    }
+
+    if (!document.getElementById('terms').checked) {
+        showNotice(notice, 'Please accept the acceptable use policy to continue.', 'error');
+        return;
+    }
+
     const payload = {
-      studentId: document.getElementById('studentId').value.trim(),
-      fullName: document.getElementById('fullName').value.trim(),
-      department: document.getElementById('department').value.trim(),
-      email: document.getElementById('email').value.trim(),
-      contactNumber: document.getElementById('contactNumber').value.trim(),
-      password: document.getElementById('password').value
+        fullName:   document.getElementById('fullName').value.trim(),
+        studentId:  document.getElementById('studentId').value.trim(),
+        email:      document.getElementById('email').value.trim(),
+        phone:      document.getElementById('phone').value.trim(),
+        department: document.getElementById('department').value,
+        password:   password
     };
 
-    try {
-      const response = await fetch('/api/students', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
+    submit.disabled = true;
+    submit.textContent = 'Creating account…';
 
-      if (response.ok) {
-        // 201 Created - the account exists now, so registration is finished and
-        // this form has nothing left to do. Swap it out for the success panel
-        // rather than leaving a live form on screen with a small inline notice:
-        // re-submitting would only earn a 409 for the account just created, and
-        // the redundant "Already have an account?" prompt makes no sense once
-        // they demonstrably do. Deliberately NOT auto-redirecting - the student
-        // should get to read the confirmation and choose to move on.
-        form.reset();
-        form.style.display = 'none';
-        loginLink.style.display = 'none';
-        successPanel.style.display = 'block';
-      } else {
-        // Registration failed (e.g. duplicate email/student ID, or a
-        // validation error). Try to pull a useful message out of the
-        // response body; fall back to a generic message if the server
-        // didn't send one we can parse.
-        let errorText = 'Registration failed. Please check your details and try again.';
-        try {
-          const data = await response.json();
-          if (data && data.message) {
-            errorText = data.message;
-          }
-        } catch (parseError) {
-          // Response wasn't JSON - keep the generic message above.
+    try {
+        const result = await request(API.register, { method: 'POST', body: payload });
+
+        if (result.status === 201 || result.ok) {
+            // Swap the form out entirely. Leaving a filled-in form on screen
+            // after a success invites a second submit and a duplicate error.
+            form.hidden = true;
+            document.getElementById('footRule').hidden = true;
+            document.getElementById('footNote').hidden = true;
+
+            // Show what the server actually saved where it sent it back, and
+            // fall back to what was typed when the response carries no body.
+            const saved = result.data || {};
+            document.getElementById('doneStudentId').textContent = saved.studentId || payload.studentId;
+            document.getElementById('doneEmail').textContent     = saved.email     || payload.email;
+
+            /* Registration creates the account. It does not create a session:
+               POST /api/students writes the row, and only POST /api/auth/login
+               puts an Authentication in it. So the student is sent to the login
+               page next — with their Student ID carried over, so they do not
+               have to type it again thirty seconds after typing it.
+
+               sessionStorage belongs to this browser tab alone and is discarded
+               when the tab closes. Only the Student ID goes in; the password is
+               never stored anywhere on the client. */
+            try {
+                sessionStorage.setItem('unihelp.justRegistered',
+                    saved.studentId || payload.studentId || payload.email);
+            } catch (e) {
+                /* Private browsing can refuse storage. Prefilling is a courtesy,
+                   so failing at it must not break the registration flow. */
+            }
+
+            panel.hidden = false;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            startCountdown('login.html', 'the login page');
+            return;
         }
-        messageBox.className = 'error';
-        messageBox.textContent = errorText;
-      }
-    } catch (networkError) {
-      // fetch() itself failed - e.g. server unreachable or network dropped.
-      messageBox.className = 'error';
-      messageBox.textContent = 'Could not reach the server. Please check your connection and try again.';
+
+        // 409 is the duplicate Student ID / email case.
+        if (!applyFieldErrors(form, result.data)) {
+            showNotice(notice, errorMessage(result, 'We could not create the account.'), 'error');
+        }
+    } catch (e) {
+        showNotice(notice, 'Could not reach the server. Check that the application is running.', 'error');
     } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Register';
+        submit.disabled = false;
+        submit.textContent = 'Create account';
     }
-  });
+});
+
+/* --------------------------------------------------------------------------
+   Countdown to wherever the student goes next
+
+   A student who has just filled in seven fields should not have to work out
+   what to click. The page takes them on after six seconds.
+
+   It counts down rather than jumping instantly because the panel above holds
+   their Student ID, and because taking control of the browser without warning
+   is rude. Touching either button, or the panel itself, calls the timer off —
+   someone who is still reading has said, in effect, "wait".
+   -------------------------------------------------------------------------- */
+function startCountdown(destination, destinationName) {
+    const label = document.getElementById('countdown');
+    let secondsLeft = 6;
+
+    function render() {
+        label.textContent = 'Taking you to ' + destinationName + ' in ' + secondsLeft +
+                            (secondsLeft === 1 ? ' second…' : ' seconds…');
+    }
+
+    render();
+
+    const timer = setInterval(() => {
+        secondsLeft--;
+
+        if (secondsLeft <= 0) {
+            clearInterval(timer);
+            window.location.href = destination;
+            return;
+        }
+
+        render();
+    }, 1000);
+
+    function cancel() {
+        clearInterval(timer);
+        label.textContent = '';
+    }
+
+    document.getElementById('goLogin').addEventListener('click', cancel);
+    document.getElementById('goHome').addEventListener('click', cancel);
+    panel.addEventListener('click', cancel, { once: true });
+}
 </script>
 
 </body>
