@@ -1,0 +1,5 @@
+# Normalize line endings on commit so a Windows checkout (CRLF) never shows
+# up as a false diff against this repo's LF-committed source - see the
+# `git diff -w` check that confirmed every one of these files had zero real
+# content changes, just line-ending noise, before this file existed.
+* text=auto eol=lf

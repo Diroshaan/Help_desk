@@ -1,0 +1,59 @@
+/* Bookmarks screen - classes only for elements that need :hover, since
+   inline style props on the same element would block a CSS :hover rule
+   (see back-link/nav-link/file-link precedent in styles/buttons.css). */
+
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  background: transparent;
+}
+
+.folder-row:hover:not(.is-active) {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.folder-row.is-active {
+  background: var(--color-accent-100);
+}
+
+.bm-tab {
+  padding: 10px 16px;
+  font: inherit;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  border-bottom: 3px solid transparent;
+  opacity: 0.55;
+  background: transparent;
+  color: inherit;
+}
+
+.bm-tab:hover {
+  opacity: 0.8;
+}
+
+.bm-tab.is-active {
+  opacity: 1;
+  border-bottom-color: var(--color-accent);
+}
+
+.bookmark-card {
+  border: 1px solid var(--color-divider);
+  padding: 16px;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.bookmark-card:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-4px);
+}
