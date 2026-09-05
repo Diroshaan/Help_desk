@@ -16,7 +16,7 @@ Students submit categorised support tickets with file attachments and track them
 |---|---|---|
 | F1 | Student Profile & Preferences | Registration, profile management, notification preferences, account deactivation |
 | F2 | Advanced Ticket Request Engine | Ticket submission with categories, priorities, and file attachments |
-| F3 | Ticket Lifecycle & Interaction Portal | Status tracking, bookmarking, feedback and ratings |
+| F3 | Ticket Lifecycle & Feedback | Status tracking, bookmarking, feedback and ratings |
 | F4 | Ticket Resolution & Queue Engine | Departmental queues, status transitions, official responses, internal notes |
 | F5 | Knowledge Base & FAQ Publishing | Searchable self-service articles, staff publishing tools |
 | F6 | Analytics, Provisioning & Announcements | Account provisioning, executive dashboards, system-wide notices |
@@ -38,7 +38,7 @@ Java 17 · Spring Boot 3.2 · Spring Data JPA · Spring Security (session-based)
 |---|---|---|---|
 | Diroshaan S | IT25101580 | F1 — Student Profile & Preferences | Product Owner, Repo maintainer |
 | Chamikara A. K | IT25102416 | F2 — Advanced Ticket Request Engine | Developer |
-| Amarasinghe S. D | IT25103424 | F3 — Ticket Lifecycle & Interaction Portal | Scrum Master |
+| Amarasinghe S. D | IT25103424 | F3 — Ticket Lifecycle & Feedback | Scrum Master |
 | Weerabaddana V. P | IT25101250 | F4 — Ticket Resolution & Queue Engine | Developer |
 | Tharmithan P | IT25100375 | F5 — Knowledge Base & FAQ Publishing | Developer |
 | Perera L. S. N | IT25103172 | F6 — Analytics, Provisioning & Announcements | Developer |
