@@ -62,7 +62,7 @@ export default function EditTicketModal({ ticket, onClose }) {
           >
             <ImageIcon size={15} style={{ opacity: 0.6 }} />
             <span style={{ flex: 1 }}>{a.name}</span>
-            <a href="#" onClick={(e) => e.preventDefault()} style={{ color: "inherit", textDecoration: "none", opacity: 0.5 }}>
+            <a href="#" className="remove-link" onClick={(e) => e.preventDefault()}>
               ✕
             </a>
           </div>

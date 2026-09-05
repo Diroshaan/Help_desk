@@ -1,40 +1,58 @@
 /*
  * Design tokens ported from the "UNIHELP" high-fidelity handoff
- * (design_handoff_ticket_detail). Names match the source 1:1 so future
- * screens from the same handoff can drop straight in.
+ * (design_handoff_ticket_detail / design_handoff_my_tickets). Names match
+ * the source 1:1 so future screens from the same handoff can drop straight
+ * in. The handoffs only ever specify a light theme, but every derived
+ * token below is built from color-mix() against --color-bg / --color-text
+ * rather than hardcoded white/black/gray hex values, so overriding just
+ * those two (plus --color-surface) under prefers-color-scheme: dark at
+ * the bottom of this file re-themes the entire ramp automatically.
  */
 :root {
   --color-bg: #f3f2f2;
   --color-surface: #eae9e9;
   --color-text: #201e1d;
+
+  /* Fixed regardless of theme: the accent brand colour itself doesn't
+     flip between light/dark, so text/icons sitting directly on an
+     accent-coloured surface (buttons, the officer avatar, the selected
+     status tab...) need a contrast colour that doesn't flip either. */
+  --color-on-accent: #f3f2f2;
+
   /* v2 design spec: single accent, green (#1f6f5c). Ramp derived via
      color-mix in OKLab from the accent, per the handoff README:
-     100 = mix 8% accent into white, 200 = mix 20% accent into white,
-     800 = mix 58% accent into black (spec-confirmed values). The
-     remaining steps (300-700, 900) are interpolated the same way to keep
-     one consistent ramp - only 100/200/800 are pinned by the spec. */
+     100 = mix 8% accent into the page background, 200 = 20%, 800 = mix
+     58% accent into the text colour (spec-confirmed percentages, using
+     white/black as the light-theme stand-ins for bg/text). The remaining
+     steps (300-700, 900) are interpolated the same way to keep one
+     consistent ramp - only 100/200/800 are pinned by the spec. */
   --color-accent: #1f6f5c;
-  --color-divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --color-divider: color-mix(in srgb, var(--color-text) 40%, transparent);
 
-  --color-neutral-100: #f8f4f4;
-  --color-neutral-200: #eae7e7;
-  --color-neutral-300: #d7d3d3;
-  --color-neutral-400: #bab6b6;
-  --color-neutral-500: #9b9797;
-  --color-neutral-600: #7d7979;
-  --color-neutral-700: #605d5d;
-  --color-neutral-800: #444141;
-  --color-neutral-900: #2d2b2b;
+  /* Neutral ramp: generated between the theme's own bg and text colours
+     (instead of fixed grays) so it inverts correctly in dark mode. The
+     percentages below reproduce the light-theme spec's hex values
+     (100 #f8f4f4 ... 900 #2d2b2b) closely enough to be indistinguishable
+     there, while adapting automatically when bg/text flip. */
+  --color-neutral-100: color-mix(in oklab, var(--color-text) 8%, var(--color-bg));
+  --color-neutral-200: color-mix(in oklab, var(--color-text) 18%, var(--color-bg));
+  --color-neutral-300: color-mix(in oklab, var(--color-text) 30%, var(--color-bg));
+  --color-neutral-400: color-mix(in oklab, var(--color-text) 44%, var(--color-bg));
+  --color-neutral-500: color-mix(in oklab, var(--color-text) 56%, var(--color-bg));
+  --color-neutral-600: color-mix(in oklab, var(--color-text) 68%, var(--color-bg));
+  --color-neutral-700: color-mix(in oklab, var(--color-text) 78%, var(--color-bg));
+  --color-neutral-800: color-mix(in oklab, var(--color-text) 88%, var(--color-bg));
+  --color-neutral-900: color-mix(in oklab, var(--color-text) 95%, var(--color-bg));
 
-  --color-accent-100: color-mix(in oklab, var(--color-accent) 8%, white);
-  --color-accent-200: color-mix(in oklab, var(--color-accent) 20%, white);
-  --color-accent-300: color-mix(in oklab, var(--color-accent) 35%, white);
-  --color-accent-400: color-mix(in oklab, var(--color-accent) 55%, white);
+  --color-accent-100: color-mix(in oklab, var(--color-accent) 8%, var(--color-bg));
+  --color-accent-200: color-mix(in oklab, var(--color-accent) 20%, var(--color-bg));
+  --color-accent-300: color-mix(in oklab, var(--color-accent) 35%, var(--color-bg));
+  --color-accent-400: color-mix(in oklab, var(--color-accent) 55%, var(--color-bg));
   --color-accent-500: var(--color-accent);
-  --color-accent-600: color-mix(in oklab, var(--color-accent) 85%, black);
-  --color-accent-700: color-mix(in oklab, var(--color-accent) 65%, black);
-  --color-accent-800: color-mix(in oklab, var(--color-accent) 58%, black);
-  --color-accent-900: color-mix(in oklab, var(--color-accent) 40%, black);
+  --color-accent-600: color-mix(in oklab, var(--color-accent) 85%, var(--color-text));
+  --color-accent-700: color-mix(in oklab, var(--color-accent) 65%, var(--color-text));
+  --color-accent-800: color-mix(in oklab, var(--color-accent) 58%, var(--color-text));
+  --color-accent-900: color-mix(in oklab, var(--color-accent) 40%, var(--color-text));
 
   --font-heading: "Archivo", system-ui, sans-serif;
   --font-heading-weight: 800;
@@ -52,7 +70,18 @@
   --radius-md: 0px;
   --radius-lg: 0px;
 
-  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
-  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
-  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+  /* Shadows and the modal scrim stay a literal dark tint in both themes -
+     a shadow/backdrop that flipped to white in dark mode would stop
+     working as a shadow or a dimming layer. */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, black 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, black 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, black 22%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #18191a;
+    --color-surface: #232426;
+    --color-text: #f1efee;
+  }
 }

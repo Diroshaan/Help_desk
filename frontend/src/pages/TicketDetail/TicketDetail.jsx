@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Bookmark, Pencil, Trash2 } from "lucide-react";
+import BackLink from "../../components/BackLink.jsx";
 import StatusBadge from "../../components/StatusBadge.jsx";
 import PriorityTag from "../../components/PriorityTag.jsx";
 import AttachmentChip from "./AttachmentChip.jsx";
@@ -37,7 +38,7 @@ function MessageCard({ name, initials, timestamp, body, attachments, officer = f
             width: 28,
             height: 28,
             background: officer ? "var(--color-accent)" : "var(--color-text)",
-            color: "var(--color-bg)",
+            color: officer ? "var(--color-on-accent)" : "var(--color-bg)",
             display: "grid",
             placeItems: "center",
             fontSize: 11,
@@ -47,7 +48,7 @@ function MessageCard({ name, initials, timestamp, body, attachments, officer = f
         </span>
         <strong style={{ fontSize: 14 }}>{name}</strong>
         {officer ? (
-          <span className="tag" style={{ background: "var(--color-accent)", color: "var(--color-bg)" }}>
+          <span className="tag" style={{ background: "var(--color-accent)", color: "var(--color-on-accent)" }}>
             Help Desk Officer
           </span>
         ) : (
@@ -175,7 +176,7 @@ function FeedbackCard({ ticket }) {
   );
 }
 
-export default function TicketDetail({ ticket = mockTicket }) {
+export default function TicketDetail({ ticket = mockTicket, onBack }) {
   const [isBookmarked, setIsBookmarked] = useState(ticket.isBookmarked);
   const [modal, setModal] = useState(null); // null | "edit" | "delete"
   const isOpen = ticket.status === "OPEN";
@@ -192,18 +193,16 @@ export default function TicketDetail({ ticket = mockTicket }) {
 
   return (
     <div>
-      <div style={{ padding: "26px 32px 22px", borderBottom: "2px solid var(--color-divider)" }}>
-        <a href="#" onClick={(e) => e.preventDefault()} style={{ fontSize: 13, textDecoration: "none" }}>
-          ← My tickets
-        </a>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginTop: 14 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
+      <div style={{ padding: "28px 32px 24px", borderBottom: "2px solid var(--color-divider)", background: "var(--color-surface)" }}>
+        <BackLink onClick={onBack}>My tickets</BackLink>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 20, marginTop: 16 }}>
+          <div style={{ flex: 1, borderLeft: "3px solid var(--color-accent)", paddingLeft: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 10 }}>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: 14, opacity: 0.6 }}>{ticket.id}</span>
               <StatusBadge status={ticket.status} />
               <PriorityTag priority={ticket.priority} />
             </div>
-            <h2 style={{ margin: 0, maxWidth: "34ch" }}>{ticket.subject}</h2>
+            <h2 style={{ margin: 0, maxWidth: "34ch", fontSize: 26 }}>{ticket.subject}</h2>
           </div>
           <div style={{ display: "flex", gap: 8, flex: "none" }}>
             <button

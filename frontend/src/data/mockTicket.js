@@ -1,3 +1,8 @@
+// TODO(API integration): this whole module is a stand-in for a real
+// GET /api/tickets/{id} call to the F3 ticketportal backend. Swap the
+// TicketDetail page's `ticket = mockTicket` default prop for a fetched
+// ticket once that endpoint exists, and delete this file at that point -
+// it should not ship in the final build.
 /**
  * Stand-in for a GET /api/tickets/{id} response, matching the UNIHELP
  * high-fidelity design handoff.

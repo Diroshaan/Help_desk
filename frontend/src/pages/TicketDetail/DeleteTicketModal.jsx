@@ -9,7 +9,7 @@ export default function DeleteTicketModal({ ticket, onClose, onConfirm }) {
           width: 36,
           height: 36,
           background: "var(--color-accent)",
-          color: "var(--color-bg)",
+          color: "var(--color-on-accent)",
           display: "grid",
           placeItems: "center",
         }}

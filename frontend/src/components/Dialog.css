@@ -4,7 +4,9 @@
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+  /* Always a dark scrim regardless of theme - it dims what's behind the
+     dialog, not something that should flip to white in dark mode. */
+  background: color-mix(in srgb, black 50%, transparent);
   z-index: 20;
 }
 
