@@ -54,7 +54,7 @@ public class Ticket {
 
     @PreUpdate
     public void touchUpdatedAt(){
-        this.updatedAt = updatedAt;
+        this.updatedAt = LocalDateTime.now();
     }
 
     //Constructors
