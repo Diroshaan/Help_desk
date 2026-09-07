@@ -52,6 +52,11 @@ public class Ticket {
 
     private LocalDateTime updatedAt = LocalDateTime.now();
 
+    @PreUpdate
+    public void touchUpdatedAt(){
+        this.updatedAt = updatedAt;
+    }
+
     //Constructors
     public Ticket() {}    // Required no-argument constructor for JPA
 
