@@ -69,6 +69,9 @@ public class Attachment {
     public String getFileType() {
         return fileType;
     }
+    public void setFileType(String fileType) {
+        this.fileType = fileType;
+    }
     public byte[] getData() {
         return data;
     }
