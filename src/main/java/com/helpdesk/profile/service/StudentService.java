@@ -1,6 +1,7 @@
 package com.helpdesk.profile.service;
 
 import com.helpdesk.common.exception.DuplicateResourceException;
+import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.profile.dto.ProfileUpdateRequest;
 import com.helpdesk.profile.dto.RegistrationRequest;
 import com.helpdesk.profile.entity.Student;
@@ -8,6 +9,7 @@ import com.helpdesk.profile.repository.StudentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,6 +17,27 @@ import java.util.Optional;
  * Business logic for Student profiles (US-01, US-02, US-03, US-06).
  * Controllers should stay thin and call methods here - this is where
  * validation rules, uniqueness checks, and business decisions live.
+ *
+ * A note on @Transactional, which appears on every method below.
+ *
+ * Without it, Spring Data still opens a transaction around each individual
+ * repository call, but each call gets its OWN transaction. That is fine for a
+ * method that makes a single call, and wrong for every method here that makes
+ * two or more: register() queries then saves, updateProfile() loads then saves,
+ * deactivate() loads then saves. Between those two statements the connection is
+ * released and another request can interleave. Annotating the SERVICE method
+ * puts all of its repository calls inside one transaction, so the whole
+ * business operation either happens or does not.
+ *
+ * It is annotated here rather than on the controller or the repository on
+ * purpose: the service method is the unit of work - the thing that has a
+ * meaningful "all or nothing" boundary. A repository call is too small (it is
+ * one statement) and a controller method is too big (it also does HTTP work
+ * that has no business being inside a database transaction).
+ *
+ * readOnly = true on the finders is not decoration: it tells Hibernate to skip
+ * dirty-checking the entities it loads, and tells the driver the transaction
+ * will not write. It is also the honest description of what those methods do.
  */
 @Service
 public class StudentService {
@@ -34,13 +57,17 @@ public class StudentService {
     // method originally did) - see the comment on RegistrationRequest for the
     // main reason (the password complexity rule needs the raw password, which
     // only exists here, before hashing).
+    @Transactional
     public Student register(RegistrationRequest request) {
-        if (studentRepository.existsByStudentId(request.getStudentId())) {
-            throw new DuplicateResourceException("Student ID already registered");
-        }
-        if (studentRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicateResourceException("Email already registered");
-        }
+        // These two checks LOOK the row up rather than asking existsBy...().
+        //
+        // "Does a row with this Student ID exist?" is the wrong question, because
+        // it returns true in two situations that need different answers: an
+        // account somebody is using, and an account that was soft-deleted under
+        // US-02. Only the full row can tell them apart, via isActive().
+        // See rejectIfAlreadyTaken() below for what each case should say.
+        rejectIfAlreadyTaken(studentRepository.findByStudentId(request.getStudentId()), "This Student ID");
+        rejectIfAlreadyTaken(studentRepository.findByEmail(request.getEmail()), "This email address");
 
         Student student = new Student();
         student.setStudentId(request.getStudentId());
@@ -97,14 +124,63 @@ public class StudentService {
 
         // Never store the plain-text password - hash it before saving.
         student.setPassword(passwordEncoder.encode(request.getPassword()));
+
+        // The checks at the top of this method reduce how often two people can
+        // claim the same Student ID; they do not prevent it. Two requests can both
+        // run their lookup before either reaches this line, and both find nothing.
+        // What actually prevents the duplicate row is @Column(unique = true) on
+        // Student.studentId and Student.email - a guarantee the database enforces
+        // and no amount of application code can be raced past. When it fires,
+        // GlobalExceptionHandler turns the resulting DataIntegrityViolationException
+        // into the same 409 the pre-check would have produced, so the loser of the
+        // race gets a sensible answer instead of a 500.
         return studentRepository.save(student);
     }
 
+    /**
+     * Registration is refused when an identifier is already in use - and the
+     * message has to depend on WHY, because the two cases need different
+     * actions from the student.
+     *
+     * ACTIVE account: a plain duplicate. "Already registered, please log in"
+     * is accurate and tells them what to do.
+     *
+     * DEACTIVATED account (the US-02 soft delete): the row is still there, it
+     * still holds the old password hash, and every ticket that student ever
+     * raised still points at it. The tempting fix is to reactivate the row and
+     * set the new password - and that would be an account-takeover hole, not a
+     * feature. POST /api/students is public and unauthenticated by design (you
+     * cannot log in before your account exists), so anyone who knows a
+     * deactivated student's ID and email could claim the account and inherit
+     * its entire ticket history. Restoring an account is a privileged
+     * operation; it belongs to the admin story (US-05), not to self-service
+     * registration. So this refuses, and says who can undo it.
+     *
+     * What this replaced: existsByStudentId() / existsByEmail(), which return
+     * true for both cases and produced one message for both - "Student ID
+     * already registered". True, but it reads as "somebody else has your ID"
+     * and leaves a student who deleted their own account with nothing to do
+     * and no idea why their own university ID is refused.
+     */
+    private void rejectIfAlreadyTaken(Optional<Student> existing, String label) {
+        existing.ifPresent(student -> {
+            if (student.isActive()) {
+                throw new DuplicateResourceException(
+                        label + " is already registered. Please log in instead.");
+            }
+            throw new DuplicateResourceException(
+                    label + " belongs to an account that has been deactivated. "
+                            + "Contact the help desk administrator to have it restored.");
+        });
+    }
+
     // Read
+    @Transactional(readOnly = true)
     public List<Student> findAll() {
         return studentRepository.findAll();
     }
 
+    @Transactional(readOnly = true)
     public Optional<Student> findById(Long id) {
         return studentRepository.findById(id);
     }
@@ -112,6 +188,7 @@ public class StudentService {
     // Used by GET /api/students/me - looks a student up by the email they
     // logged in with (Authentication.getName()), rather than by a numeric id
     // the frontend would otherwise have no way to know.
+    @Transactional(readOnly = true)
     public Optional<Student> findByEmail(String email) {
         return studentRepository.findByEmail(email);
     }
@@ -141,9 +218,20 @@ public class StudentService {
     // null (or, before ProfileUpdateRequest's two booleans were changed from
     // primitive to Boolean, as a silent false) and get written straight over
     // whatever was already saved.
+    @Transactional
     public Student updateProfile(Long id, ProfileUpdateRequest updatedDetails) {
+        // ResourceNotFoundException, not IllegalArgumentException.
+        //
+        // Both are unchecked and both would compile, but GlobalExceptionHandler
+        // maps them to different statuses - 404 and 400 - and only one of those
+        // is true here. An id that refers to no student is not a malformed
+        // request; the request is perfectly well formed and names something that
+        // does not exist. Using the same exception type the rest of the codebase
+        // uses for the same situation (see BookmarkFolderService) also means the
+        // API answers consistently no matter which package handled the call,
+        // which is the part a client can actually rely on.
         Student existing = studentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Student not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
 
         if (updatedDetails.getFullName() != null) {
             existing.setFullName(updatedDetails.getFullName());
@@ -168,9 +256,11 @@ public class StudentService {
     }
 
     // Delete (US-02: self-service account deletion - soft delete, not a hard DB delete)
+    @Transactional
     public void deactivate(Long id) {
+        // Same reasoning as updateProfile above: a missing id is a 404, not a 400.
         Student student = studentRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Student not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
         student.setActive(false);
         studentRepository.save(student);
     }
