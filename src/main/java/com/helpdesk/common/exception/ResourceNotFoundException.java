@@ -1,25 +1,25 @@
 package com.helpdesk.common.exception;
 
 /**
- * Central place to turn exceptions thrown from controllers/services into clean
- * JSON error responses, instead of letting them fall through to Spring Boot's
- * default error page/handler.
+ * Thrown when a request names a record that does not exist - e.g. a
+ * PUT /api/students/{id} whose id matches no row.
  *
- * Why this exists: without a @RestControllerAdvice, ANY exception that
- * escapes a controller (e.g. DuplicateResourceException from
- * StudentService.register()) is treated as an unhandled server fault - Spring
- * Boot's default error handler turns it into a 500 Internal Server Error with
- * a generic body, regardless of whether the actual problem was the client's
- * fault (like reusing an email that's already registered). That's both
- * misleading (500 implies "we broke", not "you sent bad data") and unhelpful
- * to the frontend, which has no clear message to show the user. Each handler
- * below maps one category of exception to the HTTP status that actually
- * describes it, plus a message the frontend can display as-is (register.html
- * reads response.json().message directly).
+ * GlobalExceptionHandler maps this to 404 Not Found. That mapping is the whole
+ * reason a dedicated exception type exists instead of an IllegalArgumentException:
+ * the exception TYPE is what carries the meaning "this thing is missing" from the
+ * service layer, where the lookup failed, out to the HTTP layer, where a status
+ * code has to be chosen. A service has no business knowing about status codes,
+ * and a controller has no business re-deriving why a lookup came back empty, so
+ * the type is what travels between them.
  *
- * @RestControllerAdvice applies these handlers globally, to every
- * @RestController in the app - it does not need to be wired into each
- * controller individually.
+ * It extends RuntimeException rather than Exception on purpose. A checked
+ * exception would force every caller in between to declare or catch it, which
+ * adds noise to methods that cannot do anything useful about it anyway - the
+ * only sensible handler is the global one.
+ *
+ * (Historical note: this file previously carried a copy of
+ * GlobalExceptionHandler's class comment, describing @RestControllerAdvice.
+ * It was pasted here by mistake and described a different class entirely.)
  */
 public class ResourceNotFoundException extends RuntimeException {
 
