@@ -1,5 +1,6 @@
 package com.helpdesk.auth;
 
+import com.helpdesk.profile.service.ActivityLogService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -31,14 +32,32 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
 
+    /**
+     * Used only to record a successful sign-in on the student's activity log
+     * (F1 - "Dashboard & Activity View").
+     *
+     * This is the one place outside com.helpdesk.profile that writes to the log,
+     * and it is here rather than in StudentService because this is where the
+     * event actually happens - only this class knows that an authentication
+     * attempt succeeded. Recording it from anywhere else would mean inferring a
+     * login from something that is not one.
+     *
+     * The dependency points from auth into profile, which is the direction that
+     * already exists (StudentUserDetailsService reads Student), so this adds no
+     * new coupling between packages.
+     */
+    private final ActivityLogService activityLogService;
+
     // Handles actually persisting the authenticated user into the HTTP session,
     // so subsequent requests (with the same session cookie) are recognised as
     // logged in without needing to send the password again.
     private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
 
     @Autowired
-    public AuthController(AuthenticationManager authenticationManager) {
+    public AuthController(AuthenticationManager authenticationManager,
+                          ActivityLogService activityLogService) {
         this.authenticationManager = authenticationManager;
+        this.activityLogService = activityLogService;
     }
 
     // A simple record for the JSON request body: { "email": "...", "password": "..." }
@@ -61,6 +80,24 @@ public class AuthController {
             // the session wouldn't remember it on the next request.
             securityContextRepository.saveContext(context, httpRequest, httpResponse);
 
+            // Recorded AFTER the session is established, and deliberately using
+            // the "quietly" variant that swallows its own failures.
+            //
+            // By this point the student IS logged in - authentication succeeded
+            // and the session exists. Letting a failed INSERT propagate would
+            // turn that into a 500 and shut them out of an account they have
+            // just proved they own, over a bookkeeping row. The event is worth
+            // recording; it is not worth denying access over. See
+            // ActivityLogService.recordLoginQuietly() for the contrast with
+            // the profile-update entries, which deliberately do NOT swallow.
+            //
+            // authentication.getName() is the email the account authenticated
+            // with, which is what the log needs to find the student - note the
+            // student may have typed their Student ID instead (see
+            // StudentUserDetailsService), so request.email() is not reliable
+            // here and the authenticated principal is.
+            activityLogService.recordLoginQuietly(authentication.getName());
+
             return ResponseEntity.ok("Login successful");
         } catch (DisabledException e) {
             // Thrown by DaoAuthenticationProvider because StudentUserDetailsService
@@ -77,6 +114,14 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<String> logout(HttpServletRequest request) {
+        // Deliberately NOT logged.
+        //
+        // A sign-out is not something a student needs to check up on: it is
+        // never surprising and never evidence of anything. Every login already
+        // implies the previous session ended, so recording both would double
+        // the size of the busiest part of the history while halving how much
+        // of it is worth reading. If suspicious-activity review is ever a
+        // requirement, this is where it would be added.
         HttpSession session = request.getSession(false);
         if (session != null) {
             session.invalidate();

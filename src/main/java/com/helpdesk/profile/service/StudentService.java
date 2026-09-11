@@ -4,13 +4,17 @@ import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.profile.dto.ProfileUpdateRequest;
 import com.helpdesk.profile.dto.RegistrationRequest;
+import com.helpdesk.profile.entity.ActivityType;
 import com.helpdesk.profile.entity.Student;
 import com.helpdesk.profile.repository.StudentRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -38,17 +42,26 @@ import java.util.Optional;
  * readOnly = true on the finders is not decoration: it tells Hibernate to skip
  * dirty-checking the entities it loads, and tells the driver the transaction
  * will not write. It is also the honest description of what those methods do.
+ *
+ * That boundary is now carrying a second job. The activity-log entries written
+ * below join the same transaction, so an entry can never survive an operation
+ * that rolled back - the log cannot claim a profile was updated when it was
+ * not. See ActivityLogService for the full reasoning.
  */
 @Service
 public class StudentService {
 
     private final StudentRepository studentRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ActivityLogService activityLogService;
 
     @Autowired
-    public StudentService(StudentRepository studentRepository, PasswordEncoder passwordEncoder) {
+    public StudentService(StudentRepository studentRepository,
+                          PasswordEncoder passwordEncoder,
+                          ActivityLogService activityLogService) {
         this.studentRepository = studentRepository;
         this.passwordEncoder = passwordEncoder;
+        this.activityLogService = activityLogService;
     }
 
     // Create (US-03: register a new student account)
@@ -134,7 +147,14 @@ public class StudentService {
         // GlobalExceptionHandler turns the resulting DataIntegrityViolationException
         // into the same 409 the pre-check would have produced, so the loser of the
         // race gets a sensible answer instead of a 500.
-        return studentRepository.save(student);
+        Student saved = studentRepository.save(student);
+
+        // Recorded AFTER save because that is when the id exists - the log entry
+        // has nothing to attach itself to before the insert.
+        activityLogService.record(saved.getId(), ActivityType.ACCOUNT_CREATED,
+                "Account created.");
+
+        return saved;
     }
 
     /**
@@ -218,6 +238,13 @@ public class StudentService {
     // null (or, before ProfileUpdateRequest's two booleans were changed from
     // primitive to Boolean, as a silent false) and get written straight over
     // whatever was already saved.
+    //
+    // The null checks now do a second job. Each one also asks whether the value
+    // is actually DIFFERENT from what is stored, and collects the names of the
+    // fields that really changed. That is what lets the activity log say
+    // "Profile updated: full name, faculty" instead of a bare "Profile updated"
+    // - and it means pressing Save without editing anything records nothing,
+    // rather than filling the student's history with entries about no change.
     @Transactional
     public Student updateProfile(Long id, ProfileUpdateRequest updatedDetails) {
         // ResourceNotFoundException, not IllegalArgumentException.
@@ -233,26 +260,65 @@ public class StudentService {
         Student existing = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
 
+        // Field labels as a student would recognise them, not as Java names -
+        // this text ends up on their profile page.
+        List<String> changedDetails = new ArrayList<>();
+        boolean preferencesChanged = false;
+
         if (updatedDetails.getFullName() != null) {
+            if (!Objects.equals(updatedDetails.getFullName(), existing.getFullName())) {
+                changedDetails.add("full name");
+            }
             existing.setFullName(updatedDetails.getFullName());
         }
         if (updatedDetails.getDepartment() != null) {
+            if (!Objects.equals(updatedDetails.getDepartment(), existing.getDepartment())) {
+                changedDetails.add("faculty");
+            }
             existing.setDepartment(updatedDetails.getDepartment());
         }
         if (updatedDetails.getContactNumber() != null) {
+            if (!Objects.equals(updatedDetails.getContactNumber(), existing.getContactNumber())) {
+                changedDetails.add("phone number");
+            }
             existing.setContactNumber(updatedDetails.getContactNumber());
         }
         if (updatedDetails.getProfilePictureUrl() != null) {
+            if (!Objects.equals(updatedDetails.getProfilePictureUrl(), existing.getProfilePictureUrl())) {
+                changedDetails.add("profile picture");
+            }
             existing.setProfilePictureUrl(updatedDetails.getProfilePictureUrl());
         }
         if (updatedDetails.isEmailNotificationsEnabled() != null) {
+            if (updatedDetails.isEmailNotificationsEnabled() != existing.isEmailNotificationsEnabled()) {
+                preferencesChanged = true;
+            }
             existing.setEmailNotificationsEnabled(updatedDetails.isEmailNotificationsEnabled());
         }
         if (updatedDetails.isPortalNotificationsEnabled() != null) {
+            if (updatedDetails.isPortalNotificationsEnabled() != existing.isPortalNotificationsEnabled()) {
+                preferencesChanged = true;
+            }
             existing.setPortalNotificationsEnabled(updatedDetails.isPortalNotificationsEnabled());
         }
 
-        return studentRepository.save(existing);
+        Student saved = studentRepository.save(existing);
+
+        // Two separate entries rather than one, because they are two separate
+        // actions to the student: "Save changes" and "Save preferences" are
+        // different buttons on different sections of the page. A request that
+        // genuinely changed both records both - which is honest, and only
+        // happens if a client sends both at once.
+        if (!changedDetails.isEmpty()) {
+            activityLogService.record(saved.getId(), ActivityType.PROFILE_UPDATED,
+                    "Profile updated: " + String.join(", ", changedDetails) + ".");
+        }
+        if (preferencesChanged) {
+            activityLogService.record(saved.getId(), ActivityType.PREFERENCES_UPDATED,
+                    "Notification preferences updated.");
+        }
+
+        return saved;
     }
 
     // Delete (US-02: self-service account deletion - soft delete, not a hard DB delete)
@@ -263,5 +329,13 @@ public class StudentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
         student.setActive(false);
         studentRepository.save(student);
+
+        // Deliberately kept, not deleted along with the account. The student's
+        // row survives deactivation (that is what "soft delete" means here), so
+        // their history survives with it - which is the whole point of an audit
+        // trail, and what makes it possible for an administrator to see what
+        // happened if the account is ever restored under US-05.
+        activityLogService.record(student.getId(), ActivityType.ACCOUNT_DEACTIVATED,
+                "Account closed by the account holder.");
     }
 }

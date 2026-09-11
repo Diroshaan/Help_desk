@@ -26,20 +26,17 @@ import java.util.List;
  *     Now the protection is structural instead: this class has no password field,
  *     so there is nothing to leak and nothing to delete by mistake.
  *
- *  3. It would not have survived the activity log. That feature (F1's
- *     "Dashboard & Activity View") adds a @OneToMany to Student. Serialising the
- *     entity would then either drag every log row into every profile response,
- *     or fail outright on a lazy-loading proxy once the transaction has closed -
- *     the well-known LazyInitializationException. A response DTO decides what
- *     gets loaded and sent, so neither can happen.
+ *  3. It would not have survived the activity log. That feature is now here, and
+ *     the third reason turned out to be the load-bearing one - see activityLog
+ *     below.
  *
  * The rule this sets: what leaves the application is listed here, explicitly. A
  * new field on Student appears in the API only when somebody adds it to this
  * class on purpose.
  *
  * On the wire format: the field names below are exactly the ones the frontend
- * already reads (see useSession.jsx, Profile.jsx, DeleteAccount.jsx), so
- * introducing this class changes no JSON and needs no frontend change.
+ * already reads (see useSession.jsx, Profile.jsx, DeleteAccount.jsx), so this
+ * class changes no JSON and needs no frontend change.
  *
  * On shape: this is a plain class with final fields rather than a Java record.
  * A record would be shorter and would work, but the two sibling DTOs in this
@@ -94,11 +91,33 @@ public class StudentResponse {
     /** Supports a "member since" line on the profile without another round trip. */
     private final LocalDateTime createdAt;
 
+    /**
+     * The student's recent account history (F1 - "Dashboard & Activity View").
+     *
+     * This is where returning the entity would have broken. ActivityLog rows
+     * belong to the student, so the natural JPA modelling is a @OneToMany on
+     * Student - and serialising an entity that has one either explodes on a
+     * lazy proxy once the transaction has closed, or eagerly drags the whole
+     * history into every response including the staff listing that returns
+     * every account at once.
+     *
+     * Because this is a DTO, the caller decides. StudentController fills it in
+     * for the two endpoints that show one student their own profile, and leaves
+     * it EMPTY - never null - for registration and the staff listing, where
+     * nobody is going to render it. Empty rather than null so the frontend's
+     * Array.isArray check has something to succeed on and callers never have to
+     * null-check a collection.
+     *
+     * It is capped at the most recent 20 entries by the repository. This is the
+     * one table in the system that grows without bound.
+     */
+    private final List<ActivityLogResponse> activityLog;
+
     public StudentResponse(Long id, String studentId, String fullName, String email,
                            String contactNumber, String department, String profilePictureUrl,
                            String role, boolean emailNotificationsEnabled,
                            boolean portalNotificationsEnabled, boolean active,
-                           LocalDateTime createdAt) {
+                           LocalDateTime createdAt, List<ActivityLogResponse> activityLog) {
         this.id = id;
         this.studentId = studentId;
         this.fullName = fullName;
@@ -111,10 +130,11 @@ public class StudentResponse {
         this.portalNotificationsEnabled = portalNotificationsEnabled;
         this.active = active;
         this.createdAt = createdAt;
+        this.activityLog = activityLog == null ? List.of() : activityLog;
     }
 
     /**
-     * Builds the response for one student.
+     * Builds the response for one student, with an empty activity log.
      *
      * This mapping lives on the DTO rather than in StudentService on purpose.
      * The service layer holds business rules and returns domain objects; how
@@ -124,6 +144,19 @@ public class StudentResponse {
      * dragging a JSON shape along with it.
      */
     public static StudentResponse from(Student student) {
+        return withActivity(student, List.of());
+    }
+
+    /**
+     * Builds the response for one student including their recent activity.
+     *
+     * A separate named method rather than an overload of from(...): an
+     * overloaded method used as a method reference (StudentResponse::from) can
+     * become ambiguous to the compiler when the target type still has to be
+     * inferred, as it does inside Optional.map(...) - and this class is used
+     * that way in three places in StudentController.
+     */
+    public static StudentResponse withActivity(Student student, List<ActivityLogResponse> activityLog) {
         return new StudentResponse(
                 student.getId(),
                 student.getStudentId(),
@@ -136,18 +169,20 @@ public class StudentResponse {
                 student.isEmailNotificationsEnabled(),
                 student.isPortalNotificationsEnabled(),
                 student.isActive(),
-                student.getCreatedAt()
+                student.getCreatedAt(),
+                activityLog
         );
     }
 
     /**
      * Convenience for the staff listing endpoint.
      *
-     * Named fromAll rather than overloading from(...) deliberately: an
-     * overloaded method used as a method reference (StudentResponse::from) can
-     * become ambiguous to the compiler when the target type still has to be
-     * inferred, as it does inside Optional.map(...). A distinct name removes
-     * the question entirely and reads more clearly at the call site.
+     * Named fromAll rather than overloading from(...) for the same reason
+     * withActivity has its own name - see above. Note it produces responses with
+     * empty activity logs: the listing shows who exists, not what each of them
+     * has been doing, and loading twenty history rows per student to render a
+     * table that ignores them is exactly the kind of query nobody notices until
+     * the table is big.
      */
     public static List<StudentResponse> fromAll(List<Student> students) {
         return students.stream().map(StudentResponse::from).toList();
@@ -201,5 +236,9 @@ public class StudentResponse {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public List<ActivityLogResponse> getActivityLog() {
+        return activityLog;
     }
 }
