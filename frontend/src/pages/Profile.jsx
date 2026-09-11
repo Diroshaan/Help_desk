@@ -248,8 +248,8 @@ export default function Profile() {
               </ul>
             ) : (
               <p className="empty">
-                Nothing here yet. Actions on your account — profile edits, password changes
-                and logins — will appear here once activity logging is switched on.
+                Nothing here yet. Actions on your account — signing in, profile edits and
+                preference changes — appear here as they happen.
               </p>
             )}
           </section>
@@ -275,6 +275,25 @@ export default function Profile() {
    Without the first group the profile page is a dead end — the only way back
    to the knowledge base was editing the address bar.
    -------------------------------------------------------------------------- */
+/**
+ * Scrolls to a section of the profile page WITHOUT touching the URL.
+ *
+ * The two links below used to be plain anchors — <a href="#activity"> — which
+ * is the normal way to jump to an element on a page. It does not work here,
+ * and the reason is worth knowing: the app uses HashRouter (see App.jsx), so
+ * the router treats everything after '#' as the ROUTE. Clicking that anchor
+ * rewrote the URL from '#/profile' to '#activity', the router looked for a
+ * route called '/activity', found none, and dropped the student back on the
+ * welcome page.
+ *
+ * In-page anchors and hash routing cannot share the same '#'. Scrolling the
+ * element into view directly does the job the anchor was meant to do and
+ * leaves the route alone.
+ */
+function scrollToSection(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 function Sidebar({ student, onSignOut, onTicket }) {
   return (
     <aside className="sidebar">
@@ -288,8 +307,15 @@ function Sidebar({ student, onSignOut, onTicket }) {
 
         <p className="side-nav__label">My account</p>
         <Link to="/profile" aria-current="page">My profile</Link>
-        <a href="#preferences">Preferences</a>
-        <a href="#activity">Recent activity</a>
+        {/* href="#" with preventDefault, matching "Submit a ticket" above:
+            it keeps the .side-nav a styling and the keyboard behaviour of a
+            link, while scrollToSection does the actual work. */}
+        <a href="#" onClick={event => { event.preventDefault(); scrollToSection('preferences') }}>
+          Preferences
+        </a>
+        <a href="#" onClick={event => { event.preventDefault(); scrollToSection('activity') }}>
+          Recent activity
+        </a>
       </nav>
 
       <div className="side-foot">
