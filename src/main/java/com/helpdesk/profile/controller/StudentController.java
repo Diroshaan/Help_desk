@@ -1,9 +1,11 @@
 package com.helpdesk.profile.controller;
 
+import com.helpdesk.profile.dto.ActivityLogResponse;
 import com.helpdesk.profile.dto.ProfileUpdateRequest;
 import com.helpdesk.profile.dto.RegistrationRequest;
 import com.helpdesk.profile.dto.StudentResponse;
 import com.helpdesk.profile.entity.Student;
+import com.helpdesk.profile.service.ActivityLogService;
 import com.helpdesk.profile.service.StudentService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -34,20 +36,28 @@ import java.util.List;
  * A note on what these methods RETURN: every endpoint that returns a student
  * returns a StudentResponse, never the Student entity. See that class for the
  * full reasoning; the short version is that returning the entity made its field
- * list the public API, left the password hash guarded by a single annotation,
- * and would break outright once the activity log adds a @OneToMany to Student.
- * The mapping happens here, in the web layer, so StudentService can keep
- * returning domain objects.
+ * list the public API, left the password hash guarded only by a single
+ * annotation, and would break outright now that the activity log exists. The
+ * mapping happens here, in the web layer, so StudentService can keep returning
+ * domain objects.
+ *
+ * A note on the activity log: only the three endpoints that show ONE student
+ * their OWN profile include it. Registration returns an account with no history
+ * yet, and the staff listing deliberately leaves it empty - see withActivity()
+ * at the bottom.
  */
 @RestController
 @RequestMapping("/api/students")
 public class StudentController {
 
     private final StudentService studentService;
+    private final ActivityLogService activityLogService;
 
     @Autowired
-    public StudentController(StudentService studentService) {
+    public StudentController(StudentService studentService,
+                             ActivityLogService activityLogService) {
         this.studentService = studentService;
+        this.activityLogService = activityLogService;
     }
 
     // POST /api/students -> register a brand new student account (US-03).
@@ -61,6 +71,10 @@ public class StudentController {
     //
     // Note the symmetry now: a purpose-built type in, a purpose-built type out.
     // Neither direction exposes the entity.
+    //
+    // Uses from(), not withActivity(): a brand new account has exactly one log
+    // entry (its own creation) and nothing is going to render it - the frontend
+    // navigates straight to the login page after a successful registration.
     @PostMapping
     public ResponseEntity<StudentResponse> register(@Valid @RequestBody RegistrationRequest request) {
         Student saved = studentService.register(request);
@@ -80,6 +94,7 @@ public class StudentController {
     // This is the endpoint the response DTO matters most for: it returns every
     // account in the system at once, so a field accidentally added to Student
     // would be published for every student on the first request after the deploy.
+    // It is also why the activity log is left empty here - see withActivity().
     @GetMapping
     public List<StudentResponse> findAll() {
         return StudentResponse.fromAll(studentService.findAll());
@@ -110,7 +125,7 @@ public class StudentController {
     @GetMapping("/me")
     public ResponseEntity<StudentResponse> getCurrentStudent(Authentication authentication) {
         return studentService.findByEmail(authentication.getName())
-                .map(StudentResponse::from)
+                .map(this::withActivity)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.status(HttpStatus.FORBIDDEN).build());
     }
@@ -131,7 +146,7 @@ public class StudentController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return studentService.findById(id)
-                .map(StudentResponse::from)
+                .map(this::withActivity)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -149,6 +164,11 @@ public class StudentController {
     // body and would just be silently dropped by the service, which is a
     // confusing API shape. A dedicated request type only exposes the fields this
     // endpoint actually edits.
+    //
+    // The response carries the refreshed activity log on purpose: the frontend
+    // replaces its stored student with whatever this returns, so the entry the
+    // save just created appears on the page immediately, without a second
+    // request or a manual refresh.
     @PutMapping("/{id}")
     public ResponseEntity<StudentResponse> updateProfile(@PathVariable Long id,
                                                          @Valid @RequestBody ProfileUpdateRequest updatedDetails,
@@ -156,7 +176,7 @@ public class StudentController {
         if (!isOwnProfile(id, authentication)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        return ResponseEntity.ok(StudentResponse.from(studentService.updateProfile(id, updatedDetails)));
+        return ResponseEntity.ok(withActivity(studentService.updateProfile(id, updatedDetails)));
     }
 
     // DELETE /api/students/{id} -> self-service deactivation (US-02).
@@ -192,6 +212,29 @@ public class StudentController {
         SecurityContextHolder.clearContext();
 
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Builds a response for one student WITH their recent activity attached.
+     *
+     * Used only by the three endpoints where a student is looking at their own
+     * profile. Registration and the staff listing use StudentResponse.from()
+     * instead, which leaves the log empty - not because the data is secret, but
+     * because loading twenty history rows per student to render a page that
+     * ignores them is a query nobody notices until the table is large. The
+     * listing returns every account in the system at once, so that would be one
+     * extra query per student, every time a staff member opens it.
+     *
+     * This is the payoff for ActivityLog holding a plain studentId rather than a
+     * JPA relationship: the log is fetched here, explicitly, only when it is
+     * wanted. With a @OneToMany the decision would belong to the mapping, not to
+     * the endpoint.
+     */
+    private StudentResponse withActivity(Student student) {
+        return StudentResponse.withActivity(
+                student,
+                ActivityLogResponse.fromAll(activityLogService.recentFor(student.getId()))
+        );
     }
 
     /**
