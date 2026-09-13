@@ -119,21 +119,30 @@ public class StudentService {
         student.setId(null);
         student.setActive(true);
 
-        // Force every self-registered account to be a STUDENT, no matter what the
-        // caller put in the "role" field of the request body.
+        // There used to be an explicit role-forcing line here, and its removal
+        // is worth understanding rather than glossing over.
         //
-        // Why this matters: unlike "password" (which is marked WRITE_ONLY so it's
-        // rejected from responses but still readable from requests), "role" has no
-        // such protection on the Student entity - the JSON body is bound straight
-        // onto the entity's fields. That means a request like
+        // The line existed to close a mass-assignment hole. Role was a plain
+        // String field on the Student entity with no write protection, so a
+        // request like
         //   POST /api/students { ..., "role": "ADMIN" }
-        // would otherwise let anyone grant themselves Officer/Admin privileges just
-        // by adding one extra field to a public, unauthenticated endpoint. This is
-        // a classic "mass assignment" vulnerability. Setting the role here, AFTER
-        // validation and BEFORE save, means whatever the client sent is discarded
-        // and self-registration can only ever produce a STUDENT account. Creating
-        // Officer/Admin accounts will need its own, access-controlled path (F6).
-        student.setRole("STUDENT");
+        // to this public, unauthenticated endpoint would have let anyone grant
+        // themselves administrator privileges. Overwriting the field here, after
+        // validation and before save, discarded whatever the client sent.
+        //
+        // It is gone because the attack is no longer expressible. Under the user
+        // supertype, role is not a field, not a column, and has no setter: it is
+        // decided by which class was instantiated, and this method only ever
+        // instantiates a Student (see Student.getRole()). There is nothing left
+        // for a request body to overwrite.
+        //
+        // That is a stronger fix than the line it replaces. The old defence
+        // worked by being remembered - delete it during a refactor and the hole
+        // reopens silently, with nothing failing to say so. Making the bad state
+        // unrepresentable needs nobody to remember anything.
+        //
+        // Creating Officer and Administrator accounts still needs its own
+        // access-controlled path, which is F6's to build.
 
         // Never store the plain-text password - hash it before saving.
         student.setPassword(passwordEncoder.encode(request.getPassword()));

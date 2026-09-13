@@ -165,7 +165,12 @@ public class StudentResponse {
                 student.getContactNumber(),
                 student.getDepartment(),
                 student.getProfilePictureUrl(),
-                student.getRole(),
+                // .name() because getRole() now returns the Role enum rather
+                // than the free-text String column it replaced. The wire format
+                // is unchanged - "STUDENT" either way - so the frontend needs no
+                // change; what changed is that the value can no longer be null,
+                // space-padded, or anything outside the three defined roles.
+                student.getRole().name(),
                 student.isEmailNotificationsEnabled(),
                 student.isPortalNotificationsEnabled(),
                 student.isActive(),
