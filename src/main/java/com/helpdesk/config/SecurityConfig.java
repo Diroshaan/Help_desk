@@ -62,9 +62,22 @@ public class SecurityConfig {
                 // standard practice to disable it - acceptable trade-off for coursework.
                 .csrf(csrf -> csrf.disable())
 
-                // H2 console renders inside an iframe, which Spring Security blocks by
-                // default (clickjacking protection). Only relax this for /h2-console.
-                .headers(headers -> headers.frameOptions(frame -> frame.disable()))
+                // The H2 console renders inside an iframe, which Spring Security blocks by
+                // default as clickjacking protection (X-Frame-Options: DENY).
+                //
+                // sameOrigin(), not disable(). The comment here used to say "only relax
+                // this for /h2-console" while the code did the opposite: disable() removes
+                // the header from EVERY response, so clickjacking protection was off for
+                // the whole application - the login page and the profile page included -
+                // to accommodate one development tool. Any site could have framed those
+                // pages and tricked a signed-in student into clicking something they could
+                // not see.
+                //
+                // sameOrigin() keeps the header and allows framing only from this
+                // application's own origin, which is exactly what the H2 console needs and
+                // nothing more. The console still works; everything else is protected
+                // again. This is the header NFR 5.1 is asking for.
+                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
 
                 .authorizeHttpRequests(auth -> auth
                         // Public: Spring's own internal forward to /error when a request

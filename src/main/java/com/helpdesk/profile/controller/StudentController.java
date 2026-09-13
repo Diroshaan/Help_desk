@@ -1,8 +1,11 @@
 package com.helpdesk.profile.controller;
 
+import com.helpdesk.profile.dto.ActivityLogResponse;
 import com.helpdesk.profile.dto.ProfileUpdateRequest;
 import com.helpdesk.profile.dto.RegistrationRequest;
+import com.helpdesk.profile.dto.StudentResponse;
 import com.helpdesk.profile.entity.Student;
+import com.helpdesk.profile.service.ActivityLogService;
 import com.helpdesk.profile.service.StudentService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -29,16 +32,32 @@ import java.util.List;
  * deactivate below does - see the comment on isOwnProfile() for the full
  * explanation. (findAll is different: it's restricted by ROLE, not by
  * ownership - see the comment on that method instead.)
+ *
+ * A note on what these methods RETURN: every endpoint that returns a student
+ * returns a StudentResponse, never the Student entity. See that class for the
+ * full reasoning; the short version is that returning the entity made its field
+ * list the public API, left the password hash guarded only by a single
+ * annotation, and would break outright now that the activity log exists. The
+ * mapping happens here, in the web layer, so StudentService can keep returning
+ * domain objects.
+ *
+ * A note on the activity log: only the three endpoints that show ONE student
+ * their OWN profile include it. Registration returns an account with no history
+ * yet, and the staff listing deliberately leaves it empty - see withActivity()
+ * at the bottom.
  */
 @RestController
 @RequestMapping("/api/students")
 public class StudentController {
 
     private final StudentService studentService;
+    private final ActivityLogService activityLogService;
 
     @Autowired
-    public StudentController(StudentService studentService) {
+    public StudentController(StudentService studentService,
+                             ActivityLogService activityLogService) {
         this.studentService = studentService;
+        this.activityLogService = activityLogService;
     }
 
     // POST /api/students -> register a brand new student account (US-03).
@@ -49,10 +68,17 @@ public class StudentController {
     // why: the password complexity rule can only be checked against the raw,
     // not-yet-hashed password, and RegistrationRequest is the only place that
     // value exists before StudentService hashes it.
+    //
+    // Note the symmetry now: a purpose-built type in, a purpose-built type out.
+    // Neither direction exposes the entity.
+    //
+    // Uses from(), not withActivity(): a brand new account has exactly one log
+    // entry (its own creation) and nothing is going to render it - the frontend
+    // navigates straight to the login page after a successful registration.
     @PostMapping
-    public ResponseEntity<Student> register(@Valid @RequestBody RegistrationRequest request) {
+    public ResponseEntity<StudentResponse> register(@Valid @RequestBody RegistrationRequest request) {
         Student saved = studentService.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        return ResponseEntity.status(HttpStatus.CREATED).body(StudentResponse.from(saved));
     }
 
     // GET /api/students -> list every student in one response, with no filtering.
@@ -64,23 +90,28 @@ public class StudentController {
     // ever reaches this method. It has to be a role check here (not an ownership
     // check like isOwnProfile()) because this endpoint isn't about any single
     // student's own data - it dumps everyone's, which only staff should see.
+    //
+    // This is the endpoint the response DTO matters most for: it returns every
+    // account in the system at once, so a field accidentally added to Student
+    // would be published for every student on the first request after the deploy.
+    // It is also why the activity log is left empty here - see withActivity().
     @GetMapping
-    public List<Student> findAll() {
-        return studentService.findAll();
+    public List<StudentResponse> findAll() {
+        return StudentResponse.fromAll(studentService.findAll());
     }
 
     // GET /api/students/me -> fetch the CURRENTLY LOGGED-IN student's own profile.
     //
-    // Why this exists: the frontend (e.g. profile.html) knows who's logged in
-    // only via the session cookie - it has no way to know that student's
-    // numeric id up front, and guessing/enumerating ids is exactly what
-    // isOwnProfile() below exists to prevent. This reuses that same pattern -
-    // authentication.getName() is the email the student logged in with (see
-    // StudentUserDetailsService), so looking them up by email is the direct
-    // equivalent of isOwnProfile()'s email comparison, just without needing an
-    // {id} in the URL first. Any authenticated user can call this for
-    // themselves; there's no cross-student access risk since the lookup is
-    // always tied to whoever the session belongs to, not to caller input.
+    // Why this exists: the frontend knows who's logged in only via the session
+    // cookie - it has no way to know that student's numeric id up front, and
+    // guessing/enumerating ids is exactly what isOwnProfile() below exists to
+    // prevent. This reuses that same pattern - authentication.getName() is the
+    // email the student logged in with (see StudentUserDetailsService), so
+    // looking them up by email is the direct equivalent of isOwnProfile()'s email
+    // comparison, just without needing an {id} in the URL first. Any
+    // authenticated user can call this for themselves; there's no cross-student
+    // access risk since the lookup is always tied to whoever the session belongs
+    // to, not to caller input.
     //
     // 403, not 404, when no student matches: this only happens when a session
     // authenticated successfully but the row behind it has since disappeared
@@ -92,8 +123,9 @@ public class StudentController {
     // assuming a 404 body always means "resource not found" rather than
     // "identity gone".
     @GetMapping("/me")
-    public ResponseEntity<Student> getCurrentStudent(Authentication authentication) {
+    public ResponseEntity<StudentResponse> getCurrentStudent(Authentication authentication) {
         return studentService.findByEmail(authentication.getName())
+                .map(this::withActivity)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.status(HttpStatus.FORBIDDEN).build());
     }
@@ -109,11 +141,12 @@ public class StudentController {
     // Students are restricted to their own profile via isOwnProfile(), the same
     // helper already used to gate updateProfile/deactivate below.
     @GetMapping("/{id}")
-    public ResponseEntity<Student> findById(@PathVariable Long id, Authentication authentication) {
+    public ResponseEntity<StudentResponse> findById(@PathVariable Long id, Authentication authentication) {
         if (!isOfficerOrAdmin(authentication) && !isOwnProfile(id, authentication)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return studentService.findById(id)
+                .map(this::withActivity)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -127,23 +160,30 @@ public class StudentController {
     // Student here (as this endpoint originally did) meant its @NotBlank
     // password field applied to profile edits too, even though this endpoint
     // never changes the password and GET responses never return one to send
-    // back (it's WRITE_ONLY). It also meant email/studentId/role could be
-    // included in the request body and would just be silently dropped by
-    // the service, which is a confusing API shape. A dedicated request type
-    // only exposes the fields this endpoint actually edits.
+    // back. It also meant email/studentId/role could be included in the request
+    // body and would just be silently dropped by the service, which is a
+    // confusing API shape. A dedicated request type only exposes the fields this
+    // endpoint actually edits.
+    //
+    // The response carries the refreshed activity log on purpose: the frontend
+    // replaces its stored student with whatever this returns, so the entry the
+    // save just created appears on the page immediately, without a second
+    // request or a manual refresh.
     @PutMapping("/{id}")
-    public ResponseEntity<Student> updateProfile(@PathVariable Long id,
-                                                  @Valid @RequestBody ProfileUpdateRequest updatedDetails,
-                                                  Authentication authentication) {
+    public ResponseEntity<StudentResponse> updateProfile(@PathVariable Long id,
+                                                         @Valid @RequestBody ProfileUpdateRequest updatedDetails,
+                                                         Authentication authentication) {
         if (!isOwnProfile(id, authentication)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        return ResponseEntity.ok(studentService.updateProfile(id, updatedDetails));
+        return ResponseEntity.ok(withActivity(studentService.updateProfile(id, updatedDetails)));
     }
 
     // DELETE /api/students/{id} -> self-service deactivation (US-02).
     // Soft-delete only: see StudentService.deactivate, which flips an "active" flag
     // instead of removing the row from the database.
+    //
+    // Returns 204 No Content, so there is no body and nothing to map.
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deactivate(@PathVariable Long id, Authentication authentication,
                                             HttpServletRequest request) {
@@ -175,6 +215,29 @@ public class StudentController {
     }
 
     /**
+     * Builds a response for one student WITH their recent activity attached.
+     *
+     * Used only by the three endpoints where a student is looking at their own
+     * profile. Registration and the staff listing use StudentResponse.from()
+     * instead, which leaves the log empty - not because the data is secret, but
+     * because loading twenty history rows per student to render a page that
+     * ignores them is a query nobody notices until the table is large. The
+     * listing returns every account in the system at once, so that would be one
+     * extra query per student, every time a staff member opens it.
+     *
+     * This is the payoff for ActivityLog holding a plain studentId rather than a
+     * JPA relationship: the log is fetched here, explicitly, only when it is
+     * wanted. With a @OneToMany the decision would belong to the mapping, not to
+     * the endpoint.
+     */
+    private StudentResponse withActivity(Student student) {
+        return StudentResponse.withActivity(
+                student,
+                ActivityLogResponse.fromAll(activityLogService.recentFor(student.getId()))
+        );
+    }
+
+    /**
      * Self-access check: is the logged-in user the SAME student as the one
      * identified by {@code id}?
      *
@@ -196,6 +259,10 @@ public class StudentController {
      * (forbidden) rather than treating it differently to a "not your profile"
      * case - this avoids leaking whether a given id exists to someone probing
      * the API.
+     *
+     * Note this reads the Student entity, not a StudentResponse. That is
+     * correct: this is an internal authorisation decision, not something being
+     * returned to a caller, so it belongs on the domain object.
      */
     private boolean isOwnProfile(Long id, Authentication authentication) {
         return studentService.findById(id)

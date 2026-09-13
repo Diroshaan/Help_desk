@@ -41,6 +41,33 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!--
+            MySQL driver, for the "mysql" Spring profile (see
+            application-mysql.properties). The proposal names MySQL as the
+            production database; H2 above stays for the default profile so
+            nobody on the team is forced to install a database server just to
+            run the app.
+
+            Both drivers on the classpath is not ambiguous: Spring Boot picks
+            the driver from spring.datasource.url, and only one profile's URL
+            is ever active.
+
+            No <version> here on purpose - spring-boot-starter-parent manages
+            it, so the driver version is guaranteed to be one tested against
+            Spring Boot 3.2.5. Pinning our own would be how you end up with a
+            driver/Hibernate mismatch that only shows up at runtime.
+
+            "runtime" scope because no code in this project imports a MySQL
+            class - it is loaded by name via JDBC. Compile scope would let
+            somebody import com.mysql.* by accident and tie our Java code to
+            one database engine.
+        -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- Bean validation (@NotBlank, @Email, @Size, etc.) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

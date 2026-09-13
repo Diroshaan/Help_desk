@@ -61,7 +61,15 @@ export function TopBar() {
       </Link>
 
       <nav className="topbar__nav">
-        <a href="#topics">Browse FAQ</a>
+        {/* A Link with a hash, not a plain <a href="#topics">.
+            The app uses HashRouter (see App.jsx), so everything after '#' is
+            the ROUTE. A bare anchor rewrote the whole hash to '#topics', the
+            router looked for a route called '/topics', found none, and fell
+            through to the catch-all - so "Browse FAQ" quietly landed at the
+            top of the home page instead of at the topics section.
+            to="/#topics" keeps the route as '/' and puts 'topics' in the
+            hash, which ScrollToTop in App.jsx then scrolls to. */}
+        <Link to="/#topics">Browse FAQ</Link>
 
         {/* While the session is still loading, neither state is shown. Flashing
             "Register" at someone who is already logged in looks broken. */}

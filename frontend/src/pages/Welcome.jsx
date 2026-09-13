@@ -205,8 +205,14 @@ export default function Welcome() {
           ))}
 
           <div className="foot-links">
-            <a href="#">Accessibility</a>
-            <a href="#">Privacy policy</a>
+            {/* Placeholders for pages that are out of scope for this project.
+                preventDefault matters here rather than being tidiness: under
+                HashRouter a bare href="#" is a route change, so clicking one
+                reset the route and threw the visitor back to the top of the
+                page for no reason. Doing nothing is the honest behaviour
+                until the pages exist. */}
+            <a href="#" onClick={event => event.preventDefault()}>Accessibility</a>
+            <a href="#" onClick={event => event.preventDefault()}>Privacy policy</a>
           </div>
         </div>
 
