@@ -11,5 +11,7 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     List<Ticket> findByCategory(String category);
 
     // F4: a department's queue - every ticket currently routed to it.
-    List<Ticket> findByAssignedDepartmentId(Long assignedDepartmentId);
+    // Long -> String: Department's primary key is its natural code, not a
+    // generated Long (see common.reference.entity.Department.code).
+    List<Ticket> findByAssignedDepartmentId(String assignedDepartmentId);
 }

@@ -1,7 +1,7 @@
 package com.helpdesk.ticket.service;
 
 import com.helpdesk.common.exception.ResourceNotFoundException;
-import com.helpdesk.ticket.TicketCategories;
+import com.helpdesk.common.reference.repository.CategoryRepository;
 import com.helpdesk.ticket.dto.TicketCreateRequest;
 import com.helpdesk.ticket.dto.TicketUpdateRequest;
 import com.helpdesk.ticket.entity.Ticket;
@@ -25,10 +25,12 @@ import java.util.List;
 public class TicketService {
 
     private final TicketRepository ticketRepository;
+    private final CategoryRepository categoryRepository;
 
     @Autowired
-    public TicketService(TicketRepository ticketRepository) {
+    public TicketService(TicketRepository ticketRepository, CategoryRepository categoryRepository) {
         this.ticketRepository = ticketRepository;
+        this.categoryRepository = categoryRepository;
     }
 
     // Create
@@ -102,8 +104,18 @@ public class TicketService {
         }
     }
 
+    // CHANGED during the F4 shared-reference-data merge (feature/f4-RESPONSE):
+    // this used to call ticket.TicketCategories.isValid(category), a hardcoded
+    // in-memory list. Now that common.reference.entity.Category is a real,
+    // seeded table, validation checks against it instead so a category added
+    // there is recognised without a code change here.
+    // FLAG FOR F2 REVIEW (Chamikara): this changes validation behavior, not
+    // just its wording - TicketCategories.ALL and the seeded category names
+    // happen to match today, but they are no longer the same source of truth,
+    // and TicketController's GET dropdown endpoint still reads TicketCategories.ALL
+    // directly. Please confirm this is the intended replacement before merging.
     private void requireValidCategory(String category) {
-        if (!TicketCategories.isValid(category)) {
+        if (!categoryRepository.existsByName(category)) {
             throw new ValidationException("Invalid category");
         }
     }

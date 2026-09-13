@@ -15,12 +15,15 @@ import java.time.LocalDateTime;
  * from the profile package.
  *
  * assignedOfficerId / assignedDepartmentId / assignedAt / resolvedAt are
- * added for F4 (queue.entity.Officer / queue.entity.Department own the
- * referenced rows) - queue routing needs to live somewhere, and shouldn't
- * be reinvented separately by F2/F3/F4 given how central Ticket already is
- * to all three. Same plain-Long-reference pattern as studentId. Together
- * with the existing createdAt/updatedAt, assignedAt and resolvedAt give F4
- * the timestamps it needs to render a ticket's history timeline.
+ * added for F4 (common.user.entity.Officer / common.reference.entity.Department
+ * own the referenced rows) - queue routing needs to live somewhere, and
+ * shouldn't be reinvented separately by F2/F3/F4 given how central Ticket
+ * already is to all three. assignedOfficerId keeps the same plain-Long-reference
+ * pattern as studentId; assignedDepartmentId is a plain String reference instead,
+ * because Department's primary key is its natural code (see Department.code),
+ * not a generated Long. Together with the existing createdAt/updatedAt,
+ * assignedAt and resolvedAt give F4 the timestamps it needs to render a
+ * ticket's history timeline.
  */
 @Entity
 @Table(name = "tickets")
@@ -63,7 +66,7 @@ public class Ticket {
     // Null until F4's queue engine assigns the ticket to an officer/department.
     private Long assignedOfficerId;
 
-    private Long assignedDepartmentId;
+    private String assignedDepartmentId;
 
     private LocalDateTime assignedAt;
 
@@ -139,10 +142,10 @@ public class Ticket {
     public void setAssignedOfficerId(Long assignedOfficerId) {
         this.assignedOfficerId = assignedOfficerId;
     }
-    public Long getAssignedDepartmentId() {
+    public String getAssignedDepartmentId() {
         return assignedDepartmentId;
     }
-    public void setAssignedDepartmentId(Long assignedDepartmentId) {
+    public void setAssignedDepartmentId(String assignedDepartmentId) {
         this.assignedDepartmentId = assignedDepartmentId;
     }
     public LocalDateTime getAssignedAt() {
