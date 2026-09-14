@@ -10,7 +10,6 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -113,19 +112,23 @@ public class UserAdminController {
      * would require the client to send back every field it did not want to
      * change - and every one of those is a field it could get wrong.
      *
-     * The acting administrator's email is passed down from Authentication so the
-     * service can enforce "an administrator cannot deactivate themselves". That
-     * check lives in the service rather than here, along with "the last active
-     * administrator cannot be deactivated", because both are rules about the
-     * state of the system rather than about HTTP - see UserProvisioningService.
-     * setActive. Both produce a 400 through GlobalExceptionHandler.
+     * No Authentication parameter, deliberately. This method used to pass the
+     * caller's email down so the service could refuse an administrator
+     * deactivating themselves. That rule is gone, replaced by the single
+     * invariant "the system must always have an active administrator", which
+     * does not depend on who is asking - see UserProvisioningService.setActive
+     * for why one invariant beats two overlapping ones. A parameter kept only
+     * because it used to be needed is a parameter the next reader has to work
+     * out the purpose of, so it is removed rather than left dangling.
+     *
+     * The invariant is enforced in the service, not here, because it is a fact
+     * about the state of the system rather than about HTTP. It surfaces as a 400
+     * through GlobalExceptionHandler.
      */
     @PatchMapping("/api/admin/users/{id}/status")
     public ResponseEntity<UserSummaryResponse> setStatus(@PathVariable Long id,
-                                                         @Valid @RequestBody UserStatusRequest request,
-                                                         Authentication authentication) {
-        return ResponseEntity.ok(
-                userProvisioningService.setActive(id, request.active(), authentication.getName()));
+                                                         @Valid @RequestBody UserStatusRequest request) {
+        return ResponseEntity.ok(userProvisioningService.setActive(id, request.active()));
     }
 
     /**
@@ -141,15 +144,15 @@ public class UserAdminController {
      * 204 No Content: it worked and there is nothing to return.
      *
      * Worth knowing that DELETE here is not idempotent in the strictest sense -
-     * deleting the last administrator is refused with a 400 whether it is the
-     * first attempt or the fifth. That is the right trade: HTTP's idempotency
+     * deleting the last active administrator is refused with a 400 whether it is
+     * the first attempt or the fifth. That is the right trade: HTTP's idempotency
      * expectation is about repeated requests having the same EFFECT, and
      * refusing consistently satisfies that better than locking the deployment
      * out of its own admin panel would.
      */
     @DeleteMapping("/api/admin/users/{id}")
-    public ResponseEntity<Void> softDelete(@PathVariable Long id, Authentication authentication) {
-        userProvisioningService.softDelete(id, authentication.getName());
+    public ResponseEntity<Void> softDelete(@PathVariable Long id) {
+        userProvisioningService.softDelete(id);
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 }

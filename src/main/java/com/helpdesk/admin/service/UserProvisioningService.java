@@ -178,63 +178,61 @@ public class UserProvisioningService {
     /**
      * Suspend or restore any account.
      *
-     * THE TWO SAFETY RULES, AND WHY THEY ARE HERE AND NOT IN THE CONTROLLER
-     * --------------------------------------------------------------------
-     * Both are business rules about the state of the system, so they belong
-     * with the operation, not with the HTTP endpoint that happens to trigger it.
-     * A second caller - a seeder, a scheduled job, a future bulk import - gets
-     * them for free by calling this method, and cannot route around them by
-     * calling a different controller.
+     * ONE SAFETY RULE: THE SYSTEM MUST ALWAYS HAVE AN ACTIVE ADMINISTRATOR
+     * -------------------------------------------------------------------
+     * A deployment with no active administrator is locked out of itself.
+     * Provisioning an administrator is an administrator action, so there is no
+     * way to create a replacement through the application - the only way back
+     * in is a manual UPDATE against the database.
      *
-     * 1. An administrator cannot deactivate themselves. One click and the person
-     *    holding the only admin session is locked out of the system they
-     *    administer, with no way back in through the application.
+     * That single invariant is the whole rule, and it deliberately replaces the
+     * two overlapping rules this method used to carry. The earlier version also
+     * refused to let an administrator deactivate THEMSELVES, which sounds like
+     * a separate protection but is not: "do not leave the system without an
+     * administrator" already covers the only case where self-deactivation does
+     * real harm. Worse, the self-check ran first and made the
+     * last-administrator guard unreachable - any OTHER administrator doing the
+     * deactivating is themselves still active, so the guard could never fire
+     * through the API and could never be tested there. One invariant is easier
+     * to defend at a viva than two that shadow each other, and this one is
+     * reachable.
      *
-     * 2. The last active administrator cannot be deactivated, by anyone. A
-     *    deployment whose only administrator is deactivated is locked out just
-     *    as thoroughly as one that never had an administrator: provisioning an
-     *    admin is itself an admin action, so there is no way to create a
-     *    replacement. AdministratorRepository.existsByActiveTrue() counts only
-     *    ACTIVE administrators for exactly this reason - existsBy() over all
-     *    rows would cheerfully report that everything is fine.
+     * The consequence, stated so it is a decision rather than an oversight: an
+     * administrator MAY now deactivate their own account, provided another
+     * active administrator remains. They lock themselves out; the system stays
+     * administrable, which is the property that actually matters. If that ever
+     * needs to be refused as well, it is a separate rule with a separate
+     * message, not a reinterpretation of this one.
      *
-     * Rule 2 is checked against the state AFTER the change rather than before,
-     * which is why the flag is flipped and then tested: "would this leave the
-     * system with no administrator?" is the question, and it cannot be answered
-     * by looking at the state before. The transaction is what makes that safe -
-     * the check and the write are one unit of work, so a concurrent
-     * deactivation cannot slip between them and leave both requests believing
-     * another administrator remained.
+     * WHY existsByActiveTrueAndIdNot AND NOT existsByActiveTrue
+     * ---------------------------------------------------------
+     * The question is "is there an active administrator OTHER than this one?",
+     * asked while the target is still active. Plain existsByActiveTrue() would
+     * count the account being deactivated and always answer yes, which is why
+     * the earlier version had to flip the flag first, query, and rely on a
+     * rollback to undo it. Excluding the target by id asks the real question
+     * directly, before anything is written - no speculative write, no
+     * dependence on flush ordering, and nothing to undo.
      *
-     * The save() before the check is not wasted work and the check is not stale:
-     * Hibernate's default FlushMode.AUTO flushes pending changes before running
-     * a query that could be affected by them, so existsByActiveTrue() sees this
-     * administrator already marked inactive. The throw then rolls the whole
-     * transaction back and the flag returns to true - which is exactly the
-     * behaviour wanted, expressed as a rollback rather than as manual undo code
-     * that could itself fail.
+     * The rule lives in the service rather than the controller because it is a
+     * fact about the state of the system, not about HTTP. A seeder, a scheduled
+     * job or a future bulk import gets it by calling this method, and cannot
+     * route around it by using a different endpoint or verb.
      */
     @Transactional
-    public UserSummaryResponse setActive(Long id, boolean active, String actingAdminEmail) {
+    public UserSummaryResponse setActive(Long id, boolean active) {
         AppUser user = appUserRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No account exists with id " + id + "."));
 
-        if (!active) {
-            if (user.getEmail().equalsIgnoreCase(actingAdminEmail)) {
+        // Only deactivating an administrator can break the invariant. Restoring
+        // an account never can, and a student or officer is not an
+        // administrator, so neither case needs the query.
+        if (!active && user.isActive() && user instanceof Administrator) {
+            if (!administratorRepository.existsByActiveTrueAndIdNot(user.getId())) {
                 throw new IllegalArgumentException(
-                        "You cannot deactivate your own administrator account.");
-            }
-            if (user instanceof Administrator && user.isActive()) {
-                user.setActive(false);
-                appUserRepository.save(user);
-
-                if (!administratorRepository.existsByActiveTrue()) {
-                    throw new IllegalArgumentException(
-                            "This is the last active administrator account. Provision another "
-                                    + "administrator before deactivating this one.");
-                }
-                return UserSummaryResponse.from(user);
+                        "This is the last active administrator account. Provision another "
+                                + "administrator before deactivating this one.");
             }
         }
 
@@ -255,13 +253,13 @@ public class UserProvisioningService {
      * .disabled(!isActive()).
      *
      * This delegates to setActive rather than repeating the flag flip, so the
-     * two safety rules above apply to DELETE exactly as they do to PATCH. An
-     * administrator must not be able to route around "you cannot remove the last
-     * administrator" by choosing a different HTTP verb.
+     * last-administrator invariant applies to DELETE exactly as it does to
+     * PATCH. An administrator must not be able to route around "you cannot
+     * remove the last administrator" by choosing a different HTTP verb.
      */
     @Transactional
-    public void softDelete(Long id, String actingAdminEmail) {
-        setActive(id, false, actingAdminEmail);
+    public void softDelete(Long id) {
+        setActive(id, false);
     }
 
     // ------------------------------------------------------------------
