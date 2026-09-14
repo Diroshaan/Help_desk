@@ -2,6 +2,10 @@ package com.helpdesk.common.user.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrimaryKeyJoinColumn;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
@@ -77,6 +81,30 @@ public class Administrator extends AppUser {
     @Column(name = "display_name", nullable = false, length = 100)
     private String displayName;
 
+    /**
+     * The administrator who created this administrator account.
+     *
+     * SELF-REFERENCING: both ends of this association are rows in the same
+     * table. That is legitimate and it is one of the relationship patterns the
+     * requirement specification asks the model to demonstrate - a second,
+     * naturally occurring one alongside F5's related-articles link.
+     *
+     * Nullable for the reason given on Officer.provisionedBy, plus one that is
+     * specific to this table and is the clearest case in the whole model: the
+     * very first administrator on a new deployment is created by
+     * AdminBootstrapSeeder precisely because no administrator exists yet to
+     * create it. That row's provisioned_by is null permanently. A NOT NULL
+     * column would make the seeder impossible to write without inserting a row
+     * that points at itself - which would record that the first administrator
+     * created itself, a claim that is simply false.
+     *
+     * LAZY, and a named foreign key, for the same reasons as on Officer.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "provisioned_by",
+            foreignKey = @ForeignKey(name = "fk_administrator_provisioned_by"))
+    private Administrator provisionedBy;
+
     // --- Constructors ---
 
     public Administrator() {
@@ -112,5 +140,21 @@ public class Administrator extends AppUser {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    /**
+     * Administrator needs no override of AppUser.getDisplayName(): the getter
+     * immediately above already has the right name and the right signature, so
+     * the compiler treats it as the implementation. That is not a coincidence to
+     * be tidied away - it is the reason getDisplayName() was the name chosen for
+     * the abstract method rather than getName() or getLabel().
+     */
+
+    public Administrator getProvisionedBy() {
+        return provisionedBy;
+    }
+
+    public void setProvisionedBy(Administrator provisionedBy) {
+        this.provisionedBy = provisionedBy;
     }
 }

@@ -193,6 +193,19 @@ public class Student extends AppUser {
         return Role.STUDENT;
     }
 
+    /**
+     * A student's display name is their registered full name.
+     *
+     * No new column: this delegates to the fullName that F1 already stores, so
+     * the supertype gains one polymorphic way to ask any account for a name
+     * without this table changing at all. See AppUser.getDisplayName() for why
+     * the three name fields were not consolidated instead.
+     */
+    @Override
+    public String getDisplayName() {
+        return fullName;
+    }
+
     // --- Getters and setters ---
     //
     // Note there are none for id, email, password, active or createdAt: those

@@ -182,6 +182,36 @@ public abstract class AppUser {
      */
     public abstract Role getRole();
 
+    /**
+     * The name to show for this account in a user interface.
+     *
+     * WHY AN ABSTRACT ACCESSOR RATHER THAN A COLUMN ON THIS TABLE
+     * -----------------------------------------------------------
+     * The three subtypes already name themselves differently, and for reasons
+     * that are real rather than accidental: a Student has a fullName that is
+     * their registered legal name, an Officer has a fullName that students and
+     * colleagues see, and an Administrator has a displayName that is usually an
+     * operational label ("Registry Systems Admin") rather than a person at all.
+     *
+     * The tidy design would be one name column on this table. I am deliberately
+     * not doing that. Student.fullName and Administrator.displayName are already
+     * mapped to columns on their own subtype tables, already hold data, and are
+     * already read by merged code belonging to other people. Moving them up to
+     * the supertype mid-sprint means a migration that rewrites three tables to
+     * fix a tidiness problem rather than a correctness one.
+     *
+     * This is the middle path, and it is what an abstract method is for. Callers
+     * that need "a name for this account, whatever kind it is" - the session
+     * endpoint, the admin user listing - ask one question and get one answer,
+     * with no instanceof and no downcast. Each subtype keeps its own column and
+     * its own meaning. Adding a fourth account type makes the compiler demand an
+     * answer, exactly as getRole() above does.
+     *
+     * Administrator satisfies this for free: its existing getDisplayName() has
+     * the right name and the right signature already.
+     */
+    public abstract String getDisplayName();
+
     // --- Getters and setters ---
 
     public Long getId() {

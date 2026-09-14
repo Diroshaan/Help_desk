@@ -107,6 +107,27 @@ public class SecurityConfig {
                         // Public: the login endpoint itself
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
 
+                        // Public: "am I logged in?"
+                        //
+                        // permitAll looks wrong on an endpoint that reports who
+                        // the user is, so it is worth being precise about what it
+                        // does and does not expose. The endpoint returns nothing
+                        // about anybody except the caller's own session, and a
+                        // caller with no session gets 401 and an empty body.
+                        //
+                        // It has to be public because of what the frontend does
+                        // with it. The React app calls this once on startup to
+                        // decide whether to render the app or the landing page,
+                        // and that call happens before anyone has logged in. If
+                        // it required authentication, Spring would answer the
+                        // anonymous call with 403 - and a 403 is ambiguous here:
+                        // it cannot be distinguished from "your session exists
+                        // but is not allowed", which is a different situation
+                        // needing different handling. Letting the request reach
+                        // the controller means the answer comes back as a clean
+                        // 401 with no body, which is unambiguous.
+                        .requestMatchers(HttpMethod.GET, "/api/auth/me").permitAll()
+
                         // Public: static frontend pages (register.html, login.html, and their
                         // CSS/JS) served straight out of src/main/resources/static, plus the
                         // React app's index.html and its built assets/ bundle, and images/media.
@@ -163,6 +184,70 @@ public class SecurityConfig {
                         .requestMatchers("/api/queue/**").hasRole("OFFICER")
                         // Admin-only: system administration features (F6).
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        // Officer-only: authoring the knowledge base (F5).
+                        //
+                        // WHY THESE ARE ENUMERATED ONE OPERATION AT A TIME,
+                        // RATHER THAN WRITTEN AS ONE TIDY LINE
+                        // -------------------------------------------------
+                        // The obvious version of this block is:
+                        //
+                        //     .requestMatchers("/api/articles/**").hasRole("OFFICER")
+                        //
+                        // and it would be a bug. /api/articles/** is not an
+                        // officer-only area - four different audiences share
+                        // that prefix:
+                        //
+                        //   GET    /api/articles                 any logged-in user (search)
+                        //   GET    /api/articles/{id}            any logged-in user (read)
+                        //   GET    /api/articles/bookmarked      students, their saved list
+                        //   POST   /api/articles/{id}/bookmark   students, saving one
+                        //   DELETE /api/articles/{id}/bookmark   students, unsaving one
+                        //   POST   /api/articles                 OFFICERS, authoring
+                        //
+                        // A blanket rule would 403 students out of searching and
+                        // bookmarking - the two things the whole feature exists
+                        // to give them. The path prefix does not describe the
+                        // permission; the specific operation does. So one
+                        // matcher per operation, and the student-facing paths
+                        // are deliberately absent so they fall through to
+                        // .anyRequest().authenticated() below.
+                        //
+                        // ORDER IS LOAD-BEARING. These are evaluated top to
+                        // bottom and the FIRST match wins, so /api/articles/manage
+                        // must be listed before any broader pattern that would
+                        // also match it.
+                        //
+                        // "*" matches ONE path segment; "**" matches any number.
+                        // /api/articles/* is therefore /api/articles/7 but NOT
+                        // /api/articles/7/publish - which is exactly why each
+                        // sub-resource gets its own line rather than being
+                        // swept up by a "**".
+                        //
+                        // Without these lines every path below falls through to
+                        // the catch-all, which requires only that SOMEBODY is
+                        // logged in - meaning any student could create, edit,
+                        // publish and archive knowledge base articles.
+                        .requestMatchers(HttpMethod.GET,    "/api/articles/manage").hasRole("OFFICER")
+                        .requestMatchers(HttpMethod.POST,   "/api/articles").hasRole("OFFICER")
+                        .requestMatchers(HttpMethod.PUT,    "/api/articles/*").hasRole("OFFICER")
+                        .requestMatchers(HttpMethod.POST,   "/api/articles/*/publish").hasRole("OFFICER")
+                        .requestMatchers(HttpMethod.POST,   "/api/articles/*/archive").hasRole("OFFICER")
+                        .requestMatchers(HttpMethod.POST,   "/api/articles/*/related").hasRole("OFFICER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/articles/*/related/*").hasRole("OFFICER")
+
+                        // Officer/Admin-only: aggregate feedback statistics.
+                        //
+                        // This endpoint takes a category and returns satisfaction
+                        // figures across every student's feedback for it. It has
+                        // no owner and no role check of its own, and it does not
+                        // sit under /api/admin/**, so until now it fell through
+                        // to the catch-all - meaning any logged-in student could
+                        // read the help desk's internal performance analytics.
+                        // Nothing there identifies an individual, so this is a
+                        // disclosure problem rather than a privacy breach, but it
+                        // is staff information and it was readable by everyone.
+                        .requestMatchers(HttpMethod.GET, "/api/feedback/summary").hasAnyRole("OFFICER", "ADMIN")
 
                         // Officer/Admin-only: listing every student's profile.
                         //

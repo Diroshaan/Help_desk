@@ -59,6 +59,22 @@ public record ProvisionOfficerRequest(
 
         @NotBlank(message = "Job title is required")
         @Size(max = 100, message = "Job title must be 100 characters or fewer")
-        String jobTitle
+        String jobTitle,
+
+        // The officer's name.
+        //
+        // Added when Officer.fullName was added to the shared user model. Before
+        // that the entity had nowhere to put a name, so this request did not
+        // collect one and every provisioned officer was identified in the admin
+        // listing by their job title - which is not unique and is not a name.
+        //
+        // Required, matching @NotBlank on the entity. Validating it in both
+        // places is not duplication for its own sake: this catches it at the
+        // edge of the system with a 400 and a field-level message the form can
+        // show next to the input, where the entity constraint catches it at
+        // flush time as a database error with no field attached to it.
+        @NotBlank(message = "Full name is required")
+        @Size(max = 120, message = "Full name must be 120 characters or fewer")
+        String fullName
 ) {
 }

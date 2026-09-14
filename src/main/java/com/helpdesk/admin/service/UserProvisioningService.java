@@ -94,11 +94,17 @@ public class UserProvisioningService {
                     "Staff number " + request.staffNumber() + " is already issued to another officer.");
         }
 
+        // Five-argument constructor, not the four-argument one: Officer.fullName
+        // is NOT NULL, so an officer built without a name is rejected at flush
+        // time with a database error rather than a useful message. The
+        // four-argument constructor is kept only for source compatibility and
+        // should not be used by new code.
         Officer officer = new Officer(
                 request.email(),
                 passwordEncoder.encode(request.password()),
                 request.staffNumber(),
-                request.jobTitle()
+                request.jobTitle(),
+                request.fullName()
         );
 
         return UserSummaryResponse.from(officerRepository.save(officer));

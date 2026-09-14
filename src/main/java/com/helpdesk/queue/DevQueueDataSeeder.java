@@ -49,6 +49,9 @@ public class DevQueueDataSeeder implements CommandLineRunner {
     private static final String SEEDED_DEPARTMENT_NAME = "IT Services";
     private static final String SEEDED_OFFICER_STAFF_NUMBER = "OF20250001";
     private static final String SEEDED_OFFICER_JOB_TITLE = "Support Officer";
+    // Added with Officer.fullName, which is NOT NULL - without a value here the
+    // seeder throws on startup and takes the whole application down with it.
+    private static final String SEEDED_OFFICER_FULL_NAME = "Demo Support Officer";
     private static final String SEEDED_OFFICER_EMAIL = "officer.demo@helpdesk.local";
     private static final String SEEDED_OFFICER_PASSWORD = "Officer@123";
 
@@ -77,7 +80,7 @@ public class DevQueueDataSeeder implements CommandLineRunner {
         // Never store the raw password - passwordEncoder is the same BCrypt
         // bean every real registration path uses.
         Officer officer = new Officer(SEEDED_OFFICER_EMAIL, passwordEncoder.encode(SEEDED_OFFICER_PASSWORD),
-                SEEDED_OFFICER_STAFF_NUMBER, SEEDED_OFFICER_JOB_TITLE);
+                SEEDED_OFFICER_STAFF_NUMBER, SEEDED_OFFICER_JOB_TITLE, SEEDED_OFFICER_FULL_NAME);
         officer.setDepartments(Set.of(department));
         officerRepository.save(officer);
 
