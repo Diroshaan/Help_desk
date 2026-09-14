@@ -3,6 +3,7 @@ target/
 
 # IDE files
 .idea/
+.run/
 *.iml
 .vscode/
 .classpath
@@ -18,3 +19,4 @@ Thumbs.db
 
 # Local-only config (e.g. personal DB credentials, never commit these)
 application-local.properties
+/config/
