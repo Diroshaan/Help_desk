@@ -1,11 +1,18 @@
 package com.helpdesk.common.user.entity;
 
+import com.helpdesk.common.reference.entity.Department;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.PrimaryKeyJoinColumn;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * SHARED USER MODEL - not owned by any single feature.
@@ -24,22 +31,21 @@ import jakarta.validation.constraints.Size;
  *
  * WHAT IS DELIBERATELY NOT HERE
  * -----------------------------
- * The specification asks for two more things about officers, and both are
- * listed under "Resolution & Queue Data", which is F4:
+ * The specification asks for one more thing about officers, listed under
+ * "Resolution & Queue Data", which is F4:
  *
  *   "The system must record that a senior officer supervises other officers,
  *    where each officer is supervised by at most one senior officer."
  *   -> a self-referencing @ManyToOne on this class
  *
- *   "The system must record which departments each officer serves, where an
- *    officer may serve one or more departments and a department may be served
- *    by many officers."
- *   -> a @ManyToMany to Department
+ * It belongs on this entity when it is built, and it is F4's to build. It is
+ * named here rather than left silent so the person who picks up that part of F4
+ * can see exactly what is expected of them and where it goes, and so a reviewer
+ * can tell the difference between "forgotten" and "not mine".
  *
- * Both belong on this entity when they are built, and both are F4's to build.
- * They are named here rather than left silent so the person who picks up F4 can
- * see exactly what is expected of them and where it goes, and so a reviewer can
- * tell the difference between "forgotten" and "not mine".
+ * The other queue-data item the specification asks for here - "which
+ * departments each officer serves" - IS now built, below: a @ManyToMany to
+ * Department.
  *
  *
  * WHY THIS CLASS EXISTS NOW, BEFORE ANYONE NEEDS AN OFFICER SCREEN
@@ -95,6 +101,20 @@ public class Officer extends AppUser {
     @Column(name = "job_title", nullable = false, length = 100)
     private String jobTitle;
 
+    /**
+     * The departments this officer serves - the many-to-many side of the
+     * requirement quoted above the class comment. Owning side (the join table
+     * lives here, not on Department), since "which departments does this
+     * officer work" is the direction F4's queue scoping actually queries.
+     */
+    @ManyToMany
+    @JoinTable(
+        name = "officer_departments",
+        joinColumns = @JoinColumn(name = "officer_id"),
+        inverseJoinColumns = @JoinColumn(name = "department_code")
+    )
+    private Set<Department> departments = new HashSet<>();
+
     // --- Constructors ---
 
     public Officer() {
@@ -131,5 +151,13 @@ public class Officer extends AppUser {
 
     public void setJobTitle(String jobTitle) {
         this.jobTitle = jobTitle;
+    }
+
+    public Set<Department> getDepartments() {
+        return departments;
+    }
+
+    public void setDepartments(Set<Department> departments) {
+        this.departments = departments;
     }
 }

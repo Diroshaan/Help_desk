@@ -2,11 +2,17 @@ package com.helpdesk.ticket.repository;
 
 import com.helpdesk.ticket.entity.Ticket;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import java.util.List;
 
-public interface TicketRepository extends JpaRepository<Ticket, Long> {
+public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecificationExecutor<Ticket> {
 
     List<Ticket> findByStudentId(Long studentId);
 
     List<Ticket> findByCategory(String category);
+
+    // F4: a department's queue - every ticket currently routed to it.
+    // Long -> String: Department's primary key is its natural code, not a
+    // generated Long (see common.reference.entity.Department.code).
+    List<Ticket> findByAssignedDepartmentId(String assignedDepartmentId);
 }

@@ -13,6 +13,17 @@ import java.time.LocalDateTime;
  * studentId is kept as a plain Long reference (not @ManyToOne), matching the
  * same pattern used by ticketportal.entity.Feedback, so this stays decoupled
  * from the profile package.
+ *
+ * assignedOfficerId / assignedDepartmentId / assignedAt / resolvedAt are
+ * added for F4 (common.user.entity.Officer / common.reference.entity.Department
+ * own the referenced rows) - queue routing needs to live somewhere, and
+ * shouldn't be reinvented separately by F2/F3/F4 given how central Ticket
+ * already is to all three. assignedOfficerId keeps the same plain-Long-reference
+ * pattern as studentId; assignedDepartmentId is a plain String reference instead,
+ * because Department's primary key is its natural code (see Department.code),
+ * not a generated Long. Together with the existing createdAt/updatedAt,
+ * assignedAt and resolvedAt give F4 the timestamps it needs to render a
+ * ticket's history timeline.
  */
 @Entity
 @Table(name = "tickets")
@@ -51,6 +62,21 @@ public class Ticket {
     private LocalDateTime createdAt = LocalDateTime.now();
 
     private LocalDateTime updatedAt = LocalDateTime.now();
+
+    // Null until F4's queue engine assigns the ticket to an officer/department.
+    private Long assignedOfficerId;
+
+    private String assignedDepartmentId;
+
+    private LocalDateTime assignedAt;
+
+    // Null until the ticket reaches TicketStatus.RESOLVED.
+    private LocalDateTime resolvedAt;
+
+    @PreUpdate
+    public void touchUpdatedAt(){
+        this.updatedAt = LocalDateTime.now();
+    }
 
     //Constructors
     public Ticket() {}    // Required no-argument constructor for JPA
@@ -109,5 +135,29 @@ public class Ticket {
     }
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+    public Long getAssignedOfficerId() {
+        return assignedOfficerId;
+    }
+    public void setAssignedOfficerId(Long assignedOfficerId) {
+        this.assignedOfficerId = assignedOfficerId;
+    }
+    public String getAssignedDepartmentId() {
+        return assignedDepartmentId;
+    }
+    public void setAssignedDepartmentId(String assignedDepartmentId) {
+        this.assignedDepartmentId = assignedDepartmentId;
+    }
+    public LocalDateTime getAssignedAt() {
+        return assignedAt;
+    }
+    public void setAssignedAt(LocalDateTime assignedAt) {
+        this.assignedAt = assignedAt;
+    }
+    public LocalDateTime getResolvedAt() {
+        return resolvedAt;
+    }
+    public void setResolvedAt(LocalDateTime resolvedAt) {
+        this.resolvedAt = resolvedAt;
     }
 }

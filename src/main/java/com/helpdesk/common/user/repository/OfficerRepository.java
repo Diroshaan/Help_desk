@@ -40,4 +40,11 @@ public interface OfficerRepository extends JpaRepository<Officer, Long> {
      * rows only to throw them away.
      */
     List<Officer> findByActiveTrueOrderByJobTitleAsc();
+
+    /**
+     * F4's "is this officer allowed to act" lookup: fetch by id only if still
+     * active, in one query rather than findById() followed by a Java-side
+     * isActive() check.
+     */
+    Optional<Officer> findByIdAndActive(Long id, boolean active);
 }
