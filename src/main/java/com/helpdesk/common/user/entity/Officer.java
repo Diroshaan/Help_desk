@@ -3,7 +3,10 @@ package com.helpdesk.common.user.entity;
 import com.helpdesk.common.reference.entity.Department;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.PrimaryKeyJoinColumn;
@@ -102,6 +105,62 @@ public class Officer extends AppUser {
     private String jobTitle;
 
     /**
+     * The officer's own name, as students and colleagues see it.
+     *
+     * This was missing until now, and its absence was my omission when I built
+     * this hierarchy: Officer was the only account type in the model with no way
+     * to say who it was. F5 needs it to credit an article's author and F6 needs
+     * it for the admin user listing, so both features had to work around a gap
+     * in shared code rather than in their own.
+     *
+     * NOT NULL, unlike Administrator.staffNumber above: an officer with no name
+     * is not a meaningful record. Every officer account is created deliberately
+     * by an administrator through F6's provisioning endpoint, so there is never
+     * a moment where the name is legitimately unknown - which is precisely the
+     * difference from provisionedBy below, where "not recorded" is a real and
+     * permanent state for some rows.
+     *
+     * @Size as well as @Column(length), for the reason spelled out on jobTitle.
+     */
+    @NotBlank(message = "An officer must have a full name")
+    @Size(max = 120, message = "Full name must be 120 characters or fewer")
+    @Column(name = "full_name", nullable = false, length = 120)
+    private String fullName;
+
+    /**
+     * The administrator who created this officer account (F6, WBHD-35).
+     *
+     * WHY NULLABLE, WHEN ALMOST EVERY OTHER FOREIGN KEY HERE IS NOT
+     * -------------------------------------------------------------
+     * Nullable is a true statement about the domain here, not a shortcut. Two
+     * real cases have no provisioner and never will:
+     *
+     *   1. Accounts created before this column existed. Backfilling them with a
+     *      guessed administrator would be inventing audit data, which is worse
+     *      than recording that it is unknown.
+     *   2. Nothing else - but see Administrator.provisionedBy, where the
+     *      bootstrap account makes the same point more sharply.
+     *
+     * A NOT NULL column would force a lie in both cases. NULL reads as "not
+     * recorded", which is what is actually true.
+     *
+     * LAZY rather than the @ManyToOne default of EAGER: the provisioner is audit
+     * information, read on one admin screen and nowhere else. EAGER would make
+     * every officer load - every login, every queue listing - fetch an
+     * administrator row nobody asked for, and on a list of officers that is the
+     * N+1 problem: one query for the list, then one more for every row in it.
+     * The screen that wants this data can ask for it with a JOIN FETCH.
+     *
+     * The foreign key is named for the same reason Category's is: Hibernate
+     * otherwise invents something like FKq7x2m1k, and a named constraint is what
+     * makes the generated schema readable in the ER diagram the module asks for.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "provisioned_by",
+            foreignKey = @ForeignKey(name = "fk_officer_provisioned_by"))
+    private Administrator provisionedBy;
+
+    /**
      * The departments this officer serves - the many-to-many side of the
      * requirement quoted above the class comment. Owning side (the join table
      * lives here, not on Department), since "which departments does this
@@ -128,11 +187,33 @@ public class Officer extends AppUser {
         this.jobTitle = jobTitle;
     }
 
+    /**
+     * Preferred constructor now that an officer has a name.
+     *
+     * The four-argument one above is kept rather than replaced so existing
+     * callers (F6's provisioning service, the dev seeders) still compile - but
+     * an Officer built that way has a null fullName and will be rejected by the
+     * NOT NULL column at flush time. Callers should move to this one; the old
+     * one should be deleted once none are left.
+     */
+    public Officer(String email, String password, String staffNumber, String jobTitle, String fullName) {
+        this(email, password, staffNumber, jobTitle);
+        this.fullName = fullName;
+    }
+
     // --- Role ---
 
     @Override
     public Role getRole() {
         return Role.OFFICER;
+    }
+
+    /**
+     * An officer's display name is their full name - see AppUser.getDisplayName().
+     */
+    @Override
+    public String getDisplayName() {
+        return fullName;
     }
 
     // --- Getters and setters ---
@@ -151,6 +232,22 @@ public class Officer extends AppUser {
 
     public void setJobTitle(String jobTitle) {
         this.jobTitle = jobTitle;
+    }
+
+    public String getFullName() {
+        return fullName;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    public Administrator getProvisionedBy() {
+        return provisionedBy;
+    }
+
+    public void setProvisionedBy(Administrator provisionedBy) {
+        this.provisionedBy = provisionedBy;
     }
 
     public Set<Department> getDepartments() {

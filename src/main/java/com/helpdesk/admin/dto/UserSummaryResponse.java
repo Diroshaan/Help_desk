@@ -69,7 +69,13 @@ public record UserSummaryResponse(
             label = student.getFullName();
             reference = student.getStudentId();
         } else if (user instanceof Officer officer) {
-            label = officer.getJobTitle();
+            // Was getJobTitle(), because Officer had no name field when this
+            // screen was written. It does now, so the name column shows a name
+            // for all three account types instead of showing "Support Officer"
+            // for every officer on the list - a job title is neither unique nor
+            // an identity, and two officers sharing one made the listing
+            // ambiguous.
+            label = officer.getFullName();
             reference = officer.getStaffNumber();
         } else if (user instanceof Administrator administrator) {
             label = administrator.getDisplayName();

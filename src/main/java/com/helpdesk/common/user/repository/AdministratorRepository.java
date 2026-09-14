@@ -37,4 +37,16 @@ public interface AdministratorRepository extends JpaRepository<Administrator, Lo
      * and existsBy() over all rows would report everything is fine.
      */
     boolean existsByActiveTrue();
+
+    /**
+     * Same question as existsByActiveTrue(), but excluding one specific
+     * administrator - the one currently being deactivated.
+     *
+     * Without excluding self, deactivating the LAST active administrator
+     * would ask "does any active administrator exist?", find the one
+     * about to be deactivated still marked active (the flip hasn't
+     * happened yet), and wrongly allow the lockout this check exists to
+     * prevent.
+     */
+    boolean existsByActiveTrueAndIdNot(Long id);
 }
