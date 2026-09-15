@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { API, errorMessage, fieldErrors, initials, request } from '../api.js'
 import { Avatar, Field, Notice, SelectField } from '../components/Bits.jsx'
+import { Sidebar } from '../components/Sidebar.jsx'
 import { useSession } from '../hooks/useSession.jsx'
 
 const DEPARTMENTS = [
@@ -33,7 +34,7 @@ const PREFERENCES = [
 
 export default function Profile() {
   const navigate = useNavigate()
-  const { status, student, setStudent, signOut } = useSession()
+  const { status, student, setStudent } = useSession()
 
   const [form, setForm] = useState(null)
   // Built from PREFERENCES so adding a preference means editing one array.
@@ -135,14 +136,7 @@ export default function Profile() {
 
   return (
     <div className="shell">
-      <Sidebar student={student} onSignOut={async () => { await signOut(); navigate('/') }}
-               onTicket={() => {
-                 setNotice({
-                   kind: 'info',
-                   text: 'Ticket submission is part of F2 and arrives in Sprint 3. Until then, the department contacts are listed at the bottom of the help desk home page.'
-                 })
-                 window.scrollTo({ top: 0, behavior: 'smooth' })
-               }} />
+      <Sidebar />
 
       <main className="content">
         <div className="content-col rise rise-1">
@@ -267,64 +261,5 @@ export default function Profile() {
         </div>
       </main>
     </div>
-  )
-}
-
-/* --------------------------------------------------------------------------
-   The sidebar. Two groups: out to the help desk itself, and into the account.
-   Without the first group the profile page is a dead end — the only way back
-   to the knowledge base was editing the address bar.
-   -------------------------------------------------------------------------- */
-/**
- * Scrolls to a section of the profile page WITHOUT touching the URL.
- *
- * The two links below used to be plain anchors — <a href="#activity"> — which
- * is the normal way to jump to an element on a page. It does not work here,
- * and the reason is worth knowing: the app uses HashRouter (see App.jsx), so
- * the router treats everything after '#' as the ROUTE. Clicking that anchor
- * rewrote the URL from '#/profile' to '#activity', the router looked for a
- * route called '/activity', found none, and dropped the student back on the
- * welcome page.
- *
- * In-page anchors and hash routing cannot share the same '#'. Scrolling the
- * element into view directly does the job the anchor was meant to do and
- * leaves the route alone.
- */
-function scrollToSection(id) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
-
-function Sidebar({ student, onSignOut, onTicket }) {
-  return (
-    <aside className="sidebar">
-      <Link className="brand" to="/">UNIHELP</Link>
-
-      <nav className="side-nav">
-        <p className="side-nav__label">Help desk</p>
-        <Link to="/">Home</Link>
-        <Link to="/#topics">Browse FAQ</Link>
-        <a href="#" onClick={event => { event.preventDefault(); onTicket?.() }}>Submit a ticket</a>
-
-        <p className="side-nav__label">My account</p>
-        <Link to="/profile" aria-current="page">My profile</Link>
-        {/* href="#" with preventDefault, matching "Submit a ticket" above:
-            it keeps the .side-nav a styling and the keyboard behaviour of a
-            link, while scrollToSection does the actual work. */}
-        <a href="#" onClick={event => { event.preventDefault(); scrollToSection('preferences') }}>
-          Preferences
-        </a>
-        <a href="#" onClick={event => { event.preventDefault(); scrollToSection('activity') }}>
-          Recent activity
-        </a>
-      </nav>
-
-      <div className="side-foot">
-        <p className="side-user">
-          <span>{(student?.fullName || '').split(' ')[0] || 'Student'}</span>
-          <span className="mono">{student?.studentId || ''}</span>
-        </p>
-        <button className="side-logout" type="button" onClick={onSignOut}>Log out</button>
-      </div>
-    </aside>
   )
 }

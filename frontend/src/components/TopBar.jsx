@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { initials } from '../api.js'
 import { useSession } from '../hooks/useSession.jsx'
+import { homeFor } from '../routes.jsx'
 import { Avatar } from './Bits.jsx'
 
 /**
@@ -13,7 +14,7 @@ import { Avatar } from './Bits.jsx'
  * profile. Which one shows is decided by the session, not by the page.
  */
 export function TopBar() {
-  const { status, student, signOut } = useSession()
+  const { status, user, student, signOut } = useSession()
   const navigate = useNavigate()
 
   const [open, setOpen] = useState(false)
@@ -50,8 +51,10 @@ export function TopBar() {
     navigate('/')
   }
 
-  const signedIn = status === 'signedIn' && student
-  const marks = signedIn ? initials(student.fullName) : '–'
+  const signedIn = status === 'signedIn' && user
+  const displayName = student?.fullName || user?.displayName || ''
+  const marks = signedIn ? initials(displayName) : '–'
+  const homeLink = homeFor(user?.role)
 
   return (
     <header className="topbar">
@@ -90,9 +93,9 @@ export function TopBar() {
               aria-haspopup="true"
               onClick={() => setOpen(value => !value)}
             >
-              <Avatar marks={marks} src={student.profilePictureUrl} small />
+              <Avatar marks={marks} src={student?.profilePictureUrl} small />
               <span className="account__label">
-                {(student.fullName || '').split(' ')[0] || 'My account'}
+                {displayName.split(' ')[0] || 'My account'}
               </span>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"
                    stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -110,17 +113,23 @@ export function TopBar() {
                   transition={{ duration: 0.16, ease: [0.22, 0.61, 0.36, 1] }}
                 >
                   <div className="account__head">
-                    <Avatar marks={marks} src={student.profilePictureUrl} />
+                    <Avatar marks={marks} src={student?.profilePictureUrl} />
                     <div className="account__who">
-                      <strong>{student.fullName || '(no name set)'}</strong>
-                      <span className="mono">{student.studentId || ''}</span>
-                      <span>{student.email || ''}</span>
+                      <strong>{displayName || '(no name set)'}</strong>
+                      {student?.studentId && <span className="mono">{student.studentId}</span>}
+                      <span>{user?.email || ''}</span>
                     </div>
                   </div>
 
-                  <Link to="/profile" onClick={() => setOpen(false)}>My profile</Link>
-                  <Link to="/profile#preferences" onClick={() => setOpen(false)}>Notification preferences</Link>
-                  <Link to="/profile#activity" onClick={() => setOpen(false)}>Recent activity</Link>
+                  {student ? (
+                    <>
+                      <Link to="/profile" onClick={() => setOpen(false)}>My profile</Link>
+                      <Link to="/profile#preferences" onClick={() => setOpen(false)}>Notification preferences</Link>
+                      <Link to="/profile#activity" onClick={() => setOpen(false)}>Recent activity</Link>
+                    </>
+                  ) : (
+                    <Link to={homeLink} onClick={() => setOpen(false)}>Go to my dashboard</Link>
+                  )}
 
                   <hr />
                   <button type="button" className="danger" onClick={handleSignOut}>Log out</button>

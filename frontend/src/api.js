@@ -5,11 +5,89 @@
  * one-line change here rather than a hunt through five components.
  */
 export const API = {
+  // Auth / session
   login:    '/api/auth/login',
   logout:   '/api/auth/logout',
-  session:  '/api/students/me',         // who is logged in right now
+  me:       '/api/auth/me',             // CurrentUserResponse for ANY role
+
+  // Student profile (STUDENT only)
+  session:  '/api/students/me',         // full StudentResponse, students only
   register: '/api/students',            // POST -> 201 Created
-  student:  (id) => '/api/students/' + id
+  students: '/api/students',            // GET (OFFICER/ADMIN) -> list
+  student:  (id) => '/api/students/' + id,
+
+  // Tickets (student side)
+  ticketCategories: '/api/tickets/categories',
+  tickets:          '/api/tickets',
+  ticket:           (id) => '/api/tickets/' + id,
+  ticketWithdraw:   (id) => '/api/tickets/' + id + '/withdraw',
+  ticketSearch:     '/api/tickets/search',
+  ticketAttachments:(id) => '/api/tickets/' + id + '/attachments',
+  ticketAttachment: (id, attachmentId) => '/api/tickets/' + id + '/attachments/' + attachmentId,
+
+  // Officer queue
+  queue:           '/api/queue',
+  queueTicket:     (id) => '/api/queue/' + id,
+  queueStatus:     (id) => '/api/queue/' + id + '/status',
+  queueAssign:     (id) => '/api/queue/' + id + '/assign',
+  queueResolution: (id) => '/api/queue/' + id + '/resolution',
+  queueNotes:      (id) => '/api/queue/' + id + '/notes',
+  queueNote:       (id, noteId) => '/api/queue/' + id + '/notes/' + noteId,
+
+  // Bookmarks & folders (tickets)
+  bookmarks:       '/api/bookmarks',
+  bookmark:        (id) => '/api/bookmarks/' + id,
+  bookmarkFolder:  (id) => '/api/bookmarks/' + id + '/folder',
+  bookmarkFolders: '/api/bookmark-folders',
+  bookmarkFolderItem: (id) => '/api/bookmark-folders/' + id,
+
+  // Feedback & archive (tickets)
+  ticketFeedback: (id) => '/api/tickets/' + id + '/feedback',
+  feedbackSummary: '/api/feedback/summary',
+  ticketArchive:  (id) => '/api/tickets/' + id + '/archive',
+
+  // Knowledge base
+  articles:        '/api/articles',
+  article:         (id) => '/api/articles/' + id,
+  articlesManage:  '/api/articles/manage',
+  articlePublish:  (id) => '/api/articles/' + id + '/publish',
+  articleArchive:  (id) => '/api/articles/' + id + '/archive',
+  articleRelated:  (id) => '/api/articles/' + id + '/related',
+  articleRelatedItem: (id, relatedId) => '/api/articles/' + id + '/related/' + relatedId,
+  articleBookmark: (id) => '/api/articles/' + id + '/bookmark',
+  articlesBookmarked: '/api/articles/bookmarked',
+
+  // Admin
+  announcements:      '/api/announcements',            // live feed, any role
+  adminAnnouncements: '/api/admin/announcements',
+  adminAnnouncement:  (id) => '/api/admin/announcements/' + id,
+  adminDashboard:     '/api/admin/dashboard',
+  adminUsers:         '/api/admin/users',
+  adminUserStatus:    (id) => '/api/admin/users/' + id + '/status',
+  adminUser:          (id) => '/api/admin/users/' + id,
+  adminOfficers:      '/api/admin/officers',
+  adminAdministrators:'/api/admin/administrators',
+
+  // Reference data
+  departments:           '/api/departments',
+  categories:            '/api/categories',
+  departmentCategories:  (code) => '/api/departments/' + code + '/categories'
+}
+
+/**
+ * Turns { a: 1, b: undefined, c: '' } into '?a=1&c=' — keys whose value is
+ * undefined or null are dropped, so callers can pass optional filters
+ * without building the query string by hand.
+ */
+export function withQuery(url, params) {
+  if (!params) return url
+  const search = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+    search.set(key, value)
+  })
+  const qs = search.toString()
+  return qs ? url + '?' + qs : url
 }
 
 /**
@@ -35,7 +113,25 @@ export async function request(url, options = {}) {
   }
 
   const response = await fetch(url, config)
+  return readResponse(response)
+}
 
+/**
+ * Same contract as request(), but sends a FormData body instead of JSON —
+ * for the two multipart endpoints (ticket attachments, queue resolutions).
+ * Never set Content-Type by hand on a FormData request: the browser has to
+ * append the multipart boundary itself, and a hand-set header omits it.
+ */
+export async function requestForm(url, { method = 'POST', form } = {}) {
+  const response = await fetch(url, {
+    method,
+    credentials: 'same-origin',
+    body: form
+  })
+  return readResponse(response)
+}
+
+async function readResponse(response) {
   let data = null
   const text = await response.text()
   if (text) {
@@ -111,4 +207,18 @@ export function initials(name) {
   const first = parts[0] ? parts[0][0] : ''
   const last = parts.length > 1 ? parts[parts.length - 1][0] : ''
   return (first + last).toUpperCase()
+}
+
+/** Renders an ISO-ish LocalDateTime string as something a person reads
+ *  comfortably. ActivityLogResponse.timestamp is already pre-formatted by the
+ *  backend and must NOT go through this — this is for the plain
+ *  LocalDateTime fields (createdAt, updatedAt, ...) most other DTOs return. */
+export function formatDateTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  })
 }

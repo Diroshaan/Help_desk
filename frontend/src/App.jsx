@@ -1,12 +1,8 @@
 import { useEffect } from 'react'
-import { HashRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { SessionProvider } from './hooks/useSession.jsx'
-import Welcome from './pages/Welcome.jsx'
-import Login from './pages/Login.jsx'
-import Register from './pages/Register.jsx'
-import Profile from './pages/Profile.jsx'
-import DeleteAccount from './pages/DeleteAccount.jsx'
+import { SessionProvider, useSession } from './hooks/useSession.jsx'
+import { ROUTES, homeFor } from './routes.jsx'
 import './styles/app.css'
 
 /**
@@ -53,6 +49,41 @@ function ScrollToTop() {
 }
 
 /**
+ * Gate around one route's element, driven by that route's `access` entry in
+ * routes.jsx:
+ *
+ *   'public' — render for anyone
+ *   'guest'  — render only while signed out; a signed-in visitor is sent to
+ *              their own home screen instead (so a logged-in officer hitting
+ *              /login lands on the queue, not the login form)
+ *   [roles]  — render only for those roles; anyone else — guest or the wrong
+ *              role — is sent to '/'
+ *
+ * Waiting for `status !== 'loading'` before deciding is what stops a
+ * protected page from reading a not-yet-answered session as "guest" and
+ * redirecting away before the server had a chance to say otherwise.
+ */
+function Protected({ access, children }) {
+  const { status, role } = useSession()
+
+  if (status === 'loading') {
+    return <div className="content"><div className="content-col"><p className="empty">Loading…</p></div></div>
+  }
+
+  if (access === 'public') return children
+
+  if (access === 'guest') {
+    return status === 'signedIn' ? <Navigate to={homeFor(role)} replace /> : children
+  }
+
+  if (status !== 'signedIn' || !access.includes(role)) {
+    return <Navigate to="/" replace />
+  }
+
+  return children
+}
+
+/**
  * Pages cross-fade instead of snapping. 180ms is short enough that it reads as
  * responsiveness rather than as an animation you are waiting for.
  */
@@ -69,14 +100,14 @@ function AnimatedRoutes() {
         transition={{ duration: 0.18, ease: [0.22, 0.61, 0.36, 1] }}
       >
         <Routes location={location}>
-          <Route path="/" element={<Welcome />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/delete-account" element={<DeleteAccount />} />
+          {ROUTES.map(({ path, Component, access }) => (
+            <Route key={path} path={path} element={
+              <Protected access={access}><Component /></Protected>
+            } />
+          ))}
 
           {/* Anything unrecognised goes home rather than showing a blank page. */}
-          <Route path="*" element={<Welcome />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </motion.div>
     </AnimatePresence>
