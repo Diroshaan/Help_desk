@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { API, formatDateTime, request } from '../../api.js'
+import { API, errorMessage, formatDateTime, request } from '../../api.js'
 import { Notice, StatusPill } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 import { useSession } from '../../hooks/useSession.jsx'
@@ -12,6 +12,15 @@ export default function ArticleDetail() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
+  // F5 - a student's saved articles. `saved` is derived by asking for the
+  // student's bookmarked list and checking whether this article is in it,
+  // rather than by a per-article "is it saved" endpoint, because
+  // GET /api/articles/bookmarked is the only read the backend offers. One
+  // request answers the question for this page and costs nothing extra.
+  const [saved, setSaved] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [notice, setNotice] = useState(null)
+
   useEffect(() => {
     setLoading(true); setNotFound(false)
     request(API.article(id)).then(r => {
@@ -20,6 +29,42 @@ export default function ArticleDetail() {
       setLoading(false)
     })
   }, [id])
+
+  // Only a student can bookmark an article - the backend resolves the owner
+  // from the session through StudentRepository, so an officer calling it gets
+  // "No student account for ...". Asking at all would be a guaranteed error,
+  // so the request is not made and the button is not rendered.
+  useEffect(() => {
+    if (role !== 'STUDENT') return
+    request(API.articlesBookmarked).then(r => {
+      if (r.ok) setSaved((r.data || []).some(a => a.id === Number(id)))
+    })
+  }, [id, role])
+
+  /**
+   * Save or unsave this article (F5).
+   *
+   * The state is flipped only after the server confirms, never optimistically.
+   * An optimistic flip here would be a lie in the one case that matters: the
+   * unique constraint uq_article_bookmark_student_article rejects a duplicate
+   * save, and the button would already be showing "Saved" while nothing had
+   * been stored.
+   */
+  async function toggleSaved() {
+    setBusy(true); setNotice(null)
+    try {
+      const result = await request(API.articleBookmark(id), { method: saved ? 'DELETE' : 'POST' })
+      if (result.ok || result.status === 204) {
+        setSaved(!saved)
+      } else {
+        setNotice({ kind: 'error', text: errorMessage(result, 'We could not update your saved articles.') })
+      }
+    } catch {
+      setNotice({ kind: 'error', text: 'Could not reach the server.' })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   if (loading) {
     return <div className="shell"><Sidebar /><main className="content">
@@ -54,11 +99,18 @@ export default function ArticleDetail() {
             By {article.authorName} · Updated {formatDateTime(article.updatedAt)}
           </p>
 
-          {role === 'OFFICER' && (
-            <div className="btn-row" style={{ marginTop: 12 }}>
+          {notice && <Notice kind={notice.kind} style={{ margin: '18px 0 0' }}>{notice.text}</Notice>}
+
+          <div className="btn-row" style={{ marginTop: 12 }}>
+            {role === 'STUDENT' && (
+              <button type="button" className="btn btn--ghost" onClick={toggleSaved} disabled={busy}>
+                {saved ? 'Remove from saved' : 'Save this article'}
+              </button>
+            )}
+            {role === 'OFFICER' && (
               <Link className="btn btn--ghost" to={'/kb/manage/' + article.id}>Edit this article</Link>
-            </div>
-          )}
+            )}
+          </div>
 
           <section className="section">
             <p style={{ whiteSpace: 'pre-wrap' }}>{article.body}</p>

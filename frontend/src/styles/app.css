@@ -1266,3 +1266,35 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) {
     .reveal { opacity: 1; transform: none; transition: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Star rating (F3 ticket feedback, US-12)
+
+   Deliberately plain: the star characters themselves carry the meaning, so the
+   buttons are stripped of their chrome rather than given a border and a fill.
+   No shadow, no gradient, no scale-on-hover - the same restraint the rest of
+   this system keeps. Colour alone does not carry the state either: a chosen
+   star is a FILLED glyph and an unchosen one is HOLLOW, which still reads
+   correctly in monochrome or to someone who cannot distinguish the two colours
+   (NFR 5.4).
+--------------------------------------------------------------------------- */
+.stars { display: flex; gap: 2px; align-items: center; }
+
+.stars__s {
+    background: none;
+    border: 0;
+    padding: 0 2px;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--ink-3);
+    cursor: pointer;
+    border-radius: var(--r);
+}
+
+.stars__s.is-on { color: var(--teal); }
+
+.stars__s:disabled { cursor: default; }
+
+/* Focus must stay visible: this is the only affordance a keyboard user has to
+   see which star they are about to choose. */
+.stars__s:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
