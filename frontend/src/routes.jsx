@@ -3,6 +3,7 @@ import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
 import Profile from './pages/Profile.jsx'
 import DeleteAccount from './pages/DeleteAccount.jsx'
+import Announcements from './pages/Announcements.jsx'
 
 import TicketList from './pages/student/TicketList.jsx'
 import TicketNew from './pages/student/TicketNew.jsx'
@@ -16,6 +17,7 @@ import Articles from './pages/kb/Articles.jsx'
 import ArticleDetail from './pages/kb/ArticleDetail.jsx'
 import ArticleManage from './pages/kb/ArticleManage.jsx'
 import ArticleEditor from './pages/kb/ArticleEditor.jsx'
+import SavedArticles from './pages/kb/SavedArticles.jsx'
 
 import AdminDashboard from './pages/admin/Dashboard.jsx'
 import AdminUsers from './pages/admin/Users.jsx'
@@ -53,6 +55,8 @@ export const ROUTES = [
 
   { path: '/kb', Component: Articles, access: ['STUDENT', 'OFFICER', 'ADMIN'],
     nav: { section: 'Knowledge base', label: 'Browse articles' } },
+  { path: '/kb/saved', Component: SavedArticles, access: ['STUDENT'],
+    nav: { section: 'Knowledge base', label: 'Saved articles' } },
   { path: '/kb/manage', Component: ArticleManage, access: ['OFFICER'],
     nav: { section: 'Knowledge base', label: 'Manage articles' } },
   { path: '/kb/manage/new', Component: ArticleEditor, access: ['OFFICER'] },
@@ -63,12 +67,21 @@ export const ROUTES = [
     nav: { section: 'Support queue', label: 'Queue' } },
   { path: '/queue/:id', Component: QueueDetail, access: ['OFFICER'] },
 
+  // Every signed-in role, because an outage notice matters to staff as much
+  // as to students.
+  //
+  // Its own section rather than 'Help desk': Sidebar.jsx renders that heading
+  // itself for the Home and Browse FAQ links, and reusing the name here would
+  // draw a second heading with the same text further down the nav.
+  { path: '/announcements', Component: Announcements, access: ['STUDENT', 'OFFICER', 'ADMIN'],
+    nav: { section: 'Notices', label: 'Announcements' } },
+
   { path: '/admin/dashboard', Component: AdminDashboard, access: ['ADMIN'],
     nav: { section: 'Administration', label: 'Dashboard' } },
   { path: '/admin/users', Component: AdminUsers, access: ['ADMIN'],
     nav: { section: 'Administration', label: 'Users' } },
   { path: '/admin/announcements', Component: AdminAnnouncements, access: ['ADMIN'],
-    nav: { section: 'Administration', label: 'Announcements' } }
+    nav: { section: 'Administration', label: 'Manage announcements' } }
 ]
 
 /** Where to send someone the instant we know their role — after login, and

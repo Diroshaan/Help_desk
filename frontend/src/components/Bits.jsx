@@ -143,3 +143,44 @@ export function Row({ to, title, subtitle, meta, right, onClick }) {
     </div>
   )
 }
+
+/**
+ * A 1-5 star rating, used by the ticket feedback form (F3, US-12).
+ *
+ * WHY BUTTONS RATHER THAN A ROW OF DECORATIVE SPANS
+ * -------------------------------------------------
+ * A rating is an input, so it has to behave like one: reachable by Tab,
+ * settable with Enter or Space, and announced to a screen reader as "Rate 4
+ * out of 5". A div with an onClick is none of those things, and NFR 5.4 asks
+ * for keyboard accessibility explicitly. Native <button> elements give all of
+ * it for free rather than needing role/tabIndex/onKeyDown written by hand.
+ *
+ * `readOnly` renders the same markup with the buttons disabled, so the saved
+ * rating looks identical to the one being chosen instead of being a second,
+ * slightly different star row somewhere else in the file.
+ */
+export function Rating({ value, onChange, readOnly = false }) {
+  const stars = [1, 2, 3, 4, 5]
+  return (
+    <div className="stars" role={readOnly ? 'img' : 'group'}
+         aria-label={readOnly ? value + ' out of 5' : 'Rating, 1 to 5'}>
+      {stars.map(star => (
+        <button
+          key={star}
+          type="button"
+          className={'stars__s' + (star <= value ? ' is-on' : '')}
+          disabled={readOnly}
+          aria-label={'Rate ' + star + ' out of 5'}
+          aria-pressed={!readOnly && star === value}
+          onClick={readOnly ? undefined : () => onChange(star)}
+        >
+          {/* A filled or hollow star. aria-hidden because the button's own
+              aria-label already says what this control does - without it a
+              screen reader would read the character as well and announce the
+              control twice. */}
+          <span aria-hidden="true">{star <= value ? '★' : '☆'}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
