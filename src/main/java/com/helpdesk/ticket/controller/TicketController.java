@@ -1,9 +1,10 @@
 package com.helpdesk.ticket.controller;
 
 import com.helpdesk.common.exception.ResourceNotFoundException;
+import com.helpdesk.common.reference.entity.Category;
+import com.helpdesk.common.reference.repository.CategoryRepository;
 import com.helpdesk.profile.entity.Student;
 import com.helpdesk.profile.service.StudentService;
-import com.helpdesk.ticket.TicketCategories;
 import com.helpdesk.ticket.dto.AttachmentResponse;
 import com.helpdesk.ticket.dto.TicketCreateRequest;
 import com.helpdesk.ticket.dto.TicketResponse;
@@ -39,20 +40,34 @@ public class TicketController {
     private final TicketService ticketService;
     private final AttachmentService attachmentService;
     private final StudentService studentService;
+    private final CategoryRepository categoryRepository;
 
     @Autowired
     public TicketController(TicketService ticketService, AttachmentService attachmentService,
-                             StudentService studentService) {
+                             StudentService studentService, CategoryRepository categoryRepository) {
         this.ticketService = ticketService;
         this.attachmentService = attachmentService;
         this.studentService = studentService;
+        this.categoryRepository = categoryRepository;
     }
 
     // Shared list of valid categories, used by the frontend to populate the
-    // create/edit ticket dropdown (see TicketCategories).
+    // create/edit ticket dropdown.
+    //
+    // CHANGED (see TicketService.requireValidCategory's "FLAG FOR F2 REVIEW"
+    // comment): this used to return the hardcoded TicketCategories.ALL, which
+    // no longer matches what TicketService actually accepts now that category
+    // validation checks the seeded common.reference.entity.Category table
+    // instead. That mismatch meant EVERY value this dropdown offered a
+    // student was rejected by POST /api/tickets with "Invalid category" -
+    // ticket submission was unconditionally broken. Reading from the same
+    // repository TicketService validates against is what makes the dropdown
+    // and the validation agree again; TicketCategories.ALL is now unused here.
     @GetMapping("/categories")
     public List<String> categories() {
-        return TicketCategories.ALL;
+        return categoryRepository.findSelectableWithDepartment().stream()
+                .map(Category::getName)
+                .toList();
     }
 
     @PostMapping

@@ -15,4 +15,9 @@ public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecif
     // Long -> String: Department's primary key is its natural code, not a
     // generated Long (see common.reference.entity.Department.code).
     List<Ticket> findByAssignedDepartmentId(String assignedDepartmentId);
+
+    // F4: tickets fresh from F2 that nobody has routed to a department yet.
+    // QueueService.findQueue needs these alongside an officer's own
+    // department queues - see the fix note on that method.
+    List<Ticket> findByAssignedDepartmentIdIsNull();
 }

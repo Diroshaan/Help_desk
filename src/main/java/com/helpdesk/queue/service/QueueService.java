@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
@@ -77,6 +78,21 @@ public class QueueService {
     // departmentId/status are optional filters; a null departmentId defaults
     // to every department the caller serves, since an officer has no
     // business browsing a department they don't serve by default.
+    //
+    // FIX: this used to return ONLY tickets already routed to one of the
+    // officer's departments (findByAssignedDepartmentId per code), which
+    // silently contradicts this class's own javadoc above - "a ticket with
+    // no assignedDepartmentId yet ... is visible/assignable to ANY active
+    // officer". Every ticket F2 creates starts with assignedDepartmentId
+    // null (see TicketService.createTicket), so the unfiltered queue was
+    // never showing a single newly submitted ticket to anybody - there was
+    // no way for an officer to ever discover one to triage, short of already
+    // knowing the student's id and using searchByStudent (which DID apply
+    // the null-department exception correctly, which is how the mismatch
+    // surfaced). Unrouted tickets are folded in here too, matching
+    // searchByStudent's existing rule. A specific departmentId filter still
+    // means exactly that department's routed queue - it says nothing about
+    // triage - so unrouted tickets are deliberately left out of that branch.
     @Transactional(readOnly = true)
     public List<Ticket> findQueue(Long officerId, String departmentId, TicketStatus status) {
         Officer officer = requireActiveOfficer(officerId);
@@ -91,8 +107,10 @@ public class QueueService {
                     .toList();
         }
 
-        return officerDepartmentCodes.stream()
-                .flatMap(code -> ticketRepository.findByAssignedDepartmentId(code).stream())
+        return Stream.concat(
+                        ticketRepository.findByAssignedDepartmentIdIsNull().stream(),
+                        officerDepartmentCodes.stream()
+                                .flatMap(code -> ticketRepository.findByAssignedDepartmentId(code).stream()))
                 .filter(ticket -> status == null || status == ticket.getStatus())
                 .toList();
     }
