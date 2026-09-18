@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { API, errorMessage, request } from '../api.js'
 import { BrandPanel, Field, Notice } from '../components/Bits.jsx'
 import { useSession } from '../hooks/useSession.jsx'
@@ -19,6 +19,18 @@ export default function Login() {
   const [remember, setRemember] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState(null)      // { kind, text }
+
+  /**
+   * Explain WHY the user is looking at a login form they did not ask for.
+   *
+   * api.js redirects here with ?expired=1 when the server stops recognising
+   * the session — a backend restart, a timeout, or an administrator suspending
+   * the account. Without this message the redirect is indistinguishable from
+   * the application randomly logging you out, which is exactly the kind of
+   * thing that makes people stop trusting a system.
+   */
+  const [searchParams] = useSearchParams()
+  const expired = searchParams.get('expired') === '1'
 
   /* --------------------------------------------------------------------
      Arriving straight from registration
@@ -110,6 +122,12 @@ export default function Login() {
 
           <h1>Log in</h1>
           <p className="lede">Use your Student ID or university email.</p>
+
+          {expired && !notice && (
+            <Notice kind="warn" style={{ marginTop: 22 }}>
+              Your session ended, so we signed you out. Please sign in again to carry on.
+            </Notice>
+          )}
 
           {notice && (
             <Notice kind={notice.kind} style={{ marginTop: 22 }}>{notice.text}</Notice>

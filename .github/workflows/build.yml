@@ -1,0 +1,91 @@
+# Continuous integration — runs on every pull request into develop.
+#
+# WHY THIS EXISTS
+# ---------------
+# Two pull requests have reached review in a state that could not compile:
+#
+#   #32  imported two classes that had been written but never `git add`ed,
+#        so develop would not have built if it had merged.
+#   #34  was opened containing four deleted .gitkeep files and no Java at all —
+#        the code was on the author's disk the whole time.
+#
+# Both were caught by a person reading the diff. Neither should have needed a
+# person. A build on every PR catches the whole class of "it works on my
+# machine" automatically, before a reviewer spends time on it.
+#
+# WHY IT ONLY BUILDS, AND DOES NOT TEST
+# -------------------------------------
+# Because there are no tests yet (src/test does not exist). `mvn -B verify`
+# would pass trivially and give false confidence. Compiling is the honest check
+# today; when the first test lands, change `compile` to `verify` on the line
+# below and this file starts earning its keep twice over.
+
+name: Build
+
+on:
+  pull_request:
+    branches: [ develop ]
+  push:
+    branches: [ develop ]
+
+jobs:
+  backend:
+    name: Backend compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          # 17 matches <java.version> in pom.xml. Not 24: the local JDK being
+          # newer is fine, but CI should build against the version the project
+          # actually declares, or CI is testing something we do not ship.
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # -B is batch mode: no ANSI colours and no interactive prompts, so the
+      # log stays readable in the Actions output.
+      - name: Compile
+        run: mvn -B -DskipTests compile
+
+  frontend:
+    name: Frontend builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `npm ci` rather than `npm install`: it installs exactly what
+      # package-lock.json pins and fails if the lock file and package.json
+      # disagree, so CI can never quietly build against different versions
+      # from the ones a developer has.
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      # The built bundle is committed (Spring serves it from
+      # src/main/resources/static). If a PR changes frontend source but forgets
+      # to rebuild, the committed bundle is stale and the running app shows
+      # yesterday's code — which looks like "my change did nothing" and has
+      # already cost time on this project. This makes that state a failing
+      # check rather than a mystery.
+      - name: Fail if the committed bundle is out of date
+        run: |
+          if [ -n "$(git status --porcelain src/main/resources/static)" ]; then
+            echo "::error::The committed bundle does not match the frontend source."
+            echo "Run 'npm run build' in frontend/ and commit src/main/resources/static."
+            git status --porcelain src/main/resources/static
+            exit 1
+          fi
+          echo "Committed bundle is up to date."
