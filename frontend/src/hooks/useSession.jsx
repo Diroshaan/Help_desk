@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { API, request } from '../api.js'
+import { API, onSessionLost, request } from '../api.js'
 
 /**
  * Who is logged in, held once for the whole app.
@@ -67,6 +67,38 @@ export function SessionProvider({ children }) {
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
+
+  /**
+   * What to do when api.js reports the server no longer recognises us.
+   *
+   * Registered once, for the whole application, because the alternative is
+   * every screen checking for an expired session itself — twenty-five places
+   * to get right, and each one a chance to get it wrong differently.
+   *
+   * Deliberately NOT calling signOut(): that posts to /api/auth/logout, and
+   * there is no session left to end. Posting anyway would be a pointless
+   * request that fails, and the failure would look like a second error to
+   * anyone reading the network tab.
+   *
+   * The redirect uses location.hash rather than useNavigate, because this
+   * provider sits ABOVE HashRouter in the tree (see App.jsx) and so is outside
+   * the router's context. Setting the hash directly is what a router-free
+   * component has to do, and it works identically for a HashRouter.
+   */
+  useEffect(() => {
+    onSessionLost(() => {
+      setUser(null)
+      setStudent(null)
+      setStatus('guest')
+      // Only redirect from a page that needed a session. Somebody reading the
+      // public landing page should not be thrown to a login form because a
+      // background request happened to fail.
+      const path = window.location.hash.replace(/^#/, '')
+      if (path && path !== '/' && !path.startsWith('/login') && !path.startsWith('/register')) {
+        window.location.hash = '#/login?expired=1'
+      }
+    })
+  }, [])
 
   const signOut = useCallback(async () => {
     try {

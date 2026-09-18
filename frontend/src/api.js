@@ -113,7 +113,7 @@ export async function request(url, options = {}) {
   }
 
   const response = await fetch(url, config)
-  return readResponse(response)
+  return readResponse(response, url)
 }
 
 /**
@@ -128,10 +128,90 @@ export async function requestForm(url, { method = 'POST', form } = {}) {
     credentials: 'same-origin',
     body: form
   })
-  return readResponse(response)
+  return readResponse(response, url)
 }
 
-async function readResponse(response) {
+/* ---------------------------------------------------------------------------
+   SESSION EXPIRY — one place, so every screen behaves the same way.
+
+   THE PROBLEM THIS SOLVES
+   -----------------------
+   The session lives on the server. When it ends — the backend restarts, the
+   session times out, an administrator suspends the account — the browser has no
+   way of knowing. React still holds `role: 'ADMIN'` in memory from whenever the
+   page loaded, so the sidebar keeps rendering admin links and every write comes
+   back 403 with the word "Forbidden". The user sees a page that looks signed in
+   and refuses to do anything, with no explanation and no way out except
+   guessing that a refresh might help.
+
+   That is not a hypothetical: it happened on the admin Users page after a
+   backend restart, and it cost an afternoon working out that the code was fine.
+
+   WHY 401 AND 403 ARE TREATED DIFFERENTLY
+   ---------------------------------------
+   They mean different things and must not be collapsed:
+
+     401 — "I do not know who you are."  The session is gone. Sign out.
+     403 — "I know who you are, and no."  AMBIGUOUS, because SecurityConfig
+           enables neither formLogin nor httpBasic, so Spring answers an
+           ANONYMOUS request with 403 as well as a genuinely forbidden one.
+
+   So a 403 cannot be trusted on its own. Treating every 403 as a dead session
+   would sign people out for clicking something they were never allowed to click
+   — worse than the bug being fixed. Instead a 403 triggers one cheap
+   confirmation request to /api/auth/me, which is permitAll and answers the
+   question directly: 401 there means the session really is gone; 200 means the
+   session is alive and this was a real permission denial the caller should
+   handle itself.
+
+   WHY A CALLBACK RATHER THAN A REDIRECT HERE
+   ------------------------------------------
+   This module knows about HTTP and nothing else. Clearing React state and
+   navigating are the session hook's job. api.js raises the event; useSession
+   decides what happens. That keeps this file testable and free of imports from
+   React or the router.
+--------------------------------------------------------------------------- */
+
+let sessionLostHandler = null
+
+/** Registered once by SessionProvider. */
+export function onSessionLost(handler) {
+  sessionLostHandler = handler
+}
+
+// Paths that must never trigger the check, or it recurses: /me IS the check,
+// and a failed login is a wrong password rather than an expired session.
+const AUTH_PATHS = ['/api/auth/me', '/api/auth/login', '/api/auth/logout']
+
+let verifying = false        // one confirmation at a time, not one per request
+
+async function checkSessionLost(url, status) {
+  if (!sessionLostHandler) return
+  if (AUTH_PATHS.some(path => url.startsWith(path))) return
+
+  if (status === 401) {
+    sessionLostHandler()
+    return
+  }
+
+  if (status === 403) {
+    // A burst of parallel 403s (a page loading four things at once) must not
+    // fire four confirmation requests.
+    if (verifying) return
+    verifying = true
+    try {
+      const check = await fetch(API.me, { credentials: 'same-origin' })
+      if (check.status === 401) sessionLostHandler()
+    } catch {
+      /* Server unreachable. Not a session problem — leave the caller's own
+         "could not reach the server" message to stand. */
+    } finally {
+      verifying = false
+    }
+  }
+}
+
+async function readResponse(response, url) {
   let data = null
   const text = await response.text()
   if (text) {
@@ -141,6 +221,10 @@ async function readResponse(response) {
       data = { message: text }        // server sent plain text, not JSON
     }
   }
+
+  // Fire and forget: the caller's own error handling still runs normally,
+  // and the sign-out (if any) happens a moment later.
+  if (!response.ok) checkSessionLost(url, response.status)
 
   return { ok: response.ok, status: response.status, data }
 }
