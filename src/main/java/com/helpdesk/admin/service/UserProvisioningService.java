@@ -3,6 +3,7 @@ package com.helpdesk.admin.service;
 import com.helpdesk.admin.dto.ProvisionAdministratorRequest;
 import com.helpdesk.admin.dto.ProvisionOfficerRequest;
 import com.helpdesk.admin.dto.UserSummaryResponse;
+import com.helpdesk.auth.SessionRevoker;
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.user.entity.Administrator;
@@ -47,15 +48,36 @@ public class UserProvisioningService {
     private final AdministratorRepository administratorRepository;
     private final PasswordEncoder passwordEncoder;
 
+    /**
+     * Ends a suspended account's live sessions.
+     *
+     * Added because suspension was only half implemented without it. Marking
+     * active = false stops the next LOGIN, because StudentUserDetailsService
+     * builds the UserDetails with .disabled(!isActive()) - but that check runs
+     * during authentication and never again, so a user who was already signed in
+     * when the administrator suspended them carried on working until their
+     * session happened to expire. They could keep raising tickets, keep reading
+     * the knowledge base, keep everything. A suspension the suspended person can
+     * ignore is not a suspension.
+     *
+     * The collaborator lives in com.helpdesk.auth rather than here because
+     * ending a session is an authentication concern, and F1 needs the same
+     * behaviour for a student closing their own account. One implementation,
+     * two callers.
+     */
+    private final SessionRevoker sessionRevoker;
+
     @Autowired
     public UserProvisioningService(AppUserRepository appUserRepository,
                                    OfficerRepository officerRepository,
                                    AdministratorRepository administratorRepository,
-                                   PasswordEncoder passwordEncoder) {
+                                   PasswordEncoder passwordEncoder,
+                                   SessionRevoker sessionRevoker) {
         this.appUserRepository = appUserRepository;
         this.officerRepository = officerRepository;
         this.administratorRepository = administratorRepository;
         this.passwordEncoder = passwordEncoder;
+        this.sessionRevoker = sessionRevoker;
     }
 
     // ------------------------------------------------------------------
@@ -243,7 +265,29 @@ public class UserProvisioningService {
         }
 
         user.setActive(active);
-        return UserSummaryResponse.from(appUserRepository.save(user));
+        UserSummaryResponse summary = UserSummaryResponse.from(appUserRepository.save(user));
+
+        // Throw them out of any session they are already in.
+        //
+        // Only on the way DOWN. Restoring an account has nobody to evict - the
+        // account was unusable a moment ago - and calling this on a restore
+        // would be a no-op that reads as though it does something.
+        //
+        // After the save, deliberately. If the save fails the account is still
+        // active, and ending a session someone is entitled to would be a fault
+        // of our own making rather than the suspension taking effect.
+        //
+        // Note this does not depend on WHICH account type was suspended:
+        // SessionRevoker matches on the email, and every account type
+        // authenticates with the email as its principal name (see
+        // StudentUserDetailsService, which builds the UserDetails with
+        // .username(user.getEmail()) regardless of whether the person typed
+        // their Student ID or their address).
+        if (!active) {
+            sessionRevoker.revokeAllSessionsFor(user.getEmail());
+        }
+
+        return summary;
     }
 
     /**

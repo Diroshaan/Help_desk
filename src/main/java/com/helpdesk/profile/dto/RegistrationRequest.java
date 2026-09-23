@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 /**
  * Request body for POST /api/students - new account registration (US-03).
@@ -33,6 +34,36 @@ import jakarta.validation.constraints.Pattern;
  * already lives safely on Student because those fields don't change shape
  * after registration - password is the one exception, so it needs its own
  * request type to hold the rule that only makes sense before hashing.
+ *
+ *
+ * WHY THE LENGTH LIMITS ARE REPEATED HERE AS WELL AS ON THE ENTITY
+ * ----------------------------------------------------------------
+ * The paragraph above says the other rules can "live safely on Student". For
+ * FORMAT rules that is true. For LENGTH rules it turned out not to be, and the
+ * difference is WHEN each one runs.
+ *
+ * A rule on this DTO runs at the controller, through @Valid, before anything
+ * else happens. Its failure becomes a MethodArgumentNotValidException, and
+ * GlobalExceptionHandler turns that into a clean 400 carrying only the
+ * message written below - "Full name must be 120 characters or fewer".
+ *
+ * A rule on the entity runs much later, inside Hibernate, at the moment the
+ * row is about to be written. It still fails - the bad value never reaches
+ * the database - but it fails as a ConstraintViolationException thrown from
+ * the middle of a save, and its default text is Hibernate's own:
+ *
+ *   "Validation failed for classes [com.helpdesk.profile.entity.Student]
+ *    during persist time for groups [jakarta.validation.groups.Default, ]
+ *    List of constraint violations:[ ConstraintViolationImpl{..."
+ *
+ * That is what a student typing a very long name used to see in the red box
+ * on the registration form. It was found by testing, not by reading.
+ *
+ * So each @Size below mirrors the entity's column length exactly. The entity
+ * keeps its own copy as the last line of defence for any path that does not
+ * come through this DTO; this copy is what gives the user a sentence they can
+ * act on. The numbers must stay in step with Student and AppUser - if a
+ * column is widened, both places change together.
  */
 public class RegistrationRequest {
 
@@ -41,10 +72,12 @@ public class RegistrationRequest {
     private String studentId;
 
     @NotBlank(message = "Full name is required")
+    @Size(max = 120, message = "Full name must be 120 characters or fewer")
     private String fullName;
 
     @NotBlank(message = "Email is required")
     @Email(message = "Must be a valid email address")
+    @Size(max = 120, message = "Email must be 120 characters or fewer")
     private String email;
 
     // At least 8 characters, with an upper-case letter, a lower-case letter,
@@ -58,6 +91,7 @@ public class RegistrationRequest {
     private String password;
 
     @NotBlank(message = "Department is required")
+    @Size(max = 100, message = "Faculty must be 100 characters or fewer")
     private String department;
 
     // The registration form (frontend/src/pages/Register.jsx) sends this field
@@ -69,8 +103,10 @@ public class RegistrationRequest {
     // reveal why. The Java-side name stays "contactNumber" to match Student's
     // and ProfileUpdateRequest's field of the same name.
     @JsonProperty("phone")
+    @Size(max = 30, message = "Phone number must be 30 characters or fewer")
     private String contactNumber;
 
+    @Size(max = 500, message = "Profile picture URL must be 500 characters or fewer")
     private String profilePictureUrl;
 
     public String getStudentId() {

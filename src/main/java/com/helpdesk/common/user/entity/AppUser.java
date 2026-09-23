@@ -11,6 +11,7 @@ import jakarta.persistence.InheritanceType;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.time.LocalDateTime;
 
@@ -124,9 +125,25 @@ public abstract class AppUser {
      * deliberately accepts null and "" - it validates format only and leaves
      * "is this required?" to @NotBlank. Without both, {"email": ""} would reach
      * the database and fail there as a 500 rather than a clean 400.
+     *
+     * @Size(max = 120) mirrors the column length ON PURPOSE, and the pairing is
+     * the point rather than the number. @Column(length) shapes the CREATE TABLE
+     * and nothing else - it is not a validation rule, so bean validation never
+     * looks at it. A 150-character address therefore passed every check the
+     * application made and was rejected by the database instead, arriving as a
+     * DataIntegrityViolationException. Until GlobalExceptionHandler was taught
+     * to read the error code, that was reported to the user as "already in use
+     * by another account": a length problem described as a uniqueness problem,
+     * pointing at the one field that was not actually at fault.
+     *
+     * The rule is worth stating generally, because this schema has several more
+     * fields still in this state: any @Column(length = n) on a value a user can
+     * type needs a matching @Size(max = n), or the database is doing validation
+     * that the user will never see explained.
      */
     @NotBlank(message = "Email is required")
     @Email(message = "Must be a valid email address")
+    @Size(max = 120, message = "Email must be 120 characters or fewer")
     @Column(name = "email", nullable = false, unique = true, length = 120)
     private String email;
 

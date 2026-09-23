@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { API, errorMessage, fieldErrors, initials, request } from '../api.js'
+import { API, errorMessage, fieldErrors, initials, request, requestForm } from '../api.js'
 import { Avatar, Field, Notice, SelectField } from '../components/Bits.jsx'
 import { Sidebar } from '../components/Sidebar.jsx'
 import { useSession } from '../hooks/useSession.jsx'
@@ -131,6 +131,49 @@ export default function Profile() {
     }
   }
 
+  /**
+   * Upload a new profile picture (F1 Update: "upload/update dynamic profile
+   * avatars").
+   *
+   * The file input is hidden inside a <label> styled as a button, which is the
+   * standard way to get a usable control: the browser's default file input is
+   * unstyleable and looks nothing like the rest of this system. A label is still
+   * keyboard reachable and still announces itself correctly, unlike a div with
+   * an onClick.
+   *
+   * event.target.value is cleared immediately so that choosing the SAME file
+   * twice in a row still fires onChange - without it the second attempt is
+   * silently ignored, because the input's value has not changed.
+   *
+   * The server returns the updated StudentResponse, so the session is refreshed
+   * from the response rather than by firing a second request to discover what
+   * changed. profilePictureUrl now points at /api/students/{id}/avatar, which
+   * the <Avatar> below already renders without any change of its own.
+   */
+  async function uploadAvatar(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setNotice(null); setBusy('avatar')
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const result = await requestForm(API.studentAvatar(student.id), { method: 'POST', form })
+
+      if (result.ok) {
+        setStudent(result.data)
+        setNotice({ kind: 'info', text: 'Your profile picture has been updated.' })
+      } else {
+        setNotice({ kind: 'error', text: errorMessage(result, 'We could not upload that image.') })
+      }
+    } catch {
+      setNotice({ kind: 'error', text: 'Could not reach the server. Your picture was not changed.' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const marks = initials(student.fullName)
   const activity = Array.isArray(student.activityLog) ? student.activityLog : []
 
@@ -158,6 +201,20 @@ export default function Profile() {
                     {student.active === false ? 'Suspended' : 'Active'}
                   </span>
                 </p>
+
+                <div className="btn-row" style={{ marginTop: 12 }}>
+                  <label className="btn btn--ghost">
+                    {busy === 'avatar'
+                      ? 'Uploading…'
+                      : (student.profilePictureUrl ? 'Change picture' : 'Add a picture')}
+                    <input type="file" hidden accept="image/jpeg,image/png,image/webp"
+                           onChange={uploadAvatar} disabled={busy === 'avatar'} />
+                  </label>
+                </div>
+                {/* accept= filters the file picker as a convenience only. The
+                    server checks the declared type AND the file's magic bytes,
+                    because anything the browser enforces an attacker can skip. */}
+                <p className="hint" style={{ marginTop: 6 }}>JPEG, PNG or WebP, up to 2MB.</p>
               </div>
             </div>
           </section>

@@ -1,6 +1,7 @@
 package com.helpdesk.config;
 
 import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -9,9 +10,12 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.session.SessionRegistryImpl;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.session.HttpSessionEventPublisher;
 
 /**
  * F7 - Authentication & session handling (shared/cross-cutting).
@@ -52,6 +56,32 @@ public class SecurityConfig {
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
+    }
+
+    /**
+     * Tracks which sessions belong to which user, so a session can be ended
+     * from outside the request that owns it.
+     *
+     * SessionRegistryImpl keeps this in memory, which is the right scope for a
+     * single-instance application: the sessions themselves are in memory too, so
+     * a restart clears both together and they cannot disagree. A clustered
+     * deployment would need a shared store (Spring Session with Redis, say), and
+     * that is a deployment decision rather than a code one.
+     */
+    @Bean
+    public SessionRegistry sessionRegistry() {
+        return new SessionRegistryImpl();
+    }
+
+    /**
+     * Without this, SessionRegistryImpl never hears that a session was
+     * destroyed and its map grows for the life of the process - every logout and
+     * every timeout leaving an entry behind. It is a plain servlet listener that
+     * forwards session lifecycle events into Spring's context.
+     */
+    @Bean
+    public HttpSessionEventPublisher httpSessionEventPublisher() {
+        return new HttpSessionEventPublisher();
     }
 
     @Bean
@@ -276,6 +306,36 @@ public class SecurityConfig {
                 // up front) - this is what "session-based authentication" means here.
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+
+                        // REGISTERING SESSIONS, so they can be ended later.
+                        //
+                        // maximumSessions is not here to LIMIT anything - -1
+                        // means unlimited, and a student signing in from a
+                        // laptop and a phone at once is perfectly reasonable.
+                        // It is here because configuring it is what puts
+                        // ConcurrentSessionFilter into the filter chain, and
+                        // that filter is what notices a session has been marked
+                        // expired and invalidates it.
+                        //
+                        // Without this block, SessionRevoker would call
+                        // expireNow() on sessions nobody ever checks, and a
+                        // suspended user would carry on working. See
+                        // auth/SessionRevoker.java for why that matters.
+                        .maximumSessions(-1)
+                        .sessionRegistry(sessionRegistry())
+
+                        // What an expired session gets back.
+                        //
+                        // The default writes an HTML message, which is wrong for
+                        // a JSON API - the frontend would try to parse a page.
+                        // 401 is the accurate answer ("I no longer know who you
+                        // are") AND it is exactly what api.js already watches
+                        // for: a 401 on any request signs the user out cleanly
+                        // and sends them to the login page with an explanation.
+                        // So suspending an account now produces a tidy sign-out
+                        // on that user's next click, with no extra frontend code.
+                        .expiredSessionStrategy(event ->
+                                event.getResponse().setStatus(HttpServletResponse.SC_UNAUTHORIZED))
                 );
 
         return http.build();

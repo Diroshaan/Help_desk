@@ -2,6 +2,7 @@ package com.helpdesk.profile.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 /**
  * Request body for PUT /api/students/{id} - profile self-editing (US-01).
@@ -44,6 +45,13 @@ public class ProfileUpdateRequest {
     // blank need to mean different things on a partial-update DTO; @NotBlank
     // can't tell them apart, @Pattern can.
     @Pattern(regexp = ".*\\S.*", message = "Full name cannot be blank")
+    // Length limits on this DTO mirror the Student entity's column lengths, for
+    // the reason written out in full on RegistrationRequest: a limit checked
+    // here produces a clean field message, while the same limit left to the
+    // entity fails later inside Hibernate with its internal class names in the
+    // text. @Size, like @Pattern, treats null as valid - so an omitted field on
+    // a partial update still passes, exactly as the note above requires.
+    @Size(max = 120, message = "Full name must be 120 characters or fewer")
     private String fullName;
 
     // No blank-rejecting constraint at all, deliberately: the faculty dropdown's
@@ -51,6 +59,8 @@ public class ProfileUpdateRequest {
     // Profile.jsx), so a student clearing their faculty is a legitimate save, not
     // an invalid one. Only null (field genuinely absent, e.g. a preferences-only
     // save) should be left alone - see the null-check in updateProfile.
+    // @Size accepts "" as well as null, so clearing the faculty still works.
+    @Size(max = 100, message = "Faculty must be 100 characters or fewer")
     private String department;
 
     // The profile form (frontend/src/pages/Profile.jsx) sends this field as
@@ -60,8 +70,10 @@ public class ProfileUpdateRequest {
     // unrecognised properties rather than erroring) and, before the null-check
     // fix in updateProfile existed, would have wiped the stored number outright.
     @JsonProperty("phone")
+    @Size(max = 30, message = "Phone number must be 30 characters or fewer")
     private String contactNumber;
 
+    @Size(max = 500, message = "Profile picture URL must be 500 characters or fewer")
     private String profilePictureUrl;
 
     // Boolean (wrapper), not boolean (primitive) - deliberately. "Save changes"
