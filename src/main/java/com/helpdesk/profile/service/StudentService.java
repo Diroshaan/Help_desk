@@ -1,5 +1,10 @@
 package com.helpdesk.profile.service;
 
+import com.helpdesk.auth.SessionRevoker;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.Set;
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.profile.dto.ProfileUpdateRequest;
@@ -55,13 +60,22 @@ public class StudentService {
     private final PasswordEncoder passwordEncoder;
     private final ActivityLogService activityLogService;
 
+    /**
+     * Ends the account's live sessions on deactivation - the "revoking session
+     * tokens" half of F1's Account Deletion sub-function, which was specified
+     * and not built until now.
+     */
+    private final SessionRevoker sessionRevoker;
+
     @Autowired
     public StudentService(StudentRepository studentRepository,
                           PasswordEncoder passwordEncoder,
-                          ActivityLogService activityLogService) {
+                          ActivityLogService activityLogService,
+                          SessionRevoker sessionRevoker) {
         this.studentRepository = studentRepository;
         this.passwordEncoder = passwordEncoder;
         this.activityLogService = activityLogService;
+        this.sessionRevoker = sessionRevoker;
     }
 
     // Create (US-03: register a new student account)
@@ -339,6 +353,25 @@ public class StudentService {
         student.setActive(false);
         studentRepository.save(student);
 
+        // REVOKE THE SESSION, not just the ability to start a new one.
+        //
+        // .disabled(!isActive()) in StudentUserDetailsService only runs while
+        // authenticating, so on its own it stops a deactivated student logging
+        // IN and does nothing about the one who already did. Their session
+        // stays valid until it happens to expire.
+        //
+        // For a student closing their own account the browser signs itself out
+        // anyway, so this changes little. It matters for the case F1 does not
+        // control: an administrator suspending someone under US-05, where the
+        // suspended user is at their own computer and nothing tells their
+        // browser anything. Suspension a suspended person can ignore is not
+        // suspension.
+        //
+        // Deliberately after the save. If the save fails the account is still
+        // active, and throwing someone out of a session they are entitled to
+        // would be a bug of our own making.
+        sessionRevoker.revokeAllSessionsFor(student.getEmail());
+
         // Deliberately kept, not deleted along with the account. The student's
         // row survives deactivation (that is what "soft delete" means here), so
         // their history survives with it - which is the whole point of an audit
@@ -346,5 +379,161 @@ public class StudentService {
         // happened if the account is ever restored under US-05.
         activityLogService.record(student.getId(), ActivityType.ACCOUNT_DEACTIVATED,
                 "Account closed by the account holder.");
+    }
+
+    // ------------------------------------------------------------------
+    // Avatar (F1 Update: "upload/update dynamic profile avatars")
+    // ------------------------------------------------------------------
+
+    /**
+     * Accepted image types. A allow-list, not a block-list: naming what IS
+     * permitted means a type nobody considered is rejected by default, where a
+     * block-list lets anything unanticipated straight through.
+     */
+    private static final Set<String> ALLOWED_AVATAR_TYPES =
+            Set.of("image/jpeg", "image/png", "image/webp");
+
+    /** 2MB. Comfortably more than a profile photograph needs. */
+    private static final long MAX_AVATAR_BYTES = 2L * 1024 * 1024;
+
+    /**
+     * Store a new profile picture for this student.
+     *
+     * WHY THE CONTENT TYPE IS CHECKED AGAINST THE BYTES, NOT THE FILENAME
+     * -------------------------------------------------------------------
+     * A file extension is whatever the uploader typed. Renaming shell.jsp to
+     * avatar.png changes nothing about what the file contains, so trusting the
+     * name is trusting an attacker. The declared MIME type is better but still
+     * client-supplied, so the first bytes are checked too: every format on the
+     * list has a fixed signature at the start of the file, and those cannot be
+     * renamed away.
+     *
+     * Belt and braces is warranted here specifically because this endpoint takes
+     * a file from an unauthenticated-in-spirit source (any logged-in student)
+     * and stores it to be served back to browsers later.
+     *
+     * The URL written into profilePictureUrl points at this application's own
+     * download endpoint, so the rest of the system - the profile page, the top
+     * bar, the admin listing - keeps reading one String field and needs no
+     * change at all.
+     */
+    @Transactional
+    public Student updateAvatar(Long id, MultipartFile file) {
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
+
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Choose an image to upload.");
+        }
+        if (file.getSize() > MAX_AVATAR_BYTES) {
+            throw new IllegalArgumentException("That image is larger than 2MB.");
+        }
+
+        String declaredType = file.getContentType();
+        if (declaredType == null || !ALLOWED_AVATAR_TYPES.contains(declaredType.toLowerCase())) {
+            throw new IllegalArgumentException("Profile pictures must be a JPEG, PNG or WebP image.");
+        }
+
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            // The upload failed in transit. Not the student's mistake, and not
+            // something a clearer message would help them fix.
+            throw new IllegalStateException("We could not read that file. Please try again.", e);
+        }
+
+        // WHAT THE BYTES ACTUALLY ARE, not what the upload claimed.
+        //
+        // detectImageType returns the type read from the file's own signature,
+        // or null if it matches none of the three we accept. Taking the DETECTED
+        // type as the value to store - rather than the declared one - closes a
+        // gap the earlier version left open: a JPEG uploaded with a declared
+        // type of image/png passed both checks (it is a real image, and png is
+        // on the allow-list) and was then stored and served as image/png. The
+        // browser would sniff and usually render it anyway, so the bug was
+        // invisible until something trusted the Content-Type.
+        //
+        // The declared type is still checked first, above. That rejection is
+        // cheaper and gives a clearer message for the ordinary case of someone
+        // choosing a PDF.
+        String detectedType = detectImageType(bytes);
+        if (detectedType == null) {
+            throw new IllegalArgumentException(
+                    "That file is not a valid image, whatever its name says.");
+        }
+
+        student.setProfilePicture(bytes);
+        student.setProfilePictureType(detectedType);
+
+        // Relative, not absolute: an absolute URL would bake in the host and
+        // break the moment this runs anywhere other than localhost:8080.
+        //
+        // THE ?v= IS NOT DECORATION - without it, replacing a picture appears to
+        // do nothing. The path is identical for every upload by the same
+        // student, and the download endpoint sets Cache-Control: max-age=300, so
+        // after an update the browser has a perfectly valid cached copy of the
+        // OLD image and sees no reason to ask again for up to five minutes. The
+        // upload succeeds, the database is correct, and the page still shows the
+        // previous photograph.
+        //
+        // Changing the query string changes the cache key, so the browser
+        // fetches the new image immediately - while still caching it for the
+        // several places one page shows the same avatar. This is the standard
+        // fix and it is why it is a timestamp rather than a random number: two
+        // uploads in the same millisecond by the same student would collide, and
+        // that is not a case worth defending against.
+        student.setProfilePictureUrl(
+                "/api/students/" + student.getId() + "/avatar?v=" + System.currentTimeMillis());
+
+        Student saved = studentRepository.save(student);
+        activityLogService.record(saved.getId(), ActivityType.PROFILE_UPDATED,
+                "Profile picture updated.");
+        return saved;
+    }
+
+    /**
+     * Identify the image from its file signature - the "magic bytes" every
+     * format begins with. Returns the MIME type, or null if these bytes are not
+     * one of the three formats this system accepts.
+     *
+     *   JPEG  FF D8 FF
+     *   PNG   89 50 4E 47        ("\x89PNG")
+     *   WebP  "RIFF" ???? "WEBP"  (bytes 4-7 are the file length, so they are
+     *                              skipped rather than matched)
+     *
+     * This returns the type rather than a boolean on purpose. The caller needs
+     * to STORE a content type, and the only trustworthy source for it is the
+     * file itself: the filename is whatever the uploader typed, and the declared
+     * MIME type is whatever their browser - or their script - chose to send.
+     * Both are client-supplied. The signature is the one thing in the request
+     * that cannot be renamed away, so it is the one thing worth recording.
+     *
+     * bytes.length < 12 is rejected outright. No valid file of any of these
+     * formats is that small, and it also guarantees every index read below is in
+     * bounds, so the checks can be written plainly without a length test each.
+     */
+    private String detectImageType(byte[] bytes) {
+        if (bytes == null || bytes.length < 12) {
+            return null;
+        }
+        if ((bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xD8 && (bytes[2] & 0xFF) == 0xFF) {
+            return "image/jpeg";
+        }
+        if ((bytes[0] & 0xFF) == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G') {
+            return "image/png";
+        }
+        if (bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+                && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') {
+            return "image/webp";
+        }
+        return null;
+    }
+
+    /** The stored avatar, for the download endpoint. */
+    @Transactional(readOnly = true)
+    public Student getWithAvatar(Long id) {
+        return studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
     }
 }

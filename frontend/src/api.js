@@ -15,6 +15,7 @@ export const API = {
   register: '/api/students',            // POST -> 201 Created
   students: '/api/students',            // GET (OFFICER/ADMIN) -> list
   student:  (id) => '/api/students/' + id,
+  studentAvatar: (id) => '/api/students/' + id + '/avatar',
 
   // Tickets (student side)
   ticketCategories: '/api/tickets/categories',

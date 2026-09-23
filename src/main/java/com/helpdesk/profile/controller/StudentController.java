@@ -11,11 +11,16 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -285,5 +290,89 @@ public class StudentController {
         return authentication.getAuthorities().stream()
                 .anyMatch(authority -> authority.getAuthority().equals("ROLE_OFFICER")
                         || authority.getAuthority().equals("ROLE_ADMIN"));
+    }
+
+    // ------------------------------------------------------------------
+    // Avatar (F1 Update: "upload/update dynamic profile avatars")
+    // ------------------------------------------------------------------
+
+    /**
+     * Upload or replace this student's profile picture.
+     *
+     * Behind the same ownership rule as every other write on this controller:
+     * isOwnProfile() covers it, so one student cannot replace another's picture
+     * by changing the {id} in the URL. That check is the only thing standing
+     * between this system and an IDOR, and it applies here exactly as it does
+     * to updateProfile.
+     *
+     * multipart/form-data rather than a base64 string in JSON: base64 inflates
+     * the payload by a third and puts a large blob through the JSON parser for
+     * no benefit. Spring Boot's multipart limits in application.properties
+     * already cap the request size before it reaches this method.
+     *
+     * Returns the updated StudentResponse rather than 204, so the page can
+     * re-render from the response instead of firing a second request to find out
+     * what changed.
+     */
+    @PostMapping("/{id}/avatar")
+    public ResponseEntity<StudentResponse> uploadAvatar(@PathVariable Long id,
+                                                          @RequestParam("file") MultipartFile file,
+                                                          Authentication authentication) {
+        if (!isOwnProfile(id, authentication)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        Student updated = studentService.updateAvatar(id, file);
+        return ResponseEntity.ok(withActivity(updated));
+    }
+
+    /**
+     * Serve the stored image.
+     *
+     * NOT ownership-guarded, deliberately, and worth being able to defend: a
+     * profile picture is shown next to its owner's name wherever they appear -
+     * the top bar, the admin user listing, and in due course beside a ticket in
+     * an officer's queue. Restricting it to the owner would mean every one of
+     * those places showing a broken image. It is the same category of data as a
+     * display name, which this application already shows to any signed-in user.
+     *
+     * The catch-all rule in SecurityConfig still applies, so a signed-out
+     * visitor cannot fetch it.
+     *
+     * 404 when there is no picture, rather than a placeholder: the frontend
+     * already falls back to the student's initials, and sending a stand-in image
+     * would stop it from knowing to do that.
+     */
+    @GetMapping("/{id}/avatar")
+    public ResponseEntity<byte[]> avatar(@PathVariable Long id) {
+        Student student = studentService.getWithAvatar(id);
+        byte[] image = student.getProfilePicture();
+
+        if (image == null || image.length == 0) {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(
+                        student.getProfilePictureType() == null
+                                ? MediaType.IMAGE_JPEG_VALUE
+                                : student.getProfilePictureType()))
+                // Cached briefly, and PRIVATELY.
+                //
+                // Long enough that a page showing the same avatar in three
+                // places fetches it once. cachePrivate() is the important half:
+                // without it the response is cacheable by any shared cache
+                // between here and the browser, and this endpoint is behind
+                // authentication - a shared proxy could in principle hand one
+                // student's photograph to the next person who asked for that
+                // URL. "private" tells every cache except the user's own browser
+                // to keep out.
+                //
+                // Freshness after an upload is NOT handled here. It is handled
+                // by the ?v= timestamp that updateAvatar writes into
+                // profilePictureUrl, which changes the URL and so the cache key.
+                // Relying on a short max-age instead would mean a student who
+                // changed their picture watching the old one for five minutes.
+                .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5)).cachePrivate())
+                .body(image);
     }
 }

@@ -16,6 +16,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -44,6 +45,13 @@ public class AuthController {
     private final AppUserRepository appUserRepository;
 
     /**
+     * Records each new session against its user so SessionRevoker can end it
+     * later. See the note in the login method for why this has to be done by
+     * hand here.
+     */
+    private final SessionRegistry sessionRegistry;
+
+    /**
      * Used only to record a successful sign-in on the student's activity log
      * (F1 - "Dashboard & Activity View").
      *
@@ -67,10 +75,12 @@ public class AuthController {
     @Autowired
     public AuthController(AuthenticationManager authenticationManager,
                           ActivityLogService activityLogService,
-                          AppUserRepository appUserRepository) {
+                          AppUserRepository appUserRepository,
+                          SessionRegistry sessionRegistry) {
         this.authenticationManager = authenticationManager;
         this.activityLogService = activityLogService;
         this.appUserRepository = appUserRepository;
+        this.sessionRegistry = sessionRegistry;
     }
 
     // A simple record for the JSON request body: { "email": "...", "password": "..." }
@@ -122,6 +132,25 @@ public class AuthController {
             // Without this line, the login would succeed for this one request only -
             // the session wouldn't remember it on the next request.
             securityContextRepository.saveContext(context, httpRequest, httpResponse);
+
+            // REGISTER THE SESSION, so it can be ended from outside this request.
+            //
+            // Spring normally does this for you - SessionAuthenticationStrategy
+            // runs inside the form-login filter and registers the session as a
+            // side effect of authenticating. This endpoint authenticates by
+            // hand, so that filter never runs and nothing registers anything.
+            //
+            // The failure without this line is the quiet kind: SessionRevoker
+            // would loop over an empty registry, find nothing, and return
+            // successfully. Suspending an account would report success and the
+            // suspended user would carry on working. Nothing would appear in a
+            // log. So this line is load-bearing despite looking like bookkeeping
+            // - see auth/SessionRevoker.java.
+            //
+            // Registered AFTER changeSessionId(), or the id recorded here would
+            // be the one that was just discarded.
+            sessionRegistry.registerNewSession(
+                    httpRequest.getSession().getId(), authentication.getPrincipal());
 
             // Recorded AFTER the session is established, and deliberately using
             // the "quietly" variant that swallows its own failures.

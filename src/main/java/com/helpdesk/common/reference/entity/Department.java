@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.Pattern;
 
 /**
@@ -75,6 +76,7 @@ public class Department {
     @NotBlank(message = "Department code is required")
     @Pattern(regexp = "^[A-Z]{2,10}$",
              message = "Department code must be 2-10 uppercase letters, e.g. IT or REG")
+    @Size(max = 10, message = "Department code must be 10 characters or fewer")
     @Column(name = "code", length = 10, nullable = false)
     private String code;
 
@@ -87,6 +89,7 @@ public class Department {
      * way to tell which one their ticket went to.
      */
     @NotBlank(message = "Department name is required")
+    @Size(max = 100, message = "Department name must be 100 characters or fewer")
     @Column(name = "name", length = 100, nullable = false, unique = true)
     private String name;
 
@@ -103,9 +106,11 @@ public class Department {
      * placeholder value in would be worse than an empty field.
      */
     @Email(message = "Must be a valid email address")
+    @Size(max = 120, message = "Contact email must be 120 characters or fewer")
     @Column(name = "contact_email", length = 120)
     private String contactEmail;
 
+    @Size(max = 30, message = "Contact phone must be 30 characters or fewer")
     @Column(name = "contact_phone", length = 30)
     private String contactPhone;
 

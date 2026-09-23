@@ -1,9 +1,12 @@
 package com.helpdesk.profile.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.helpdesk.common.user.entity.AppUser;
 import com.helpdesk.common.user.entity.Role;
+import jakarta.persistence.Basic;
 import jakarta.persistence.Column;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.PrimaryKeyJoinColumn;
 import jakarta.persistence.Table;
@@ -157,6 +160,98 @@ public class Student extends AppUser {
     private String profilePictureUrl;
 
     /**
+     * The avatar itself (F1 Update: "upload/update dynamic profile avatars").
+     *
+     * WHY THE BYTES LIVE IN THE DATABASE AND NOT ON DISK
+     * --------------------------------------------------
+     * The obvious alternative is writing the file under static/images/avatars/,
+     * which SecurityConfig already makes public. It does not survive packaging:
+     * src/main/resources is copied INTO the jar at build time, so a file written
+     * there at runtime lands in target/classes on a developer machine and
+     * nowhere at all once the application is a jar. The upload would appear to
+     * work and the picture would vanish on the next build.
+     *
+     * Storing the bytes here follows what the rest of this project already does
+     * - Attachment and Resolution both hold their files as byte[] - so backup
+     * and restore cover everything at once and there are no orphaned files on a
+     * disk nobody backs up. The cost is a larger database and a row that is
+     * expensive to load.
+     *
+     * Nullable: most students never upload one, and the interface falls back to
+     * their initials.
+     *
+     *
+     * WHY columnDefinition RATHER THAN @Lob
+     * -------------------------------------
+     * This one cost an evening, so it is written down rather than quietly
+     * fixed. @Lob is the annotation every tutorial reaches for and it looks
+     * exactly right here. It is not.
+     *
+     * Hibernate 6 maps a byte[] field to VARBINARY, and an unbounded VARBINARY
+     * on MySQL becomes TINYBLOB - which holds 255 BYTES. Not 255 kilobytes.
+     * Every upload failed with "Data too long for column 'profile_picture'",
+     * and because a column-length rejection arrives as a
+     * DataIntegrityViolationException, GlobalExceptionHandler reported it to
+     * the student as "That value is already in use by another account". A
+     * photograph, described as a duplicate email address.
+     *
+     * The failure was also invisible from the outside: ddl-auto=update had
+     * already created the column as TINYBLOB at startup, so the migration's
+     * ALTER TABLE ... ADD COLUMN failed as a duplicate, and DBeaver's cached
+     * metadata panel kept showing the type the migration INTENDED rather than
+     * the one the server actually had. Only information_schema told the truth.
+     *
+     * columnDefinition states the type outright, so Hibernate and MySQL cannot
+     * disagree about it and a fresh database gets the right column first time.
+     * The trade-off is honest: MEDIUMBLOB is MySQL syntax rather than portable
+     * JPA, so a move to PostgreSQL would need this changed. H2 accepts it too,
+     * which covers both databases this project actually uses - and a column
+     * 65,000 times smaller than intended is by far the worse problem to keep.
+     *
+     *
+     * WHAT @Basic(fetch = LAZY) DOES HERE, HONESTLY
+     * ----------------------------------------------
+     * Less than it looks like, and it is worth being precise rather than
+     * claiming a benefit this project does not actually get.
+     *
+     * For an ASSOCIATION (@ManyToOne, @OneToOne) lazy loading works out of the
+     * box: Hibernate hands back a proxy and fetches the real row on first use.
+     * For a BASIC attribute like this byte[] it does not. Lazy basic fetching
+     * needs the entity class to be rewritten at build time - bytecode
+     * enhancement, via hibernate-enhance-maven-plugin - so that reading the
+     * field can be intercepted. This project does not run that plugin, so the
+     * JPA specification's "this is a hint" applies and Hibernate ignores it:
+     * the bytes ARE loaded on every read of a Student.
+     *
+     * The annotation is kept because it states the intent, costs nothing, and
+     * starts working the day the plugin is added. It is NOT load-bearing today,
+     * and anywhere this class is described it should not be claimed as an
+     * optimisation that is already in effect.
+     *
+     * The real fix, if the cost ever shows up in practice, is not the plugin
+     * but a separate table - a StudentAvatar entity joined by a lazy @OneToOne -
+     * because lazy loading of an ASSOCIATION needs no enhancement at all. That
+     * is a schema change, so it is recorded here as the known next step rather
+     * than done in the same commit that got the column type right.
+     */
+    @Basic(fetch = FetchType.LAZY)
+    @JsonIgnore
+    @Column(name = "profile_picture", columnDefinition = "MEDIUMBLOB")
+    private byte[] profilePicture;
+
+    /**
+     * The image's MIME type, so the download endpoint can set Content-Type
+     * correctly rather than guessing from the bytes.
+     *
+     * Stored rather than derived because the browser needs it on the way out,
+     * and re-sniffing the bytes on every request to answer a question already
+     * answered at upload would be work for nothing.
+     */
+    @Size(max = 100)
+    @Column(name = "profile_picture_type", length = 100)
+    private String profilePictureType;
+
+    /**
      * Notification channel preferences (F1: toggle Email / Portal alerts).
      *
      * On Student rather than AppUser on purpose. These are preferences about
@@ -266,5 +361,21 @@ public class Student extends AppUser {
 
     public void setPortalNotificationsEnabled(boolean portalNotificationsEnabled) {
         this.portalNotificationsEnabled = portalNotificationsEnabled;
+    }
+
+    public byte[] getProfilePicture() {
+        return profilePicture;
+    }
+
+    public void setProfilePicture(byte[] profilePicture) {
+        this.profilePicture = profilePicture;
+    }
+
+    public String getProfilePictureType() {
+        return profilePictureType;
+    }
+
+    public void setProfilePictureType(String profilePictureType) {
+        this.profilePictureType = profilePictureType;
     }
 }

@@ -11,6 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.NotNull;
 
 /**
@@ -71,6 +72,10 @@ public class Category {
      * refunds"), not to let identical labels coexist.
      */
     @NotBlank(message = "Category name is required")
+    // @Size mirrors length = 120. See the note on AppUser.email for why a
+    // @Column(length) without one lets over-long input reach the database and
+    // come back wearing the wrong error message.
+    @Size(max = 120, message = "Category name must be 120 characters or fewer")
     @Column(name = "name", length = 120, nullable = false, unique = true)
     private String name;
 
