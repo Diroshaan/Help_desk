@@ -1,11 +1,16 @@
 package com.helpdesk.profile.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.helpdesk.common.user.entity.AppUser;
 import com.helpdesk.common.user.entity.Role;
 import jakarta.persistence.Basic;
+import org.hibernate.annotations.BatchSize;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.ForeignKey;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Entity;
 import jakarta.persistence.PrimaryKeyJoinColumn;
@@ -13,6 +18,11 @@ import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import com.helpdesk.common.validation.ValidationRules;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * F1 - Student Profile & Preferences Management (Diroshaan S, IT25101580)
@@ -100,19 +110,44 @@ public class Student extends AppUser {
     private String studentId;
 
     /**
-     * The student's name.
+     * The student's name, stored as the two components the specification asks
+     * for: "the system must store the student's name as separate given name and
+     * surname components" (Requirement Specification 3.2, User & Profile Data).
      *
-     * KNOWN GAP: the specification asks for this as two columns - "the student's
-     * name as separate given name and surname components" - and this is still
-     * one. Splitting it changes the registration form, the profile page, both
-     * request DTOs and StudentResponse, so it is deliberately a separate piece
-     * of work rather than smuggled into the hierarchy change. Recorded here so
-     * it is visibly outstanding rather than quietly missed.
+     * WHY TWO COLUMNS AND NOT ONE full_name
+     * -------------------------------------
+     * A single full_name column is one atomic value in the database's eyes. The
+     * database cannot sort by surname, cannot search "every Perera", and cannot
+     * address a letter "Dear Kasun" without guessing where one part ends and the
+     * other begins - and every guess is wrong for somebody. Storing the parts
+     * separately is First Normal Form applied to a composite attribute: the EER
+     * diagram draws Name as composite (given name, surname), and this is its
+     * direct translation.
+     *
+     * The full name is now DERIVED - see getFullName() below - rather than stored
+     * a third time. Storing it as well would be the same fact recorded twice,
+     * in two places that could disagree after an edit. That is the same rule the
+     * specification applies to resolution time and dashboard metrics.
+     *
+     * WHY surname IS NULLABLE
+     * -----------------------
+     * Not everybody has one. Mononyms are common in Sri Lanka and South India,
+     * and a student called "Tharmithan" with no family name must still be able to
+     * register. Forcing a surname would push people into typing a fake one or
+     * repeating their given name, which is worse data than an honest NULL. The
+     * given name is the one part everybody has, so that is the required one.
+     *
+     * 120 characters each, matching the old single column, so no existing name
+     * can fail validation merely because it was split.
      */
-    @NotBlank(message = "Full name is required")
-    @Size(max = 120, message = "Full name must be 120 characters or fewer")
-    @Column(name = "full_name", nullable = false, length = 120)
-    private String fullName;
+    @NotBlank(message = "Given name is required")
+    @Size(max = 120, message = "Given name must be 120 characters or fewer")
+    @Column(name = "given_name", nullable = false, length = 120)
+    private String givenName;
+
+    @Size(max = 120, message = "Surname must be 120 characters or fewer")
+    @Column(name = "surname", length = 120)
+    private String surname;
 
     /**
      * The student's FACULTY - "Faculty of Computing", "Faculty of Engineering".
@@ -135,25 +170,63 @@ public class Student extends AppUser {
     private String department;
 
     /**
-     * The student's contact number.
+     * The student's contact numbers - more than one, as the specification asks:
+     * "the system must permit a student to record more than one contact number
+     * against their profile" (Requirement Specification 3.2).
      *
-     * The frontend calls this "phone" in every payload it sends and reads
-     * (Register.jsx, Profile.jsx), never "contactNumber". @JsonProperty fixes
-     * both directions at once: without it, an incoming "phone" key silently
-     * fails to bind - Jackson ignores unrecognised properties rather than
-     * erroring - and an outgoing response serialises as "contactNumber", which
-     * the frontend's student.phone read never finds. That was the bug that left
-     * the phone box empty on the profile page even when a number was stored.
+     * WHY A SEPARATE TABLE
+     * --------------------
+     * A contact number is a MULTIVALUED attribute: one student, several values.
+     * A relational column holds exactly one value, so the two usual shortcuts
+     * are both wrong. phone1/phone2/phone3 columns fix a maximum in the schema
+     * and leave NULLs everywhere; a comma-separated string makes the numbers
+     * invisible to the database, so it can neither validate nor search them.
+     * The textbook mapping of a multivalued attribute is its own table, keyed by
+     * the owner's id - here student_contact_numbers(student_id, list_index,
+     * phone_number), primary key (student_id, list_index) - which is exactly
+     * what @ElementCollection generates.
      *
-     * KNOWN GAP: the specification says "the system must permit a student to
-     * record more than one contact number" - a multivalued attribute, which in a
-     * normalised design is its own table keyed by student id, not a column.
-     * Like the name split, this is outstanding and deliberately separate.
+     * @ElementCollection rather than a full @Entity because a contact number has
+     * no identity or life of its own: it exists only as part of one student, is
+     * never shared, and is never looked up on its own. That is the definition of
+     * a value type. Deleting the student row takes its numbers with it, and the
+     * foreign key is named so it reads clearly in the generated ER diagram.
+     *
+     * @OrderColumn keeps the order the student entered them in, so "the first
+     * number" is stable - the frontend, and any officer phoning the student, can
+     * rely on index 0 being the one they put first. Without it a List is really
+     * an unordered bag and the database may return the numbers in any order.
+     * The column is "list_index" rather than "position" because POSITION is a
+     * keyword in SQL, and a column named after a keyword works on one database
+     * and fails on the next.
+     *
+     * LAZY (the default): the admin user listing loads every account through
+     * AppUserRepository, and an EAGER collection here would fire one extra
+     * query per student there. The profile endpoints read the numbers inside the
+     * request, where the open session makes the lazy load safe.
+     *
+     * @BatchSize covers the one screen that DOES read every student's numbers -
+     * the staff directory, GET /api/students. Without it, listing 50 students
+     * costs 1 query for the students plus 50 for their numbers (the N+1
+     * problem). With it, Hibernate loads the numbers for up to 50 students in a
+     * single "WHERE student_id IN (...)" query when the first list is touched.
+     *
+     * The limit of three is a policy choice, not a technical one: enough for a
+     * mobile, a home number and a guardian, few enough that the list stays a
+     * list of the student's own numbers. It is enforced here AND on the request
+     * DTOs, for the reason given on RegistrationRequest.
      */
-    @JsonProperty("phone")
-    @Size(max = 30, message = "Phone number must be 30 characters or fewer")
-    @Column(name = "contact_number", length = 30)
-    private String contactNumber;
+    @ElementCollection
+    @BatchSize(size = 50)
+    @CollectionTable(
+            name = "student_contact_numbers",
+            joinColumns = @JoinColumn(name = "student_id"),
+            foreignKey = @ForeignKey(name = "fk_contact_number_student"))
+    @OrderColumn(name = "list_index")
+    @Column(name = "phone_number", nullable = false, length = 30)
+    @Size(max = 3, message = "At most three contact numbers can be saved")
+    private List<@NotBlank @Size(max = 30, message = "Phone number must be 30 characters or fewer") String>
+            contactNumbers = new ArrayList<>();
 
     @Size(max = 500, message = "Profile picture URL must be 500 characters or fewer")
     @Column(name = "profile_picture_url", length = 500)
@@ -254,12 +327,13 @@ public class Student extends AppUser {
     /**
      * Notification channel preferences (F1: toggle Email / Portal alerts).
      *
-     * On Student rather than AppUser on purpose. These are preferences about
-     * being told what happened to YOUR OWN tickets, which is a student concern;
-     * an officer's notification needs are about queue assignment and are F4's to
-     * define. Pushing them up to the supertype now would be guessing at a
-     * requirement nobody has written, and the specification lists notification
-     * preferences only under the student profile story.
+     * On Student rather than AppUser on purpose, even now that officers have
+     * preferences too (US-04, see Officer). The two mean different things: a
+     * student is told what happened to their own tickets, an officer is told
+     * that new tickets have landed in their queue. Same two channels, different
+     * events - so each subtype owns its own pair rather than the supertype
+     * pretending they are one setting. Administrators have none, because no
+     * requirement asks for any.
      */
     @Column(name = "email_notifications_enabled", nullable = false)
     private boolean emailNotificationsEnabled = true;
@@ -289,16 +363,14 @@ public class Student extends AppUser {
     }
 
     /**
-     * A student's display name is their registered full name.
+     * A student's display name is their full name, derived from its parts.
      *
-     * No new column: this delegates to the fullName that F1 already stores, so
-     * the supertype gains one polymorphic way to ask any account for a name
-     * without this table changing at all. See AppUser.getDisplayName() for why
-     * the three name fields were not consolidated instead.
+     * See AppUser.getDisplayName() for why every account type answers this
+     * question itself rather than sharing one column.
      */
     @Override
     public String getDisplayName() {
-        return fullName;
+        return getFullName();
     }
 
     // --- Getters and setters ---
@@ -315,12 +387,77 @@ public class Student extends AppUser {
         this.studentId = studentId;
     }
 
-    public String getFullName() {
-        return fullName;
+    public String getGivenName() {
+        return givenName;
     }
 
+    public void setGivenName(String givenName) {
+        this.givenName = givenName == null ? null : givenName.trim();
+    }
+
+    public String getSurname() {
+        return surname;
+    }
+
+    /** Blank is stored as NULL: "no surname" has one representation, not two. */
+    public void setSurname(String surname) {
+        this.surname = (surname == null || surname.isBlank()) ? null : surname.trim();
+    }
+
+    /**
+     * The full name, DERIVED from the two stored parts - there is no full_name
+     * column any more.
+     *
+     * Every existing caller keeps working unchanged: the admin user listing,
+     * the sidebar, the activity labels and every JSON response still receive a
+     * "fullName". Only the storage changed, which is the point of hiding it
+     * behind a method. JPA ignores this getter because the entity is mapped by
+     * FIELD (the annotations sit on the fields), so a getter with no field
+     * behind it creates no column.
+     */
+    public String getFullName() {
+        if (givenName == null) {
+            return surname;
+        }
+        return surname == null ? givenName : givenName + " " + surname;
+    }
+
+    /**
+     * Accept a single full name and split it into the two parts.
+     *
+     * This exists for backward compatibility: the registration and profile
+     * pages send one "fullName" box, and they keep working without a frontend
+     * change. A caller that knows the parts should use setGivenName() and
+     * setSurname() instead.
+     *
+     * The rule is "the LAST word is the surname, everything before it is the
+     * given name". It is a heuristic and it is written down as one, because no
+     * rule is right for every naming convention:
+     *
+     *   "Diro Ruban"                -> given "Diro",            surname "Ruban"
+     *   "Shaleel Dakshina Amarasinghe" -> given "Shaleel Dakshina", surname "Amarasinghe"
+     *   "L. S. N. Perera"           -> given "L. S. N.",        surname "Perera"
+     *   "Tharmithan"                -> given "Tharmithan",      surname NULL
+     *
+     * Last-word-is-surname is right for the common Sri Lankan and Western
+     * forms, including initials-first. It is wrong for, say, a Tamil name
+     * written patronymic-first; that student can correct it once separate
+     * boxes exist on the profile page. Getting some names wrong and letting the
+     * owner fix them is better than refusing to register them.
+     */
     public void setFullName(String fullName) {
-        this.fullName = fullName;
+        if (fullName == null) {
+            return;
+        }
+        String trimmed = fullName.trim().replaceAll("\\s+", " ");
+        int lastSpace = trimmed.lastIndexOf(' ');
+        if (lastSpace < 0) {
+            setGivenName(trimmed);
+            setSurname(null);
+        } else {
+            setGivenName(trimmed.substring(0, lastSpace));
+            setSurname(trimmed.substring(lastSpace + 1));
+        }
     }
 
     public String getDepartment() {
@@ -331,12 +468,69 @@ public class Student extends AppUser {
         this.department = department;
     }
 
-    public String getContactNumber() {
-        return contactNumber;
+    /** All saved numbers, in the order the student entered them. */
+    public List<String> getContactNumbers() {
+        return contactNumbers;
     }
 
-    public void setContactNumber(String contactNumber) {
-        this.contactNumber = contactNumber;
+    /**
+     * Replace every saved number with the given list.
+     *
+     * Cleans the input on the way in - trims, drops blanks, removes exact
+     * duplicates while keeping first-seen order - so "the same number twice"
+     * or an empty extra box on a form never becomes a row. The collection is
+     * modified IN PLACE rather than reassigned: Hibernate tracks this List
+     * instance, and swapping in a new one makes it delete and re-insert every
+     * row instead of applying the difference.
+     */
+    public void setContactNumbers(List<String> numbers) {
+        List<String> cleaned = new ArrayList<>();
+        if (numbers != null) {
+            for (String n : numbers) {
+                if (n == null) continue;
+                String t = n.trim();
+                if (!t.isEmpty() && !cleaned.contains(t)) cleaned.add(t);
+            }
+        }
+        // The limit is checked on the CLEANED list, not on what was sent. Four
+        // boxes where one is blank and one repeats another is two numbers, and
+        // refusing it as "more than three" would blame the student for our own
+        // tidying. Enforced here, in the entity, so no code path - registration,
+        // profile update, or anything written later - can store a fourth.
+        // IllegalArgumentException becomes a 400 with this message.
+        if (cleaned.size() > ValidationRules.MAX_CONTACT_NUMBERS) {
+            throw new IllegalArgumentException("At most three contact numbers can be saved");
+        }
+        contactNumbers.clear();
+        contactNumbers.addAll(cleaned);
+    }
+
+    /**
+     * The first number, or null - what the single "phone" field in the JSON
+     * has always meant. Kept so every existing reader of "phone" still works.
+     */
+    public String getPrimaryContactNumber() {
+        return contactNumbers.isEmpty() ? null : contactNumbers.get(0);
+    }
+
+    /**
+     * Set the FIRST number and keep any others.
+     *
+     * This is what the current profile page's single phone box means: editing
+     * it must not silently delete a second number the student saved some other
+     * way. Blank clears only the first number, and the next one moves up.
+     */
+    public void setPrimaryContactNumber(String number) {
+        List<String> updated = new ArrayList<>(contactNumbers);
+        String t = number == null ? "" : number.trim();
+        if (updated.isEmpty()) {
+            if (!t.isEmpty()) updated.add(t);
+        } else if (t.isEmpty()) {
+            updated.remove(0);
+        } else {
+            updated.set(0, t);
+        }
+        setContactNumbers(updated);
     }
 
     public String getProfilePictureUrl() {

@@ -104,6 +104,36 @@ public class SessionRevoker {
      * future change to a plain String principal does not silently stop
      * revocation working.
      */
+    /**
+     * End every session of this account EXCEPT the one making the request.
+     *
+     * Used after a password change. The reason to change a password is often
+     * "I think someone else has it" - and if they are already signed in, a new
+     * password on its own does nothing to them: their session was authenticated
+     * with the old one and stays valid until it expires. So every other session
+     * is ended. The session that made the change is kept, because the person
+     * who just proved they know the current password is the one entitled to
+     * carry on; signing them out as a reward would be hostile for no benefit.
+     *
+     * keepSessionId may be null (no session to keep), in which case this is
+     * the same as revokeAllSessionsFor.
+     */
+    public void revokeOtherSessions(String email, String keepSessionId) {
+        if (email == null || email.isBlank()) {
+            return;
+        }
+        for (Object principal : sessionRegistry.getAllPrincipals()) {
+            if (!matches(principal, email)) {
+                continue;
+            }
+            for (SessionInformation session : sessionRegistry.getAllSessions(principal, false)) {
+                if (!session.getSessionId().equals(keepSessionId)) {
+                    session.expireNow();
+                }
+            }
+        }
+    }
+
     private boolean matches(Object principal, String email) {
         if (principal instanceof UserDetails details) {
             return email.equalsIgnoreCase(details.getUsername());

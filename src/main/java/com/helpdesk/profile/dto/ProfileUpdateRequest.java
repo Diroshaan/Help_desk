@@ -1,8 +1,11 @@
 package com.helpdesk.profile.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.helpdesk.common.validation.ValidationRules;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import java.util.List;
 
 /**
  * Request body for PUT /api/students/{id} - profile self-editing (US-01).
@@ -54,6 +57,23 @@ public class ProfileUpdateRequest {
     @Size(max = 120, message = "Full name must be 120 characters or fewer")
     private String fullName;
 
+    // The two name parts, for a client that edits them separately. Same partial
+    // update rules as every other field here: absent means "leave it alone".
+    //
+    // givenName uses the same "not blank if present" @Pattern as fullName,
+    // because the given name is the one part every student must keep. surname
+    // has no such rule - sending "" is how a student with no family name
+    // clears it, and the entity stores that as NULL.
+    //
+    // If fullName AND the parts are both sent, the parts win (see
+    // StudentService.updateProfile): they are the more precise statement.
+    @Pattern(regexp = ".*\\S.*", message = "Given name cannot be blank")
+    @Size(max = 120, message = "Given name must be 120 characters or fewer")
+    private String givenName;
+
+    @Size(max = 120, message = "Surname must be 120 characters or fewer")
+    private String surname;
+
     // No blank-rejecting constraint at all, deliberately: the faculty dropdown's
     // first option is "Not set" with value "" (see DEPARTMENTS in Register.jsx /
     // Profile.jsx), so a student clearing their faculty is a legitimate save, not
@@ -69,12 +89,32 @@ public class ProfileUpdateRequest {
     // here: without it, "phone" would silently fail to bind (Jackson ignores
     // unrecognised properties rather than erroring) and, before the null-check
     // fix in updateProfile existed, would have wiped the stored number outright.
+    //
+    // Now means "the FIRST contact number" - editing it keeps any others the
+    // student has saved (see Student.setPrimaryContactNumber). Sending "" clears
+    // just that one.
     @JsonProperty("phone")
     @Size(max = 30, message = "Phone number must be 30 characters or fewer")
+    @Pattern(regexp = ValidationRules.PHONE_REGEX, message = ValidationRules.PHONE_MESSAGE)
     private String contactNumber;
 
-    @Size(max = 500, message = "Profile picture URL must be 500 characters or fewer")
-    private String profilePictureUrl;
+    // The whole list, replacing what is stored. Absent (null) leaves the numbers
+    // alone; an empty list [] removes them all - the one place in this DTO where
+    // "empty" and "absent" are deliberately different instructions, which is
+    // why this is a List and not a comma-separated string.
+    // The cap here is on what was SENT and is only a sanity bound against an
+    // absurd payload; the real limit of three is applied to the cleaned list
+    // (blanks and duplicates removed) in Student.setContactNumbers.
+    @Size(max = 10, message = "Too many contact numbers were sent")
+    private List<@Size(max = 30, message = "Phone number must be 30 characters or fewer")
+                 @Pattern(regexp = ValidationRules.PHONE_REGEX, message = ValidationRules.PHONE_MESSAGE)
+                 String> phones;
+
+    // profilePictureUrl is no longer editable here. The server sets it when a
+    // picture is uploaded, and only ever to its own download endpoint - see
+    // the note on RegistrationRequest for the tracking-pixel problem a
+    // client-writable URL caused. A request that still sends it is ignored
+    // (Jackson skips unknown properties), which is safe: nothing changes.
 
     // Boolean (wrapper), not boolean (primitive) - deliberately. "Save changes"
     // (personal details) submits fullName/phone/department but NOT these two
@@ -118,12 +158,28 @@ public class ProfileUpdateRequest {
         this.contactNumber = contactNumber;
     }
 
-    public String getProfilePictureUrl() {
-        return profilePictureUrl;
+    public String getGivenName() {
+        return givenName;
     }
 
-    public void setProfilePictureUrl(String profilePictureUrl) {
-        this.profilePictureUrl = profilePictureUrl;
+    public void setGivenName(String givenName) {
+        this.givenName = givenName;
+    }
+
+    public String getSurname() {
+        return surname;
+    }
+
+    public void setSurname(String surname) {
+        this.surname = surname;
+    }
+
+    public List<String> getPhones() {
+        return phones;
+    }
+
+    public void setPhones(List<String> phones) {
+        this.phones = phones;
     }
 
     public Boolean isEmailNotificationsEnabled() {

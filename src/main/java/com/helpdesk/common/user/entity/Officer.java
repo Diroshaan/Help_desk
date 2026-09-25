@@ -1,6 +1,7 @@
 package com.helpdesk.common.user.entity;
 
 import com.helpdesk.common.reference.entity.Department;
+import org.hibernate.annotations.ColumnDefault;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -174,6 +175,46 @@ public class Officer extends AppUser {
     )
     private Set<Department> departments = new HashSet<>();
 
+    /**
+     * US-04 - "As a help desk officer, I want to update my own profile and
+     * notification preferences, so that I'm alerted through my preferred
+     * channel when new tickets land in my queue." Assigned to F1 (tasks
+     * T-04.1 to T-04.3), and these three fields are what it needs.
+     *
+     * A single contact number, not a list like Student's: the multivalued
+     * requirement is written for students only ("permit a student to record
+     * more than one contact number"). Giving officers a list as well would be
+     * building a requirement nobody asked for. Nullable, because officers
+     * provisioned before this field existed have none, and a desk phone is
+     * optional.
+     */
+    @Size(max = 30, message = "Phone number must be 30 characters or fewer")
+    @Column(name = "contact_number", length = 30)
+    private String contactNumber;
+
+    /**
+     * Notification channels, the same two a student has (email and portal) but
+     * about a different event - a ticket arriving in this officer's queue rather
+     * than a change to their own ticket. See the matching note on Student for
+     * why each subtype owns its own pair instead of AppUser holding one.
+     *
+     * @ColumnDefault("true") is here for the EXISTING officers, not new ones.
+     * Adding a NOT NULL column to a table that already has rows needs a value
+     * for those rows; without a declared default MySQL fills a boolean with
+     * FALSE, which would silently switch every current officer's notifications
+     * OFF the moment this code first starts. The Java initialiser (= true) only
+     * applies to objects created in Java, never to rows already stored. The
+     * database default applies to those, and both say the same thing: on unless
+     * the officer turns it off.
+     */
+    @ColumnDefault("true")
+    @Column(name = "email_notifications_enabled", nullable = false)
+    private boolean emailNotificationsEnabled = true;
+
+    @ColumnDefault("true")
+    @Column(name = "portal_notifications_enabled", nullable = false)
+    private boolean portalNotificationsEnabled = true;
+
     // --- Constructors ---
 
     public Officer() {
@@ -256,5 +297,30 @@ public class Officer extends AppUser {
 
     public void setDepartments(Set<Department> departments) {
         this.departments = departments;
+    }
+
+    public String getContactNumber() {
+        return contactNumber;
+    }
+
+    /** Blank is stored as NULL, so "no number" has one representation. */
+    public void setContactNumber(String contactNumber) {
+        this.contactNumber = (contactNumber == null || contactNumber.isBlank()) ? null : contactNumber.trim();
+    }
+
+    public boolean isEmailNotificationsEnabled() {
+        return emailNotificationsEnabled;
+    }
+
+    public void setEmailNotificationsEnabled(boolean emailNotificationsEnabled) {
+        this.emailNotificationsEnabled = emailNotificationsEnabled;
+    }
+
+    public boolean isPortalNotificationsEnabled() {
+        return portalNotificationsEnabled;
+    }
+
+    public void setPortalNotificationsEnabled(boolean portalNotificationsEnabled) {
+        this.portalNotificationsEnabled = portalNotificationsEnabled;
     }
 }

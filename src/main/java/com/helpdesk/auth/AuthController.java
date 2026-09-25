@@ -1,11 +1,13 @@
 package com.helpdesk.auth;
 
 import com.helpdesk.auth.dto.CurrentUserResponse;
+import com.helpdesk.auth.dto.PasswordChangeRequest;
 import com.helpdesk.common.user.repository.AppUserRepository;
 import com.helpdesk.profile.service.ActivityLogService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -21,6 +23,7 @@ import org.springframework.security.web.context.HttpSessionSecurityContextReposi
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -67,6 +70,9 @@ public class AuthController {
      */
     private final ActivityLogService activityLogService;
 
+    /** Password change for every account type - see changePassword() below. */
+    private final PasswordService passwordService;
+
     // Handles actually persisting the authenticated user into the HTTP session,
     // so subsequent requests (with the same session cookie) are recognised as
     // logged in without needing to send the password again.
@@ -76,11 +82,13 @@ public class AuthController {
     public AuthController(AuthenticationManager authenticationManager,
                           ActivityLogService activityLogService,
                           AppUserRepository appUserRepository,
-                          SessionRegistry sessionRegistry) {
+                          SessionRegistry sessionRegistry,
+                          PasswordService passwordService) {
         this.authenticationManager = authenticationManager;
         this.activityLogService = activityLogService;
         this.appUserRepository = appUserRepository;
         this.sessionRegistry = sessionRegistry;
+        this.passwordService = passwordService;
     }
 
     // A simple record for the JSON request body: { "email": "...", "password": "..." }
@@ -268,6 +276,34 @@ public class AuthController {
         return appUserRepository.findByEmail(email)
                 .map(CurrentUserResponse::from)
                 .orElse(null);
+    }
+
+    /**
+     * Change the signed-in account's password - students, officers and
+     * administrators alike. See PasswordService for the rules and why each one
+     * exists.
+     *
+     * PUT rather than POST: the request replaces one well-defined value on an
+     * existing resource and sending it twice leaves the same end state (the
+     * second attempt fails the "must differ from current" rule, changing
+     * nothing), which is what PUT promises.
+     *
+     * Access: /api/auth/login and /api/auth/me are the only permitAll paths
+     * under /api/auth, so this one falls to anyRequest().authenticated() in
+     * SecurityConfig - an anonymous caller gets 403 before reaching here.
+     *
+     * 204 No Content on success: there is nothing to send back, and returning
+     * the account would mean one more place a password hash could leak from if
+     * a DTO were ever swapped for an entity.
+     */
+    @PutMapping("/password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody PasswordChangeRequest request,
+                                               Authentication authentication,
+                                               HttpServletRequest httpRequest) {
+        HttpSession session = httpRequest.getSession(false);
+        passwordService.changePassword(authentication.getName(),
+                session == null ? null : session.getId(), request);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/logout")

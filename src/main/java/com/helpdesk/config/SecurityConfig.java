@@ -130,6 +130,26 @@ public class SecurityConfig {
                         // hit directly.
                         .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.FORWARD).permitAll()
 
+                        // HEAD on the API is refused outright - and it has to be FIRST.
+                        //
+                        // Every GET-only rule below, e.g.
+                        //   requestMatchers(HttpMethod.GET, "/api/articles/manage").hasRole("OFFICER")
+                        // matches GET and nothing else. But Spring MVC answers a HEAD
+                        // request by running the GET handler and discarding the body. So a
+                        // student sending HEAD /api/articles/manage slipped past the
+                        // GET-only officer rule, fell through to anyRequest().authenticated(),
+                        // and the officer-only handler ran. The body is dropped, but the
+                        // Content-Length header still reveals how much data came back -
+                        // enough to learn, say, how many draft articles exist.
+                        //
+                        // Nothing in this application ever sends HEAD to the API (the
+                        // frontend uses GET/POST/PUT/PATCH/DELETE), so denying it costs
+                        // nothing and closes the gap for every current GET-only rule and
+                        // every one added later - which is better than remembering to add a
+                        // HEAD twin beside each of them. Static files are not under /api/**,
+                        // so browsers can still HEAD those.
+                        .requestMatchers(HttpMethod.HEAD, "/api/**").denyAll()
+
                         // Public: browsing the dev database
                         .requestMatchers("/h2-console/**").permitAll()
                         // Public: creating a new account (you can't log in before you exist)
@@ -214,6 +234,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/queue/**").hasRole("OFFICER")
                         // Admin-only: system administration features (F6).
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // Officer-only: an officer's own profile and preferences (F1, US-04).
+                        // A different prefix from /api/admin/officers, which is where an
+                        // ADMIN provisions officers - so the two rules cannot collide, and a
+                        // student asking for /api/officers/me gets 403, not somebody's data.
+                        .requestMatchers("/api/officers/**").hasRole("OFFICER")
 
                         // Officer-only: authoring the knowledge base (F5).
                         //

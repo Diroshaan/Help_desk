@@ -1,10 +1,14 @@
 package com.helpdesk.profile.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.helpdesk.common.validation.ValidationRules;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import java.util.List;
 
 /**
  * Request body for POST /api/students - new account registration (US-03).
@@ -71,9 +75,26 @@ public class RegistrationRequest {
     @Pattern(regexp = "^[A-Z]{2}\\d{8}$", message = "Student ID must be two letters followed by eight digits, e.g. IT25101580")
     private String studentId;
 
-    @NotBlank(message = "Full name is required")
+    // THE NAME, in either of two shapes.
+    //
+    // The specification now has the name stored as given name + surname (see
+    // Student.givenName). A client may send those two parts directly, or send
+    // one "fullName" as the current registration page does, which the service
+    // splits. Accepting both means the database change needed no frontend
+    // change on the day it landed, and the form can move to two boxes whenever
+    // it is redesigned.
+    //
+    // None of the three carries @NotBlank on its own, because each is optional
+    // provided the other shape is present. The "at least one" rule is
+    // isNameProvided() below.
     @Size(max = 120, message = "Full name must be 120 characters or fewer")
     private String fullName;
+
+    @Size(max = 120, message = "Given name must be 120 characters or fewer")
+    private String givenName;
+
+    @Size(max = 120, message = "Surname must be 120 characters or fewer")
+    private String surname;
 
     @NotBlank(message = "Email is required")
     @Email(message = "Must be a valid email address")
@@ -83,11 +104,13 @@ public class RegistrationRequest {
     // At least 8 characters, with an upper-case letter, a lower-case letter,
     // and a digit somewhere in it - see the class comment above for why this
     // lives here and not on Student.password.
+    //
+    // The rule itself now lives in ValidationRules, shared with password change,
+    // so the two can never drift apart. The upper limit is new: see
+    // ValidationRules.PASSWORD_MAX_LENGTH for why BCrypt makes it necessary.
     @NotBlank(message = "Password is required")
-    @Pattern(
-            regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$",
-            message = "Password must be at least 8 characters and include an upper-case letter, a lower-case letter, and a digit"
-    )
+    @Pattern(regexp = ValidationRules.PASSWORD_REGEX, message = ValidationRules.PASSWORD_MESSAGE)
+    @Size(max = ValidationRules.PASSWORD_MAX_LENGTH, message = ValidationRules.PASSWORD_LENGTH_MESSAGE)
     private String password;
 
     @NotBlank(message = "Department is required")
@@ -102,12 +125,51 @@ public class RegistrationRequest {
     // student's phone number would just vanish with no validation failure to
     // reveal why. The Java-side name stays "contactNumber" to match Student's
     // and ProfileUpdateRequest's field of the same name.
+    //
+    // Still accepted, as the FIRST contact number, so the current single phone
+    // box keeps working. The full list goes in "phones" below.
     @JsonProperty("phone")
     @Size(max = 30, message = "Phone number must be 30 characters or fewer")
+    @Pattern(regexp = ValidationRules.PHONE_REGEX, message = ValidationRules.PHONE_MESSAGE)
     private String contactNumber;
 
-    @Size(max = 500, message = "Profile picture URL must be 500 characters or fewer")
-    private String profilePictureUrl;
+    // Every contact number, in order - the multivalued attribute the
+    // specification asks for. If both "phones" and "phone" are sent, "phones"
+    // wins, because it is the more complete statement of what the student
+    // wants saved. Each element is validated individually (the annotations sit
+    // on the type argument), so one bad number is reported on its own rather
+    // than rejecting the list with a vague message.
+    // The cap here is on what was SENT and is only a sanity bound against an
+    // absurd payload; the real limit of three is applied to the cleaned list
+    // (blanks and duplicates removed) in Student.setContactNumbers.
+    @Size(max = 10, message = "Too many contact numbers were sent")
+    private List<@Size(max = 30, message = "Phone number must be 30 characters or fewer")
+                 @Pattern(regexp = ValidationRules.PHONE_REGEX, message = ValidationRules.PHONE_MESSAGE)
+                 String> phones;
+
+    // profilePictureUrl WAS accepted here, and deliberately no longer is.
+    //
+    // It let a client register with any URL at all as their picture - an image
+    // on another site that logs the IP address of every officer and
+    // administrator whose screen displays it. Now that pictures are uploaded
+    // (POST /api/students/{id}/avatar), the server sets this URL itself and
+    // only ever to its own download endpoint. A client-supplied value would
+    // also point somewhere other than the stored bytes, so the two could
+    // disagree. Removing the field makes both problems unrepresentable.
+
+    /**
+     * Name rule across the two shapes: a full name, or at least a given name.
+     *
+     * @AssertTrue on a boolean method is how Bean Validation expresses a rule
+     * that spans more than one field. It runs with every other constraint, so
+     * a request missing both still gets a clean 400 with this message beside
+     * the others, rather than failing later in the service.
+     */
+    @AssertTrue(message = "Full name is required")
+    public boolean isNameProvided() {
+        return (fullName != null && !fullName.isBlank())
+                || (givenName != null && !givenName.isBlank());
+    }
 
     public String getStudentId() {
         return studentId;
@@ -157,11 +219,27 @@ public class RegistrationRequest {
         this.contactNumber = contactNumber;
     }
 
-    public String getProfilePictureUrl() {
-        return profilePictureUrl;
+    public String getGivenName() {
+        return givenName;
     }
 
-    public void setProfilePictureUrl(String profilePictureUrl) {
-        this.profilePictureUrl = profilePictureUrl;
+    public void setGivenName(String givenName) {
+        this.givenName = givenName;
+    }
+
+    public String getSurname() {
+        return surname;
+    }
+
+    public void setSurname(String surname) {
+        this.surname = surname;
+    }
+
+    public List<String> getPhones() {
+        return phones;
+    }
+
+    public void setPhones(List<String> phones) {
+        this.phones = phones;
     }
 }

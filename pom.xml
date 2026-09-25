@@ -99,6 +99,36 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+
+            <!--
+              Test runner settings.
+
+              WHY THE BYTE BUDDY FLAG
+              Mockito creates its fake objects ("mocks") with a library called
+              Byte Buddy, which rewrites Java classes while the tests run. The
+              Byte Buddy version that Spring Boot 3.2.5 ships (1.14) only knows
+              class files up to Java 22. This project COMPILES for Java 17, but
+              Maven on a developer machine may RUN on a newer JDK - IntelliJ here
+              uses JDK 24 - and then every Mockito test fails before it starts
+              with "Java 24 (68) is not supported by the current version of
+              Byte Buddy". The code under test is fine; the tool cannot read the
+              newer JDK's own classes.
+
+              net.bytebuddy.experimental=true tells Byte Buddy to attempt class
+              files newer than it officially supports. It is the fix Byte Buddy's
+              own error message recommends, it only affects the test run (never
+              the application), and it is harmless on JDK 17, which is what CI
+              uses. The alternative - overriding byte-buddy.version - would also
+              change the version Hibernate uses at runtime, a far bigger change
+              made for a test-only problem.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 
