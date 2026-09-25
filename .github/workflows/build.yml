@@ -13,12 +13,18 @@
 # person. A build on every PR catches the whole class of "it works on my
 # machine" automatically, before a reviewer spends time on it.
 #
-# WHY IT ONLY BUILDS, AND DOES NOT TEST
-# -------------------------------------
-# Because there are no tests yet (src/test does not exist). `mvn -B verify`
-# would pass trivially and give false confidence. Compiling is the honest check
-# today; when the first test lands, change `compile` to `verify` on the line
-# below and this file starts earning its keep twice over.
+# WHY IT NOW RUNS THE TESTS
+# -------------------------
+# It used to compile only, because src/test did not exist and `mvn verify`
+# would have passed trivially - a green tick that proved nothing. The first
+# tests have landed (F1 and the shared access rules: 37 of them, including a
+# full-application test that student A cannot read or edit student B), so
+# the backend job now runs `mvn -B verify`. From here a pull request that
+# breaks the ownership guard, the password rules or the session revocation
+# fails its check before anyone reviews it.
+#
+# The tests use the in-memory H2 database and the "test" profile, so CI needs
+# no database, no secrets and no network beyond Maven Central.
 
 name: Build
 
@@ -30,7 +36,7 @@ on:
 
 jobs:
   backend:
-    name: Backend compiles
+    name: Backend compiles and tests pass
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,9 +52,10 @@ jobs:
           cache: maven
 
       # -B is batch mode: no ANSI colours and no interactive prompts, so the
-      # log stays readable in the Actions output.
-      - name: Compile
-        run: mvn -B -DskipTests compile
+      # log stays readable in the Actions output. verify compiles AND runs every
+      # test under src/test; a single failing test fails the check.
+      - name: Compile and test
+        run: mvn -B verify
 
   frontend:
     name: Frontend builds
