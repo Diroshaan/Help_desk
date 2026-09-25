@@ -49,7 +49,15 @@ public class StudentResponse {
 
     private final Long id;
     private final String studentId;
+
+    /**
+     * The derived full name, still sent under the name every screen already
+     * reads. givenName and surname below are the stored parts; a client that
+     * shows a name uses fullName, a form that edits it uses the parts.
+     */
     private final String fullName;
+    private final String givenName;
+    private final String surname;
     private final String email;
 
     /**
@@ -66,6 +74,14 @@ public class StudentResponse {
      */
     @JsonProperty("phone")
     private final String contactNumber;
+
+    /**
+     * Every saved contact number, in the student's order. "phone" above is
+     * simply the first of these, kept so existing readers need no change.
+     * Never null - an empty list when there are none - for the same reason
+     * activityLog is never null.
+     */
+    private final List<String> phones;
 
     private final String department;
     private final String profilePictureUrl;
@@ -113,16 +129,23 @@ public class StudentResponse {
      */
     private final List<ActivityLogResponse> activityLog;
 
-    public StudentResponse(Long id, String studentId, String fullName, String email,
-                           String contactNumber, String department, String profilePictureUrl,
+    public StudentResponse(Long id, String studentId, String fullName, String givenName, String surname,
+                           String email, String contactNumber, List<String> phones,
+                           String department, String profilePictureUrl,
                            String role, boolean emailNotificationsEnabled,
                            boolean portalNotificationsEnabled, boolean active,
                            LocalDateTime createdAt, List<ActivityLogResponse> activityLog) {
         this.id = id;
         this.studentId = studentId;
         this.fullName = fullName;
+        this.givenName = givenName;
+        this.surname = surname;
         this.email = email;
         this.contactNumber = contactNumber;
+        // Copied, not referenced: the entity's list is Hibernate's live
+        // collection, and a response must not hold a handle that could lazily
+        // query the database - or be mutated - after it was built.
+        this.phones = phones == null ? List.of() : List.copyOf(phones);
         this.department = department;
         this.profilePictureUrl = profilePictureUrl;
         this.role = role;
@@ -161,8 +184,11 @@ public class StudentResponse {
                 student.getId(),
                 student.getStudentId(),
                 student.getFullName(),
+                student.getGivenName(),
+                student.getSurname(),
                 student.getEmail(),
-                student.getContactNumber(),
+                student.getPrimaryContactNumber(),
+                student.getContactNumbers(),
                 student.getDepartment(),
                 student.getProfilePictureUrl(),
                 // .name() because getRole() now returns the Role enum rather
@@ -205,6 +231,18 @@ public class StudentResponse {
 
     public String getFullName() {
         return fullName;
+    }
+
+    public String getGivenName() {
+        return givenName;
+    }
+
+    public String getSurname() {
+        return surname;
+    }
+
+    public List<String> getPhones() {
+        return phones;
     }
 
     public String getEmail() {

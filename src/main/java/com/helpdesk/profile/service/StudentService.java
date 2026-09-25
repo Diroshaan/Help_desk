@@ -98,11 +98,18 @@ public class StudentService {
 
         Student student = new Student();
         student.setStudentId(request.getStudentId());
-        student.setFullName(request.getFullName());
+        applyName(student, request.getFullName(), request.getGivenName(), request.getSurname());
         student.setEmail(request.getEmail());
         student.setDepartment(request.getDepartment());
-        student.setContactNumber(request.getContactNumber());
-        student.setProfilePictureUrl(request.getProfilePictureUrl());
+
+        // "phones" (the full list) wins over "phone" (one number) when both are
+        // sent - see RegistrationRequest. The picture URL is no longer taken from
+        // the request at all; it is set only by an upload.
+        if (request.getPhones() != null) {
+            student.setContactNumbers(request.getPhones());
+        } else {
+            student.setPrimaryContactNumber(request.getContactNumber());
+        }
 
         // Never trust a client-supplied primary key.
         //
@@ -288,11 +295,18 @@ public class StudentService {
         List<String> changedDetails = new ArrayList<>();
         boolean preferencesChanged = false;
 
-        if (updatedDetails.getFullName() != null) {
-            if (!Objects.equals(updatedDetails.getFullName(), existing.getFullName())) {
-                changedDetails.add("full name");
+        // The name, in whichever shape the caller sent. Compared as the DERIVED
+        // full name before and after, so "Diro Ruban" re-sent as
+        // given "Diro" + surname "Ruban" is correctly recorded as no change.
+        if (updatedDetails.getFullName() != null
+                || updatedDetails.getGivenName() != null
+                || updatedDetails.getSurname() != null) {
+            String before = existing.getFullName();
+            applyName(existing, updatedDetails.getFullName(),
+                    updatedDetails.getGivenName(), updatedDetails.getSurname());
+            if (!Objects.equals(before, existing.getFullName())) {
+                changedDetails.add("name");
             }
-            existing.setFullName(updatedDetails.getFullName());
         }
         if (updatedDetails.getDepartment() != null) {
             if (!Objects.equals(updatedDetails.getDepartment(), existing.getDepartment())) {
@@ -300,18 +314,21 @@ public class StudentService {
             }
             existing.setDepartment(updatedDetails.getDepartment());
         }
-        if (updatedDetails.getContactNumber() != null) {
-            if (!Objects.equals(updatedDetails.getContactNumber(), existing.getContactNumber())) {
-                changedDetails.add("phone number");
+        // Contact numbers. The list is copied BEFORE the change because the
+        // entity edits its collection in place - comparing afterwards against
+        // the live list would always find them equal.
+        if (updatedDetails.getPhones() != null || updatedDetails.getContactNumber() != null) {
+            List<String> before = new ArrayList<>(existing.getContactNumbers());
+            if (updatedDetails.getPhones() != null) {
+                existing.setContactNumbers(updatedDetails.getPhones());
+            } else {
+                existing.setPrimaryContactNumber(updatedDetails.getContactNumber());
             }
-            existing.setContactNumber(updatedDetails.getContactNumber());
-        }
-        if (updatedDetails.getProfilePictureUrl() != null) {
-            if (!Objects.equals(updatedDetails.getProfilePictureUrl(), existing.getProfilePictureUrl())) {
-                changedDetails.add("profile picture");
+            if (!before.equals(existing.getContactNumbers())) {
+                changedDetails.add("contact numbers");
             }
-            existing.setProfilePictureUrl(updatedDetails.getProfilePictureUrl());
         }
+        // profilePictureUrl is no longer editable here - see ProfileUpdateRequest.
         if (updatedDetails.isEmailNotificationsEnabled() != null) {
             if (updatedDetails.isEmailNotificationsEnabled() != existing.isEmailNotificationsEnabled()) {
                 preferencesChanged = true;
@@ -379,6 +396,30 @@ public class StudentService {
         // happened if the account is ever restored under US-05.
         activityLogService.record(student.getId(), ActivityType.ACCOUNT_DEACTIVATED,
                 "Account closed by the account holder.");
+    }
+
+    /**
+     * Set a student's name from whichever shape the request used.
+     *
+     * The separate parts win when present, because they are exact; the single
+     * fullName is split by the entity's heuristic only when the parts were not
+     * given (see Student.setFullName for the rule and its known limits).
+     *
+     * On an update, sending ONLY a surname changes only the surname - the
+     * given name is left as stored. That is the same partial-update rule every
+     * other field on the profile follows: absent means "leave it alone".
+     */
+    private void applyName(Student student, String fullName, String givenName, String surname) {
+        if (givenName != null || surname != null) {
+            if (givenName != null) {
+                student.setGivenName(givenName);
+            }
+            if (surname != null) {
+                student.setSurname(surname);
+            }
+        } else if (fullName != null) {
+            student.setFullName(fullName);
+        }
     }
 
     // ------------------------------------------------------------------
