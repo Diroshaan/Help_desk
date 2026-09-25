@@ -31,5 +31,21 @@ public enum ActivityType {
     PREFERENCES_UPDATED,
 
     /** Self-service deactivation through DELETE /api/students/{id} (US-02). */
-    ACCOUNT_DEACTIVATED
+    ACCOUNT_DEACTIVATED,
+
+    /**
+     * The account's password was changed by its owner.
+     *
+     * Recorded because it is exactly the event a student would want to see if
+     * they did NOT do it: a password change they don't recognise is the first
+     * sign someone else is in their account. The text never includes the
+     * password or any part of it.
+     *
+     * Adding a value here is safe on MySQL only because ActivityLog.type is
+     * mapped with @JdbcTypeCode(SqlTypes.VARCHAR). Had it been a native ENUM
+     * column, ddl-auto=update would never add this value and every insert of it
+     * would fail on the hosted database while passing on H2 - the ENUM trap
+     * this project has already met once.
+     */
+    PASSWORD_CHANGED
 }
