@@ -4,6 +4,7 @@ import com.helpdesk.auth.dto.PasswordChangeRequest;
 import com.helpdesk.common.user.entity.AppUser;
 import com.helpdesk.common.user.entity.Officer;
 import com.helpdesk.common.user.repository.AppUserRepository;
+import com.helpdesk.notification.event.PasswordChangedEvent;
 import com.helpdesk.profile.entity.ActivityType;
 import com.helpdesk.profile.entity.Student;
 import com.helpdesk.profile.service.ActivityLogService;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.util.Optional;
@@ -40,13 +42,14 @@ class PasswordServiceTest {
     @Mock private AppUserRepository appUserRepository;
     @Mock private SessionRevoker sessionRevoker;
     @Mock private ActivityLogService activityLogService;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
     private PasswordService service;
 
     @BeforeEach
     void setUp() {
-        service = new PasswordService(appUserRepository, encoder, sessionRevoker, activityLogService);
+        service = new PasswordService(appUserRepository, encoder, sessionRevoker, activityLogService, eventPublisher);
     }
 
     private Student student(String rawPassword) {
@@ -70,6 +73,7 @@ class PasswordServiceTest {
                 .hasMessageContaining("incorrect");
         assertThat(s.getPassword()).isEqualTo(before);
         verify(sessionRevoker, never()).revokeOtherSessions(anyString(), any());
+        verify(eventPublisher, never()).publishEvent(any(Object.class));
     }
 
     // "Changing" to the same password passes every rule and secures nothing.
@@ -96,6 +100,8 @@ class PasswordServiceTest {
         assertThat(encoder.matches("Secret123", s.getPassword())).isFalse();
         verify(activityLogService).record(eq(3L), eq(ActivityType.PASSWORD_CHANGED), anyString());
         verify(sessionRevoker).revokeOtherSessions("diro@my.sliit.lk", "sess-1");
+        // Observer: the change is announced so the user gets a security notification.
+        verify(eventPublisher).publishEvent(new PasswordChangedEvent(3L));
     }
 
     // Officers have no activity log; the change must still work for them.

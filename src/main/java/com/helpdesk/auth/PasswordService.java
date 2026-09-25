@@ -7,6 +7,8 @@ import com.helpdesk.profile.entity.Student;
 import com.helpdesk.common.user.repository.AppUserRepository;
 import com.helpdesk.profile.entity.ActivityType;
 import com.helpdesk.profile.service.ActivityLogService;
+import com.helpdesk.notification.event.PasswordChangedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,15 +41,18 @@ public class PasswordService {
     private final PasswordEncoder passwordEncoder;
     private final SessionRevoker sessionRevoker;
     private final ActivityLogService activityLogService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PasswordService(AppUserRepository appUserRepository,
                            PasswordEncoder passwordEncoder,
                            SessionRevoker sessionRevoker,
-                           ActivityLogService activityLogService) {
+                           ActivityLogService activityLogService,
+                           ApplicationEventPublisher eventPublisher) {
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.sessionRevoker = sessionRevoker;
         this.activityLogService = activityLogService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -98,5 +103,11 @@ public class PasswordService {
         // password would still be the valid one and ending sessions over it
         // would lock people out for nothing.
         sessionRevoker.revokeOtherSessions(user.getEmail(), currentSessionId);
+
+        // Observer pattern: announce that the password changed and let the
+        // notification module decide who to tell and how. This class doesn't
+        // know notifications exist. The listener runs only after this
+        // transaction commits, so a rollback above means no message goes out.
+        eventPublisher.publishEvent(new PasswordChangedEvent(user.getId()));
     }
 }

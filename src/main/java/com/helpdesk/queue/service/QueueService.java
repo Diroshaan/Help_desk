@@ -5,11 +5,13 @@ import com.helpdesk.common.reference.entity.Department;
 import com.helpdesk.common.reference.repository.DepartmentRepository;
 import com.helpdesk.common.user.entity.Officer;
 import com.helpdesk.common.user.repository.OfficerRepository;
+import com.helpdesk.notification.event.TicketStatusChangedEvent;
 import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticket.entity.TicketStatus;
 import com.helpdesk.ticket.repository.TicketRepository;
 import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,13 +66,16 @@ public class QueueService {
     private final TicketRepository ticketRepository;
     private final OfficerRepository officerRepository;
     private final DepartmentRepository departmentRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Autowired
     public QueueService(TicketRepository ticketRepository, OfficerRepository officerRepository,
-                         DepartmentRepository departmentRepository) {
+                         DepartmentRepository departmentRepository,
+                         ApplicationEventPublisher eventPublisher) {
         this.ticketRepository = ticketRepository;
         this.officerRepository = officerRepository;
         this.departmentRepository = departmentRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     // Retrieval -----------------------------------------------------------
@@ -197,7 +202,9 @@ public class QueueService {
         }
 
         ticket.setStatus(targetStatus);
-        return ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
+        publishStatusChange(saved, currentStatus);
+        return saved;
     }
 
     // Called by ResolutionService, which owns the IN_PROGRESS -> RESOLVED
@@ -207,18 +214,35 @@ public class QueueService {
     // opened by the calling ResolutionService method, and a non-public
     // method wouldn't be proxied by Spring's transaction advice anyway.
     Ticket markResolved(Ticket ticket) {
+        TicketStatus previous = ticket.getStatus();
         ticket.setStatus(TicketStatus.RESOLVED);
         ticket.setResolvedAt(LocalDateTime.now());
-        return ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
+        publishStatusChange(saved, previous);
+        return saved;
     }
 
     // Called by ResolutionService.revoke to reopen a ticket whose resolution
     // was pulled back before final closure. Same non-@Transactional
     // reasoning as markResolved above.
     Ticket reopen(Ticket ticket) {
+        TicketStatus previous = ticket.getStatus();
         ticket.setStatus(TicketStatus.IN_PROGRESS);
         ticket.setResolvedAt(null);
-        return ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
+        publishStatusChange(saved, previous);
+        return saved;
+    }
+
+    // Observer pattern (notification module, added by F1): every status change
+    // made through the queue is announced as an event. This service doesn't know
+    // who listens. Today TicketStatusNotifier tells the student. The status
+    // history for issue #45 could listen to the same event later without another
+    // edit here. Listeners run after this transaction commits, so a rolled-back
+    // change never reaches the student.
+    private void publishStatusChange(Ticket ticket, TicketStatus previous) {
+        eventPublisher.publishEvent(new TicketStatusChangedEvent(
+                ticket.getId(), ticket.getStudentId(), ticket.getSubject(), previous, ticket.getStatus()));
     }
 
     // Shared lookups ----------------------------------------------------------
