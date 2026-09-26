@@ -1298,3 +1298,56 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 /* Focus must stay visible: this is the only affordance a keyboard user has to
    see which star they are about to choose. */
 .stars__s:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------------------
+   Rating breakdown bars (F6 admin dashboard, feedback analytics)
+
+   One measure - how many people gave each star rating - so every bar is the
+   same colour. Length carries the magnitude; hue carries nothing, which is why
+   there is no five-colour scale here and no red-to-green ramp. A rating is not
+   a status, so the danger/warn tokens stay out of it: colouring "1 star" red
+   would spend a reserved colour on a series and tell the reader something the
+   number already says.
+
+   The track is --field, the same fill as an input, so an empty row still reads
+   as a row rather than as a missing one. The fill is --teal, the system's one
+   accent, squared off at the baseline and rounded only at the data end so the
+   eye lands on where the bar stops.
+
+   The 2px row gap is deliberate: adjacent fills separated by the surface
+   colour stay countable when two bars are nearly equal.
+
+   No motion declared beyond the width transition, and the global
+   prefers-reduced-motion rule near the top of this file already reduces that
+   to nothing - so a reader who asked for stillness gets a bar that simply
+   appears at its final width.
+   --------------------------------------------------------------------------- */
+.bars { display: grid; gap: 2px; margin-top: 4px; }
+
+.bar-row {
+    display: grid;
+    grid-template-columns: 52px 1fr 52px;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 0;
+}
+
+.bar-row__label { color: var(--ink-2); font-size: 14.5px; }
+
+.bar-row__track {
+    background: var(--field);
+    border-radius: var(--r);
+    height: 10px;
+}
+
+.bar-row__fill {
+    background: var(--teal);
+    height: 100%;
+    /* Square at the baseline, rounded at the data end. */
+    border-radius: 0 var(--r-lg) var(--r-lg) 0;
+    transition: width 260ms var(--ease);
+}
+
+/* The count sits at the end of its own row rather than inside the bar: a
+   number printed on a short bar has nowhere to go. */
+.bar-row__value { text-align: right; color: var(--ink); }
