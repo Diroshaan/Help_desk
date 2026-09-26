@@ -179,6 +179,51 @@ public abstract class AppUser {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    /**
+     * When an administrator REMOVED this account, or null if it never was.
+     *
+     * SHARED CODE, ADDED FOR F6 (#48). Suspension and removal were the same
+     * thing before this: the admin screen had a "Suspend" toggle and a
+     * "Remove account" button, and both ended up calling setActive(false). Two
+     * buttons that do the same thing are worse than one, because the
+     * administrator reasonably believes the second one did something the first
+     * did not.
+     *
+     * The two are genuinely different intentions:
+     *
+     *   SUSPENDED  - active = false, deletedAt = null.  A temporary state.
+     *                The account is expected back; the toggle reverses it.
+     *   REMOVED    - active = false, deletedAt set.     A final state.
+     *                The person has left the university. The row survives so
+     *                every ticket, bookmark, feedback and log entry they are
+     *                attached to still resolves to a name instead of a
+     *                dangling id, but the account is not offered back on the
+     *                ordinary toggle.
+     *
+     * WHY A TIMESTAMP AND NOT A BOOLEAN
+     * ---------------------------------
+     * "removed = true" records that it happened; a timestamp records WHEN, at
+     * no extra cost - the column is the same width in practice and null still
+     * means "not removed". Anything that needs a boolean asks isRemoved(). The
+     * date is what a retention policy or an audit question ("who was removed
+     * last term?") actually needs, and it cannot be recovered later from a
+     * flag.
+     *
+     * WHY IT LIVES ON AppUser AND NOT ON Administrator OR Officer
+     * -----------------------------------------------------------
+     * Students, officers and administrators can all leave. Putting it on the
+     * supertype means one column, one meaning, and one query to exclude
+     * removed accounts from a listing - rather than three subtype columns that
+     * drift apart the first time somebody adds a fourth account type.
+     *
+     * NULLABLE, and nullable is the normal case: almost every row will have
+     * null here forever. Existing rows keep null, which reads correctly as
+     * "never removed" - see the migration script, which deliberately does not
+     * backfill a guess.
+     */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     // --- Constructors ---
 
     protected AppUser() {
@@ -269,5 +314,44 @@ public abstract class AppUser {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public LocalDateTime getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(LocalDateTime deletedAt) {
+        this.deletedAt = deletedAt;
+    }
+
+    /**
+     * Whether an administrator removed this account.
+     *
+     * Callers ask this rather than comparing getDeletedAt() to null, so the
+     * definition of "removed" lives in one place. If removal ever needs a
+     * second condition, it changes here and nowhere else.
+     */
+    public boolean isRemoved() {
+        return deletedAt != null;
+    }
+
+    /**
+     * Mark this account as removed, now.
+     *
+     * Sets active = false as well, deliberately, because "removed but still
+     * able to sign in" is not a state that should be reachable. Keeping the
+     * two fields in step inside one method is what stops a caller setting
+     * deletedAt and forgetting active - the pair is an invariant, not two
+     * independent flags.
+     *
+     * Idempotent: removing an already-removed account keeps the ORIGINAL
+     * timestamp. A second click on the button must not rewrite when the person
+     * actually left.
+     */
+    public void markRemoved() {
+        if (deletedAt == null) {
+            deletedAt = LocalDateTime.now();
+        }
+        this.active = false;
     }
 }
