@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -60,23 +61,53 @@ public class UserAdminController {
     /**
      * Provision a help desk officer. 201 with a Location header pointing at the
      * new account in the listing.
+     *
+     * The Authentication parameter is the only source of the provisioning
+     * administrator's identity. ProvisionOfficerRequest has no provisionedBy
+     * field - see the comment at the top of that class - so there is no way for
+     * a caller to claim somebody else created the account. Spring supplies this
+     * parameter from the security context; it is not bound from the request, and
+     * there is no annotation on it for a client to influence.
+     *
+     * authentication.getName() is the EMAIL the caller signed in with, because
+     * StudentUserDetailsService builds every UserDetails with
+     * .username(user.getEmail()) regardless of whether the person typed their
+     * student ID or their address. That is what makes findByEmail the right
+     * lookup in the service.
+     *
+     * Worth reading alongside setStatus below, which explains why it REMOVED its
+     * Authentication parameter. That one existed to enforce a rule that no
+     * longer exists. This one exists because a record of who acted IS the
+     * requirement, and the session is the only trustworthy place to get it from.
      */
     @PostMapping("/api/admin/officers")
     public ResponseEntity<UserSummaryResponse> provisionOfficer(
-            @Valid @RequestBody ProvisionOfficerRequest request) {
+            @Valid @RequestBody ProvisionOfficerRequest request,
+            Authentication authentication) {
 
-        UserSummaryResponse created = userProvisioningService.provisionOfficer(request);
+        UserSummaryResponse created =
+                userProvisioningService.provisionOfficer(request, authentication.getName());
         return ResponseEntity
                 .created(URI.create("/api/admin/users/" + created.id()))
                 .body(created);
     }
 
-    /** Provision a system administrator. */
+    /**
+     * Provision a system administrator.
+     *
+     * Same rule as above: the creating administrator comes from the session, not
+     * the body. It matters slightly more here, because the account being created
+     * can itself provision accounts - an unrecorded chain of administrators
+     * creating administrators is exactly what the audit requirement exists to
+     * prevent.
+     */
     @PostMapping("/api/admin/administrators")
     public ResponseEntity<UserSummaryResponse> provisionAdministrator(
-            @Valid @RequestBody ProvisionAdministratorRequest request) {
+            @Valid @RequestBody ProvisionAdministratorRequest request,
+            Authentication authentication) {
 
-        UserSummaryResponse created = userProvisioningService.provisionAdministrator(request);
+        UserSummaryResponse created =
+                userProvisioningService.provisionAdministrator(request, authentication.getName());
         return ResponseEntity
                 .created(URI.create("/api/admin/users/" + created.id()))
                 .body(created);
