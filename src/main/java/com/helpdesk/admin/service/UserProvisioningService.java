@@ -87,6 +87,12 @@ public class UserProvisioningService {
     /**
      * Create a help desk officer account.
      *
+     * callerEmail is the signed-in administrator, taken from the security
+     * context by the controller and never from the request body. Requirement
+     * specification 3.2 asks the system to record which administrator
+     * provisioned each privileged account, and an audit record that the audited
+     * party can fill in themselves records nothing.
+     *
      * The email pre-check queries AppUserRepository, which spans the WHOLE
      * hierarchy, not OfficerRepository - because email is unique across every
      * account type. Checking only the officers table would let an officer be
@@ -108,7 +114,19 @@ public class UserProvisioningService {
      * all.
      */
     @Transactional
-    public UserSummaryResponse provisionOfficer(ProvisionOfficerRequest request) {
+    public UserSummaryResponse provisionOfficer(ProvisionOfficerRequest request, String callerEmail) {
+        // DECISION: the caller is resolved BEFORE the payload is inspected.
+        //
+        // The alternative - validate the request first, identify the actor after
+        // - would mean a caller whose session does not resolve to an
+        // administrator still learns whether an email address is already
+        // registered, because rejectDuplicateEmail answers that question by
+        // name. That is a small disclosure, but it is a disclosure made to
+        // somebody we have just established should not be here, and it costs
+        // nothing to avoid. Establish WHO is asking, then look at WHAT they
+        // asked for.
+        Administrator provisioner = requireAdministrator(callerEmail);
+
         rejectDuplicateEmail(request.email());
 
         if (officerRepository.existsByStaffNumber(request.staffNumber())) {
@@ -129,6 +147,13 @@ public class UserProvisioningService {
                 request.fullName()
         );
 
+        // Set before the save, not after. Officer.provisionedBy is nullable, so
+        // a save with it still null would succeed and leave a row the
+        // requirement says should never exist - and nothing would fail to say
+        // so. Assigning it while the entity is still being built means the
+        // insert either carries the provisioner or does not happen.
+        officer.setProvisionedBy(provisioner);
+
         return UserSummaryResponse.from(officerRepository.save(officer));
     }
 
@@ -145,9 +170,17 @@ public class UserProvisioningService {
      * VALUE as far as a unique constraint is concerned, so a second
      * administrator provisioned through a form that sends "" would be rejected
      * as a duplicate staff number - a confusing failure with no real cause.
+     *
+     * provisionedBy matters more here than on the officer path. An
+     * administrator this method creates can itself create administrators, so
+     * without the record there is no way to trace a chain of privilege back to
+     * the person who started it. The bootstrap account is the one deliberate
+     * exception - see AdminBootstrapSeeder.
      */
     @Transactional
-    public UserSummaryResponse provisionAdministrator(ProvisionAdministratorRequest request) {
+    public UserSummaryResponse provisionAdministrator(ProvisionAdministratorRequest request, String callerEmail) {
+        Administrator provisioner = requireAdministrator(callerEmail);
+
         rejectDuplicateEmail(request.email());
 
         String staffNumber = normaliseStaffNumber(request.staffNumber());
@@ -162,6 +195,7 @@ public class UserProvisioningService {
                 request.displayName()
         );
         administrator.setStaffNumber(staffNumber);
+        administrator.setProvisionedBy(provisioner);
 
         return UserSummaryResponse.from(administratorRepository.save(administrator));
     }
@@ -189,6 +223,11 @@ public class UserProvisioningService {
      * to discard them in Java becomes the FeedbackService.summaryByCategory
      * mistake. If the account list ever needs paging, the TYPE(u) query is the
      * change to make, and this comment is the reason it was not made today.
+     *
+     * Note this method is @Transactional(readOnly = true) and that is now
+     * load-bearing: UserSummaryResponse.from reads the LAZY provisionedBy
+     * association, which only works while the persistence context is open. The
+     * annotation was a good habit before; it is a requirement now.
      */
     @Transactional(readOnly = true)
     public List<UserSummaryResponse> findAll(Role role) {
@@ -315,6 +354,51 @@ public class UserProvisioningService {
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    /**
+     * The signed-in administrator, resolved from the email in the security
+     * context.
+     *
+     * WHY AppUserRepository AND NOT AdministratorRepository
+     * -----------------------------------------------------
+     * findByEmail on the supertype is polymorphic across the JOINED hierarchy:
+     * it returns whichever account type holds that address, already constructed
+     * as the right class. Querying AdministratorRepository would return empty
+     * for a student's address, which is indistinguishable from "no such
+     * account" - so an officer reaching this code would get "no account exists
+     * for the signed-in user", which is false and unhelpful. Loading the real
+     * account first lets the type check below say something true.
+     *
+     * WHY THE instanceof CHECK IS NOT REDUNDANT WITH SecurityConfig
+     * -------------------------------------------------------------
+     * SecurityConfig already restricts /api/admin/** to hasRole("ADMIN"). That
+     * guards the URL. This guards the TYPE about to be written into a column
+     * declared Administrator. They agree today; if they ever stop agreeing -
+     * a role granted by a new authentication path, a test wiring a principal
+     * directly - the failure here is a 400 with a sentence in it rather than a
+     * ClassCastException from inside Hibernate.
+     *
+     * DECISION: DUPLICATED FROM AnnouncementService, NOT EXTRACTED
+     * ------------------------------------------------------------
+     * AnnouncementService has a method of the same shape. Eight lines are
+     * duplicated, and that is deliberate for now: the two differ in the message
+     * they throw, which is the part a user reads, and a shared helper would
+     * either lose that or take a message parameter and become a worse version
+     * of both. The threshold for extracting it is a THIRD caller - at that
+     * point the pattern is established rather than coincidental, and it belongs
+     * in one package-private class in com.helpdesk.admin.
+     */
+    private Administrator requireAdministrator(String email) {
+        AppUser user = appUserRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No account exists for the signed-in user."));
+
+        if (!(user instanceof Administrator administrator)) {
+            throw new IllegalArgumentException(
+                    "Only an administrator can provision accounts.");
+        }
+        return administrator;
+    }
 
     private void rejectDuplicateEmail(String email) {
         if (appUserRepository.existsByEmail(email)) {
