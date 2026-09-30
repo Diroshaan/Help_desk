@@ -470,6 +470,24 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 
 .side-nav a:hover { background: rgba(255, 255, 255, .08); color: #fff; }
 
+/* Unread count on the Notifications link. White on the teal sidebar so it
+   reads without relying on a colour a colour-blind user might miss; the
+   number itself carries the meaning. */
+.nav-badge {
+    display: inline-block;
+    min-width: 20px;
+    margin-left: 8px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: #fff;
+    color: var(--teal);
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 18px;
+    text-align: center;
+    vertical-align: 1px;
+}
+
 .side-nav a[aria-current="page"] {
     background: rgba(255, 255, 255, .13);
     color: #fff;

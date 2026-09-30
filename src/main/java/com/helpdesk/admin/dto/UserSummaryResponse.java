@@ -33,6 +33,13 @@ import java.util.List;
  * from() below is the single place that knows the mapping. The alternative,
  * three response types and three endpoints, would push that decision into the
  * frontend and duplicate it there.
+ *
+ * WHY provisionedBy IS A NAME AND NOT AN Administrator
+ * ----------------------------------------------------
+ * Returning the entity would nest an AppUser subclass inside this response, and
+ * AppUser is exactly what the section above says must never reach a controller.
+ * Flattening it to a display name keeps the protection structural: there is no
+ * path from this record to a password hash, whatever anybody annotates later.
  */
 public record UserSummaryResponse(
         Long id,
@@ -41,7 +48,8 @@ public record UserSummaryResponse(
         boolean active,
         LocalDateTime createdAt,
         String label,
-        String reference
+        String reference,
+        String provisionedBy
 ) {
 
     /**
@@ -60,10 +68,36 @@ public record UserSummaryResponse(
      * The final else is not dead code. It is what a fourth account type gets on
      * the day somebody adds one - a row with blank type-specific columns rather
      * than a ClassCastException or a silently missing user.
+     *
+     * READING provisionedBy TOUCHES A LAZY ASSOCIATION
+     * ------------------------------------------------
+     * Officer.provisionedBy and Administrator.provisionedBy are LAZY @ManyToOne,
+     * so nameOf() below dereferences a proxy. That is safe only inside an open
+     * persistence context. Every caller of this method today is a @Transactional
+     * method on UserProvisioningService, so it is fine - but it is fine by
+     * circumstance rather than by construction, and moving a from() call outside
+     * a transaction would turn it into a LazyInitializationException at runtime
+     * with nothing failing at compile time to warn you.
+     *
+     * It is also an N+1: findAll() loads every account in one query, then this
+     * fires one more per officer and administrator to resolve the provisioner.
+     * Left as-is for the reason UserProvisioningService.findAll already argues at
+     * length - this is a bounded administrative list read occasionally by one
+     * person, not the unbounded tickets table. If the listing ever needs paging,
+     * a fetch join is the change to make, and this comment is why it was not made
+     * today.
      */
     public static UserSummaryResponse from(AppUser user) {
         String label = "";
         String reference = "";
+
+        // Null, not "". Students are not provisioned by anybody - they register
+        // themselves - so there is no name to show and none is missing. Note
+        // that null here also covers accounts provisioned before this was
+        // recorded at all: the API cannot distinguish "not applicable" from
+        // "not known", and neither can the database. Both are truthfully
+        // "no administrator is on record", which is what the client renders.
+        String provisionedBy = null;
 
         if (user instanceof Student student) {
             label = student.getFullName();
@@ -77,9 +111,11 @@ public record UserSummaryResponse(
             // ambiguous.
             label = officer.getFullName();
             reference = officer.getStaffNumber();
+            provisionedBy = nameOf(officer.getProvisionedBy());
         } else if (user instanceof Administrator administrator) {
             label = administrator.getDisplayName();
             reference = administrator.getStaffNumber() == null ? "" : administrator.getStaffNumber();
+            provisionedBy = nameOf(administrator.getProvisionedBy());
         }
 
         return new UserSummaryResponse(
@@ -89,8 +125,21 @@ public record UserSummaryResponse(
                 user.isActive(),
                 user.getCreatedAt(),
                 label,
-                reference
+                reference,
+                provisionedBy
         );
+    }
+
+    /**
+     * The provisioning administrator's display name, or null when none is
+     * recorded.
+     *
+     * Null rather than "System" or "Unknown": inventing a placeholder here would
+     * mean the API asserting something the database never said. The client
+     * decides how to render an absent value; this class decides what is true.
+     */
+    private static String nameOf(Administrator provisioner) {
+        return provisioner == null ? null : provisioner.getDisplayName();
     }
 
     public static List<UserSummaryResponse> fromAll(List<? extends AppUser> users) {

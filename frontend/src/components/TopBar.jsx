@@ -128,8 +128,15 @@ export function TopBar() {
                       <Link to="/profile#activity" onClick={() => setOpen(false)}>Recent activity</Link>
                     </>
                   ) : (
-                    <Link to={homeLink} onClick={() => setOpen(false)}>Go to my dashboard</Link>
+                    <>
+                      <Link to={homeLink} onClick={() => setOpen(false)}>Go to my dashboard</Link>
+                      {user?.role === 'OFFICER' && (
+                        <Link to="/officer/profile" onClick={() => setOpen(false)}>My profile</Link>
+                      )}
+                    </>
                   )}
+                  <Link to="/notifications" onClick={() => setOpen(false)}>Notifications</Link>
+                  <Link to="/account/password" onClick={() => setOpen(false)}>Change password</Link>
 
                   <hr />
                   <button type="button" className="danger" onClick={handleSignOut}>Log out</button>
