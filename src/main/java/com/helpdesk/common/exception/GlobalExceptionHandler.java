@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -185,6 +186,34 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining("; "));
         return buildResponse(HttpStatus.BAD_REQUEST, message);
 
+    }
+
+    /**
+     * Two people edited the same record at once, and this request lost.
+     *
+     * WHY 409 AND NOT 500
+     * -------------------
+     * With an @Version column on an entity, Hibernate checks on save that the
+     * row still has the version it read. If somebody else saved in between -
+     * a student editing a ticket while an officer moves it to IN_PROGRESS -
+     * the second save throws ObjectOptimisticLockingFailureException instead
+     * of silently overwriting the first person's change (the "lost update").
+     * Without this handler that exception falls through to Spring's default
+     * and the user sees a 500, which says "the server broke" when the truth
+     * is "your copy is out of date". 409 Conflict is the HTTP status that
+     * means exactly that, and the frontend can tell the user to reload.
+     *
+     * No entity has @Version yet: F2-N2 (tickets) and F4 add it. This handler
+     * is shared code, so it goes in first - otherwise the first @Version
+     * merged would turn every concurrent edit into a 500 until someone
+     * noticed. The message is deliberately generic: which record, and whose
+     * change won, are not things to leak to the other party.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, Object>> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        log.info("Concurrent update rejected: {}", ex.getMessage());
+        return buildResponse(HttpStatus.CONFLICT,
+                "Someone else changed this while you were editing it. Reload the page and try again.");
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
