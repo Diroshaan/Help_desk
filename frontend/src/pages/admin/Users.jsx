@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { API, errorMessage, fieldErrors, formatDateTime, request, withQuery } from '../../api.js'
 import { Field, Notice, SelectField, StatusPill } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
@@ -10,12 +10,49 @@ const ROLE_FILTERS = [
   { value: 'ADMIN', label: 'Administrators' }
 ]
 
-const EMPTY_OFFICER = { email: '', password: '', staffNumber: '', jobTitle: '', fullName: '' }
+const EMPTY_OFFICER = { email: '', password: '', staffNumber: '', jobTitle: '', fullName: '', departmentCodes: [] }
 const EMPTY_ADMIN = { email: '', password: '', displayName: '', staffNumber: '' }
+
+/* F6-N3: one checkbox per open department. The backend refuses an officer with
+   no department (an officer who serves nothing cannot see routed work), so the
+   form offers the choice rather than letting the request fail for a reason the
+   administrator was never shown. Codes are what the API takes; names are what a
+   person reads. */
+function DepartmentPicker({ id, departments, selected, onChange }) {
+  function toggle(code) {
+    onChange(selected.includes(code) ? selected.filter(c => c !== code) : [...selected, code])
+  }
+
+  return (
+    <div className="field" role="group" aria-labelledby={id + '-label'}>
+      <label id={id + '-label'}>Departments this officer serves</label>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px 22px', marginTop: 6 }}>
+        {departments.map(department => (
+          <label className="check" key={department.code}>
+            <input type="checkbox" checked={selected.includes(department.code)}
+                   onChange={() => toggle(department.code)} />
+            {department.name}
+          </label>
+        ))}
+      </div>
+      {departments.length === 0 && <p className="hint">Loading departments…</p>}
+    </div>
+  )
+}
+
+/* The officer part of a row's subtitle. An EMPTY list is the broken state F6-N3
+   exists to make visible, so it is said in words rather than shown as nothing. */
+function departmentsText(user, departments) {
+  if (!Array.isArray(user.departmentCodes)) return ''
+  if (user.departmentCodes.length === 0) return ' · Serves no department'
+  const names = user.departmentCodes.map(code => departments.find(d => d.code === code)?.name || code)
+  return ' · ' + names.join(', ')
+}
 
 export default function Users() {
   const [roleFilter, setRoleFilter] = useState('')
   const [users, setUsers] = useState([])
+  const [departments, setDepartments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState(null)
@@ -25,6 +62,9 @@ export default function Users() {
   const [officerErrors, setOfficerErrors] = useState({})
   const [adminForm, setAdminForm] = useState(EMPTY_ADMIN)
   const [adminErrors, setAdminErrors] = useState({})
+
+  // { id, codes } while an officer's departments are being edited in place.
+  const [editing, setEditing] = useState(null)
 
   async function load() {
     setLoading(true); setError('')
@@ -36,13 +76,37 @@ export default function Users() {
 
   useEffect(() => { load() }, [roleFilter])
 
+  useEffect(() => {
+    request(API.departments).then(result => {
+      if (result.ok) setDepartments(result.data)
+    })
+  }, [])
+
+  function replaceUser(updated) {
+    setUsers(current => current.map(u => u.id === updated.id ? updated : u))
+  }
+
   async function toggleActive(user) {
     setBusy('user-' + user.id)
     const result = await request(API.adminUserStatus(user.id), { method: 'PATCH', body: { active: !user.active } })
     if (result.ok) {
-      setUsers(current => current.map(u => u.id === user.id ? result.data : u))
+      replaceUser(result.data)
     } else {
       setNotice({ kind: 'error', text: errorMessage(result, 'We could not update that account.') })
+    }
+    setBusy(null)
+  }
+
+  async function saveDepartments() {
+    setBusy('departments-' + editing.id); setNotice(null)
+    const result = await request(API.adminOfficerDepartments(editing.id),
+      { method: 'PUT', body: { departmentCodes: editing.codes } })
+    if (result.ok) {
+      replaceUser(result.data)
+      setEditing(null)
+      setNotice({ kind: 'info', text: 'Departments updated.' })
+    } else {
+      setNotice({ kind: 'error', text: errorMessage(result, 'We could not update those departments.') })
     }
     setBusy(null)
   }
@@ -57,7 +121,7 @@ export default function Users() {
       setOfficerForm(EMPTY_OFFICER)
       setNotice({ kind: 'info', text: 'Officer account created.' })
     } else {
-      const fields = fieldErrors(result, ['email', 'password', 'staffNumber', 'jobTitle', 'fullName'])
+      const fields = fieldErrors(result, ['email', 'password', 'staffNumber', 'jobTitle', 'fullName', 'departmentCodes'])
       if (Object.keys(fields).length) setOfficerErrors(fields)
       else setNotice({ kind: 'error', text: errorMessage(result, 'We could not create that officer account.') })
     }
@@ -109,6 +173,9 @@ export default function Users() {
                        value={officerForm.jobTitle} onChange={e => setOfficerForm(f => ({ ...f, jobTitle: e.target.value }))}
                        error={officerErrors.jobTitle} />
               </div>
+              <DepartmentPicker id="officerDepartments" departments={departments}
+                                selected={officerForm.departmentCodes}
+                                onChange={codes => setOfficerForm(f => ({ ...f, departmentCodes: codes }))} />
               <Field id="officerPassword" label="Temporary password" type="password"
                      value={officerForm.password} onChange={e => setOfficerForm(f => ({ ...f, password: e.target.value }))}
                      error={officerErrors.password}
@@ -157,19 +224,45 @@ export default function Users() {
             {!error && !loading && users.length === 0 && <p className="empty">No accounts found.</p>}
 
             {!error && !loading && users.map(user => (
-              <div className="pref" key={user.id}>
-                <div className="pref__text">
-                  <strong>{user.label}</strong>
-                  <span>{user.email} · {user.role}{user.reference ? ' · ' + user.reference : ''} · Since {formatDateTime(user.createdAt)}</span>
+              <Fragment key={user.id}>
+                <div className="pref">
+                  <div className="pref__text">
+                    <strong>{user.label}</strong>
+                    <span>
+                      {user.email} · {user.role}{user.reference ? ' · ' + user.reference : ''}
+                      {departmentsText(user, departments)} · Since {formatDateTime(user.createdAt)}
+                    </span>
+                    {user.provisionedBy && <span>Provisioned by {user.provisionedBy}</span>}
+                  </div>
+                  <div className="row-side">
+                    <StatusPill value={user.active ? 'ACTIVE' : 'INACTIVE'} label={user.active ? 'Active' : 'Suspended'} />
+                    {user.role === 'OFFICER' && (
+                      <button type="button" className="btn btn--ghost"
+                              onClick={() => setEditing(editing?.id === user.id ? null : { id: user.id, codes: user.departmentCodes || [] })}>
+                        {editing?.id === user.id ? 'Close' : 'Departments'}
+                      </button>
+                    )}
+                    <button type="button" className="btn btn--ghost" disabled={busy === 'user-' + user.id}
+                            onClick={() => toggleActive(user)}>
+                      {user.active ? 'Suspend' : 'Reactivate'}
+                    </button>
+                  </div>
                 </div>
-                <div className="row-side">
-                  <StatusPill value={user.active ? 'ACTIVE' : 'INACTIVE'} label={user.active ? 'Active' : 'Suspended'} />
-                  <button type="button" className="btn btn--ghost" disabled={busy === 'user-' + user.id}
-                          onClick={() => toggleActive(user)}>
-                    {user.active ? 'Suspend' : 'Reactivate'}
-                  </button>
-                </div>
-              </div>
+
+                {editing?.id === user.id && (
+                  <div style={{ padding: '0 0 16px' }}>
+                    <DepartmentPicker id={'editDepartments' + user.id} departments={departments}
+                                      selected={editing.codes}
+                                      onChange={codes => setEditing(current => ({ ...current, codes }))} />
+                    <div className="btn-row">
+                      <button type="button" className="btn btn--primary"
+                              disabled={busy === 'departments-' + user.id} onClick={saveDepartments}>
+                        {busy === 'departments-' + user.id ? 'Saving…' : 'Save departments'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Fragment>
             ))}
           </section>
         </div>
