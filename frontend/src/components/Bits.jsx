@@ -30,7 +30,61 @@ function humanize(value) {
 export function Notice({ kind = 'info', children, style }) {
   if (!children) return null
   const className = 'notice' + (kind === 'info' ? '' : ' notice--' + kind)
-  return <div className={className} style={style}>{children}</div>
+  /* NFR 5.4: a screen reader must hear "Your profile has been updated" without
+     the user having to go looking for it. role="alert" interrupts, which is
+     right for an error the user has to act on; role="status" waits for a
+     pause, which is right for a confirmation. Without either, the message is
+     only visible, and a blind user never learns whether the save worked. */
+  const role = kind === 'error' ? 'alert' : 'status'
+  return <div className={className} style={style} role={role}>{children}</div>
+}
+
+/**
+ * Up to `max` phone numbers as a column of inputs, with "Add another" and
+ * "Remove" controls (F1: "contact number(s)", at most three - the same limit
+ * Student.setContactNumbers enforces, so the form cannot offer a fourth box the
+ * server would refuse).
+ *
+ * The first box is the primary number and has no Remove button: an account
+ * with numbers always keeps one first, and clearing it is how a student says
+ * "no phone". Blank boxes are fine - the server drops them - so removing a box
+ * is a convenience, not a requirement.
+ */
+export function PhoneList({ values, onChange, max = 3, error }) {
+  const list = values.length ? values : ['']
+
+  function update(index, value) {
+    const next = [...list]
+    next[index] = value
+    onChange(next)
+  }
+
+  return (
+    <div className={'field' + (error ? ' is-invalid' : '')}>
+      <label htmlFor="phone-0">Contact number{max > 1 ? 's' : ''}</label>
+      {list.map((value, index) => (
+        <div className="row-between" key={index} style={{ gap: 10, marginTop: index ? 8 : 0 }}>
+          <input id={'phone-' + index} name={'phone-' + index} type="tel" autoComplete="tel"
+                 aria-label={index === 0 ? 'Primary contact number' : 'Contact number ' + (index + 1)}
+                 value={value} onChange={e => update(index, e.target.value)} style={{ flex: 1 }} />
+          {index > 0 && (
+            <button type="button" className="btn btn--ghost"
+                    onClick={() => onChange(list.filter((_, i) => i !== index))}>
+              Remove
+            </button>
+          )}
+        </div>
+      ))}
+      {list.length < max && (
+        <button type="button" className="text-link" style={{ marginTop: 8, background: 'none', border: 0, padding: 0, cursor: 'pointer', justifySelf: 'start', textAlign: 'left', width: 'fit-content' }}
+                onClick={() => onChange([...list, ''])}>
+          + Add another number
+        </button>
+      )}
+      <p className="hint">The first number is the one the help desk calls first. Up to {max}.</p>
+      <p className="field-error">{error || ''}</p>
+    </div>
+  )
 }
 
 /**
