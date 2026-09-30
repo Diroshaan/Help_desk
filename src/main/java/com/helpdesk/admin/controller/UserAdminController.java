@@ -1,5 +1,6 @@
 package com.helpdesk.admin.controller;
 
+import com.helpdesk.admin.dto.OfficerDepartmentsRequest;
 import com.helpdesk.admin.dto.ProvisionAdministratorRequest;
 import com.helpdesk.admin.dto.ProvisionOfficerRequest;
 import com.helpdesk.admin.dto.UserStatusRequest;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,15 +32,16 @@ import java.util.List;
  * Account provisioning and lifecycle (WBHD-35).
  *
  *   POST   /api/admin/officers            -> 201 create an officer account
+ *   PUT    /api/admin/officers/{id}/departments -> 200 replace an officer's departments
  *   POST   /api/admin/administrators      -> 201 create an admin account
  *   GET    /api/admin/users               -> 200 all accounts, ?role= to filter
  *   PATCH  /api/admin/users/{id}/status   -> 200 {"active": false} suspend/restore
  *   DELETE /api/admin/users/{id}          -> 204 soft delete
  *
- * All five are under /api/admin/**, already hasRole("ADMIN") in SecurityConfig.
+ * All six are under /api/admin/**, already hasRole("ADMIN") in SecurityConfig.
  * No security change is needed and nothing here re-checks the role.
  *
- * The class has no @RequestMapping prefix because the five paths do not share
+ * The class has no @RequestMapping prefix because the six paths do not share
  * one - three roots, three resources. Forcing a common prefix would mean bending
  * a URL into a shape that misdescribes what it returns, which is the same
  * reasoning ReferenceDataController gives for the same choice.
@@ -111,6 +114,29 @@ public class UserAdminController {
         return ResponseEntity
                 .created(URI.create("/api/admin/users/" + created.id()))
                 .body(created);
+    }
+
+    /**
+     * Replace the departments an existing officer serves (F6-N3):
+     * {"departmentCodes": ["IT", "REG"]}.
+     *
+     * PUT because the body is the complete new set, not a change to apply - see
+     * OfficerDepartmentsRequest. Sending the same body twice gives the same
+     * result, which is what PUT promises.
+     *
+     * Under /api/admin/officers/{id}/... rather than /api/admin/users/{id}/...
+     * because departments are a property only an officer has. The path says
+     * which kind of account it expects, and an id that is not an officer is a
+     * 404 from the service rather than a silent no-op on a student.
+     *
+     * No SecurityConfig change: /api/admin/** is already ADMIN-only.
+     */
+    @PutMapping("/api/admin/officers/{id}/departments")
+    public ResponseEntity<UserSummaryResponse> updateOfficerDepartments(
+            @PathVariable Long id,
+            @Valid @RequestBody OfficerDepartmentsRequest request) {
+
+        return ResponseEntity.ok(userProvisioningService.updateOfficerDepartments(id, request));
     }
 
     /**

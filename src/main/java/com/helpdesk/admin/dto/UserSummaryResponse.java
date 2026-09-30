@@ -1,5 +1,6 @@
 package com.helpdesk.admin.dto;
 
+import com.helpdesk.common.reference.entity.Department;
 import com.helpdesk.common.user.entity.Administrator;
 import com.helpdesk.common.user.entity.AppUser;
 import com.helpdesk.common.user.entity.Officer;
@@ -40,6 +41,16 @@ import java.util.List;
  * AppUser is exactly what the section above says must never reach a controller.
  * Flattening it to a display name keeps the protection structural: there is no
  * path from this record to a password hash, whatever anybody annotates later.
+ *
+ * departmentCodes: A LIST FOR OFFICERS, null FOR EVERYONE ELSE (F6-N3)
+ * -------------------------------------------------------------------
+ * Only officers serve departments, so for a student or an administrator the
+ * question does not apply and the value is null. For an officer it is always a
+ * list - possibly an EMPTY one - and that difference is the point: an empty
+ * list means "this officer serves nothing and cannot work routed tickets",
+ * which is exactly the broken state F6-N3 exists to make visible and fixable.
+ * If both cases were an empty list, the screen could not tell a student (fine)
+ * from an officer nobody can route work to (a problem).
  */
 public record UserSummaryResponse(
         Long id,
@@ -49,7 +60,8 @@ public record UserSummaryResponse(
         LocalDateTime createdAt,
         String label,
         String reference,
-        String provisionedBy
+        String provisionedBy,
+        List<String> departmentCodes
 ) {
 
     /**
@@ -99,6 +111,9 @@ public record UserSummaryResponse(
         // "no administrator is on record", which is what the client renders.
         String provisionedBy = null;
 
+        // null = not applicable (not an officer). See the class comment.
+        List<String> departmentCodes = null;
+
         if (user instanceof Student student) {
             label = student.getFullName();
             reference = student.getStudentId();
@@ -112,6 +127,7 @@ public record UserSummaryResponse(
             label = officer.getFullName();
             reference = officer.getStaffNumber();
             provisionedBy = nameOf(officer.getProvisionedBy());
+            departmentCodes = codesOf(officer);
         } else if (user instanceof Administrator administrator) {
             label = administrator.getDisplayName();
             reference = administrator.getStaffNumber() == null ? "" : administrator.getStaffNumber();
@@ -126,7 +142,8 @@ public record UserSummaryResponse(
                 user.getCreatedAt(),
                 label,
                 reference,
-                provisionedBy
+                provisionedBy,
+                departmentCodes
         );
     }
 
@@ -140,6 +157,26 @@ public record UserSummaryResponse(
      */
     private static String nameOf(Administrator provisioner) {
         return provisioner == null ? null : provisioner.getDisplayName();
+    }
+
+    /**
+     * The codes of the departments this officer serves, sorted.
+     *
+     * Sorted so the same officer always serializes the same way - a HashSet has
+     * no order, and a list that reshuffles between two requests makes the
+     * screen flicker and makes a test assertion flaky for no real reason.
+     *
+     * Officer.departments is a LAZY @ManyToMany, so this is the same situation
+     * as provisionedBy above: it works because every caller of from() runs
+     * inside a @Transactional service method, and it costs one extra query per
+     * officer in the listing. Same bounded-listing argument, same fix (a fetch
+     * join) if the listing ever needs paging.
+     */
+    private static List<String> codesOf(Officer officer) {
+        return officer.getDepartments().stream()
+                .map(Department::getCode)
+                .sorted()
+                .toList();
     }
 
     public static List<UserSummaryResponse> fromAll(List<? extends AppUser> users) {
