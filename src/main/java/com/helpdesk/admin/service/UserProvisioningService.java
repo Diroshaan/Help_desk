@@ -257,6 +257,18 @@ public class UserProvisioningService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No officer account exists with id " + officerId + "."));
 
+        // A REMOVED officer's departments are not edited (review on PR #56).
+        // Removal is final (AppUser.markRemoved, PR #53): the row is kept so
+        // history still resolves to a name, not so it can go on being changed.
+        // Giving desks to somebody who has left would make that history say
+        // something that never happened - and would put a person who cannot
+        // sign in back into the routing, where tickets could be assigned to
+        // them. 400, not 404: the officer exists; the request is not allowed.
+        if (officer.isRemoved()) {
+            throw new IllegalArgumentException(
+                    "This officer account was removed, so its departments can no longer be changed.");
+        }
+
         Set<Department> departments = resolveDepartments(request.departmentCodes());
 
         officer.getDepartments().clear();

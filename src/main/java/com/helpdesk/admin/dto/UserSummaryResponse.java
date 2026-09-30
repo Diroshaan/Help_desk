@@ -51,6 +51,14 @@ import java.util.List;
  * which is exactly the broken state F6-N3 exists to make visible and fixable.
  * If both cases were an empty list, the screen could not tell a student (fine)
  * from an officer nobody can route work to (a problem).
+ *
+ * removed AND removedAt
+ * ---------------------
+ * active = false alone does not say whether an account is SUSPENDED (can come
+ * back) or REMOVED (final - AppUser.deletedAt, PR #53). The screen needs to
+ * know which: a removed officer must not be offered the "Departments" editor,
+ * and the service refuses that edit anyway. removed is the flag the screen
+ * branches on; removedAt says when, for anyone asking who left and when.
  */
 public record UserSummaryResponse(
         Long id,
@@ -61,7 +69,9 @@ public record UserSummaryResponse(
         String label,
         String reference,
         String provisionedBy,
-        List<String> departmentCodes
+        List<String> departmentCodes,
+        boolean removed,
+        LocalDateTime removedAt
 ) {
 
     /**
@@ -143,7 +153,9 @@ public record UserSummaryResponse(
                 label,
                 reference,
                 provisionedBy,
-                departmentCodes
+                departmentCodes,
+                user.isRemoved(),
+                user.getDeletedAt()
         );
     }
 

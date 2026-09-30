@@ -270,4 +270,23 @@ class UserProvisioningServiceTest {
 
         verify(officerRepository, never()).save(any(Officer.class));
     }
+
+    // Review on PR #56: a removed officer has left. Their record is kept for
+    // history, not edited - and giving them desks would route tickets to
+    // somebody who can no longer sign in.
+    @Test
+    @DisplayName("updateOfficerDepartments refuses a removed officer, and nothing is saved")
+    void updateOfficerDepartmentsRefusesARemovedOfficer() {
+        Officer officer = new Officer("gone@helpdesk.local", "hash", "OF-8", "Support Officer", "Gone Officer");
+        officer.markRemoved();
+        when(officerRepository.findById(8L)).thenReturn(Optional.of(officer));
+
+        assertThatThrownBy(() -> service.updateOfficerDepartments(8L,
+                new OfficerDepartmentsRequest(Set.of("IT"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("removed");
+
+        verify(officerRepository, never()).save(any(Officer.class));
+        verify(departmentRepository, never()).findAllById(any());
+    }
 }
