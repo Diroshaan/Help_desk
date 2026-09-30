@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { API, errorMessage, fieldErrors, request } from '../api.js'
-import { BrandPanel, Field, Notice, SelectField } from '../components/Bits.jsx'
+import { BrandPanel, Field, Notice, PhoneList, SelectField } from '../components/Bits.jsx'
 
 const POINTS = [
   { lead: 'One account, every desk.', body: ' IT, Finance, the Registrar and Hostel services — no separate logins to remember.' },
@@ -38,9 +38,12 @@ export default function Register() {
   const navigate = useNavigate()
 
   const [form, setForm] = useState({
-    fullName: '', studentId: '', phone: '', email: '', department: '',
+    givenName: '', surname: '', studentId: '', email: '', department: '',
     password: '', confirm: ''
   })
+  // Kept apart from `form` because it is a list, not a string: the student can
+  // give up to three numbers (the F1 "contact number(s)" field).
+  const [phones, setPhones] = useState([''])
   const [terms, setTerms] = useState(false)
   const [errors, setErrors] = useState({})
   const [notice, setNotice] = useState(null)
@@ -75,11 +78,21 @@ export default function Register() {
       return
     }
 
+    /* givenName + surname rather than one fullName box. "Diroshaan S." typed
+       into a single box has to be split on its last space by the server,
+       which gets names like "Amarasinghe S. D." wrong. Two boxes let the
+       student say which part is which, and RegistrationRequest accepts
+       either shape, so the older single-box API still works.
+
+       phones is sent as the whole list. Blank boxes are sent too - the
+       entity drops empties and duplicates itself - so the form never has to
+       second-guess the rule the server owns. */
     const payload = {
-      fullName: form.fullName.trim(),
+      givenName: form.givenName.trim(),
+      surname: form.surname.trim(),
       studentId: form.studentId.trim(),
       email: form.email.trim(),
-      phone: form.phone.trim(),
+      phones: phones.map(p => p.trim()).filter(Boolean),
       department: form.department,
       password: form.password
     }
@@ -119,7 +132,7 @@ export default function Register() {
       /* Only these inputs exist on this form. Anything else in the body is
          Spring's envelope, and passing the list keeps it out. */
       const fields = fieldErrors(result,
-        ['fullName', 'studentId', 'email', 'phone', 'department', 'password'])
+        ['givenName', 'surname', 'studentId', 'email', 'phones', 'department', 'password'])
       if (Object.keys(fields).length) {
         setErrors(fields)
       } else {
@@ -146,17 +159,19 @@ export default function Register() {
           {notice && <Notice kind={notice.kind} style={{ marginTop: 22 }}>{notice.text}</Notice>}
 
           <form className="form" onSubmit={handleSubmit} noValidate>
-            <Field id="fullName" label="Full name" type="text" autoComplete="name"
-                   value={form.fullName} onChange={set('fullName')} error={errors.fullName} />
-
             <div className="field-row">
-              <Field id="studentId" label="Student ID" type="text" className="mono"
-                     placeholder="ITxxxxxxxx"
-                     value={form.studentId} onChange={set('studentId')} error={errors.studentId} />
+              <Field id="givenName" label="Given name(s)" type="text" autoComplete="given-name"
+                     value={form.givenName} onChange={set('givenName')} error={errors.givenName} />
 
-              <Field id="phone" label="Phone" type="tel" autoComplete="tel"
-                     value={form.phone} onChange={set('phone')} error={errors.phone} />
+              <Field id="surname" label="Surname" type="text" autoComplete="family-name"
+                     value={form.surname} onChange={set('surname')} error={errors.surname} />
             </div>
+
+            <Field id="studentId" label="Student ID" type="text" className="mono"
+                   placeholder="ITxxxxxxxx"
+                   value={form.studentId} onChange={set('studentId')} error={errors.studentId} />
+
+            <PhoneList values={phones} onChange={setPhones} error={errors.phones} />
 
             <Field id="email" label="University email" type="email" autoComplete="email"
                    value={form.email} onChange={set('email')} error={errors.email} />

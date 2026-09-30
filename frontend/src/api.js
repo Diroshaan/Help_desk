@@ -9,6 +9,17 @@ export const API = {
   login:    '/api/auth/login',
   logout:   '/api/auth/logout',
   me:       '/api/auth/me',             // CurrentUserResponse for ANY role
+  password: '/api/auth/password',       // PUT -> 204, any signed-in role
+
+  // Notifications inbox (any signed-in role). Written by the Observer
+  // listeners in notification/listener; this side only reads and marks.
+  notifications:        '/api/notifications',
+  notificationsUnread:  '/api/notifications/unread-count',
+  notificationRead:     (id) => '/api/notifications/' + id + '/read',
+  notificationsReadAll: '/api/notifications/read-all',
+
+  // Officer's own profile (OFFICER only, US-04)
+  officerMe: '/api/officers/me',
 
   // Student profile (STUDENT only)
   session:  '/api/students/me',         // full StudentResponse, students only

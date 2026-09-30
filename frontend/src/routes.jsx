@@ -4,6 +4,9 @@ import Register from './pages/Register.jsx'
 import Profile from './pages/Profile.jsx'
 import DeleteAccount from './pages/DeleteAccount.jsx'
 import Announcements from './pages/Announcements.jsx'
+import Notifications from './pages/Notifications.jsx'
+import ChangePassword from './pages/ChangePassword.jsx'
+import OfficerProfile from './pages/officer/OfficerProfile.jsx'
 
 import TicketList from './pages/student/TicketList.jsx'
 import TicketNew from './pages/student/TicketNew.jsx'
@@ -44,6 +47,18 @@ export const ROUTES = [
   { path: '/profile', Component: Profile, access: ['STUDENT'],
     nav: { section: 'My account', label: 'My profile' } },
   { path: '/delete-account', Component: DeleteAccount, access: ['STUDENT'] },
+  // US-04: the officer's own profile. A separate route from /profile because
+  // it is a different account type with a different endpoint
+  // (/api/officers/me) and a different set of editable fields.
+  { path: '/officer/profile', Component: OfficerProfile, access: ['OFFICER'],
+    nav: { section: 'My account', label: 'My profile' } },
+  // Every role: the inbox the Observer listeners write to, and the password
+  // change that PasswordService (and its PasswordChangedEvent) handles.
+  // Administrators have no profile page, so this is where they change theirs.
+  { path: '/notifications', Component: Notifications, access: ['STUDENT', 'OFFICER', 'ADMIN'],
+    nav: { section: 'My account', label: 'Notifications' } },
+  { path: '/account/password', Component: ChangePassword, access: ['STUDENT', 'OFFICER', 'ADMIN'],
+    nav: { section: 'My account', label: 'Change password' } },
 
   { path: '/tickets', Component: TicketList, access: ['STUDENT'],
     nav: { section: 'Tickets', label: 'My tickets' } },

@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useSession } from '../hooks/useSession.jsx'
+import { useUnreadCount } from '../hooks/useUnreadCount.js'
 import { ROUTES } from '../routes.jsx'
 
 /**
@@ -15,6 +16,9 @@ export function Sidebar() {
   const { role, user, student, signOut } = useSession()
   const navigate = useNavigate()
   const location = useLocation()
+  // Only once someone is signed in: a guest has no inbox, and asking would
+  // just be a 403 that api.js then has to double-check.
+  const unread = useUnreadCount(Boolean(role))
 
   const sections = []
   ROUTES.forEach(route => {
@@ -51,6 +55,14 @@ export function Sidebar() {
               <Link key={link.path} to={link.path}
                     aria-current={location.pathname === link.path ? 'page' : undefined}>
                 {link.label}
+                {/* The count is spoken as part of the link ("Notifications, 3
+                    unread") rather than as a bare number a screen reader would
+                    read with no context. */}
+                {link.path === '/notifications' && unread > 0 && (
+                  <span className="nav-badge" aria-label={unread + ' unread'}>
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
               </Link>
             ))}
           </Fragment>
