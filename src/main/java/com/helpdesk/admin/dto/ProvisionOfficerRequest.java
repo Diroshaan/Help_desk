@@ -3,8 +3,11 @@ package com.helpdesk.admin.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import java.util.Set;
 
 /**
  * F6 - System Analytics, Provisioning & Announcements
@@ -33,6 +36,14 @@ import jakarta.validation.constraints.Size;
  *
  * WRITE_ONLY on the password so that if this object is ever echoed back - in a
  * debug endpoint, a log line, an error body - Jackson refuses to serialise it.
+ *
+ * NO provisionedBy - AND NOW, departmentCodes IS HERE
+ * --------------------------------------------------
+ * The two sit on opposite sides of the same line. Who provisioned the account
+ * is a fact about the CALLER, so it comes from the session and never from the
+ * body. Which desks the new officer serves is a choice the administrator is
+ * MAKING, so it belongs in the request - and is validated against the
+ * departments table before it is trusted.
  *
  * No @Pattern on staffNumber, matching Officer: the requirement specification
  * publishes no staff number format, and inventing one here would reject valid
@@ -75,6 +86,34 @@ public record ProvisionOfficerRequest(
         // flush time as a database error with no field attached to it.
         @NotBlank(message = "Full name is required")
         @Size(max = 120, message = "Full name must be 120 characters or fewer")
-        String fullName
+        String fullName,
+
+        // The departments this officer will serve, by code ("IT", "REG").
+        //
+        // WHY THIS IS REQUIRED (F6-N3)
+        // ----------------------------
+        // Before this field existed, an officer created here served no
+        // department at all: Officer.departments was only ever filled by the dev
+        // seeder, and nothing in the API could set it. F4's queue scopes what an
+        // officer sees by those departments, so every real officer an
+        // administrator provisioned could only see unrouted tickets - and once
+        // F4 routes every ticket to a department, they would see nothing. An
+        // officer who serves no desk is not a useful account; it is a login that
+        // looks like it works. @NotEmpty makes that state impossible to create
+        // through this endpoint, and the 400 arrives before anything is saved.
+        //
+        // Codes rather than names: a code is the department's primary key and
+        // never changes, where a name can be edited. The service still checks
+        // every code exists and is active - @NotEmpty only proves the client
+        // sent something, not that it names a real desk.
+        //
+        // @Size(max = 10) bounds the input (Team guide 4.1: bound every list).
+        // There are six departments; ten leaves room for growth while stopping
+        // a request that sends ten thousand codes to be looked up one by one.
+        //
+        // A Set, so sending "IT" twice cannot make an officer serve IT twice.
+        @NotEmpty(message = "Choose at least one department for this officer")
+        @Size(max = 10, message = "An officer can serve at most 10 departments")
+        Set<String> departmentCodes
 ) {
 }

@@ -79,6 +79,7 @@ export const API = {
   adminUser:          (id) => '/api/admin/users/' + id,
   adminOfficers:      '/api/admin/officers',
   adminAdministrators:'/api/admin/administrators',
+  adminOfficerDepartments: (id) => '/api/admin/officers/' + id + '/departments',
 
   // Reference data
   departments:           '/api/departments',

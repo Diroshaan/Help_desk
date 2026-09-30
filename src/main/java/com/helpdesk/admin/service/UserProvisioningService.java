@@ -1,11 +1,14 @@
 package com.helpdesk.admin.service;
 
+import com.helpdesk.admin.dto.OfficerDepartmentsRequest;
 import com.helpdesk.admin.dto.ProvisionAdministratorRequest;
 import com.helpdesk.admin.dto.ProvisionOfficerRequest;
 import com.helpdesk.admin.dto.UserSummaryResponse;
 import com.helpdesk.auth.SessionRevoker;
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
+import com.helpdesk.common.reference.entity.Department;
+import com.helpdesk.common.reference.repository.DepartmentRepository;
 import com.helpdesk.common.user.entity.Administrator;
 import com.helpdesk.common.user.entity.AppUser;
 import com.helpdesk.common.user.entity.Officer;
@@ -18,7 +21,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * F6 - System Analytics, Provisioning & Announcements
@@ -67,17 +75,27 @@ public class UserProvisioningService {
      */
     private final SessionRevoker sessionRevoker;
 
+    /**
+     * Reads the departments table to check the codes an administrator picks
+     * (F6-N3). Read only - F6 never creates, renames or deactivates a
+     * department; that reference data belongs to common.reference and its
+     * seeder. This service only asks "does this code name a desk that is open".
+     */
+    private final DepartmentRepository departmentRepository;
+
     @Autowired
     public UserProvisioningService(AppUserRepository appUserRepository,
                                    OfficerRepository officerRepository,
                                    AdministratorRepository administratorRepository,
                                    PasswordEncoder passwordEncoder,
-                                   SessionRevoker sessionRevoker) {
+                                   SessionRevoker sessionRevoker,
+                                   DepartmentRepository departmentRepository) {
         this.appUserRepository = appUserRepository;
         this.officerRepository = officerRepository;
         this.administratorRepository = administratorRepository;
         this.passwordEncoder = passwordEncoder;
         this.sessionRevoker = sessionRevoker;
+        this.departmentRepository = departmentRepository;
     }
 
     // ------------------------------------------------------------------
@@ -134,6 +152,11 @@ public class UserProvisioningService {
                     "Staff number " + request.staffNumber() + " is already issued to another officer.");
         }
 
+        // Resolved BEFORE the officer is built, so an unknown or closed
+        // department code is a 400 with nothing saved - not a half-created
+        // officer who serves nothing, which is the very state F6-N3 fixes.
+        Set<Department> departments = resolveDepartments(request.departmentCodes());
+
         // Five-argument constructor, not the four-argument one: Officer.fullName
         // is NOT NULL, so an officer built without a name is rejected at flush
         // time with a database error rather than a useful message. The
@@ -153,6 +176,7 @@ public class UserProvisioningService {
         // so. Assigning it while the entity is still being built means the
         // insert either carries the provisioner or does not happen.
         officer.setProvisionedBy(provisioner);
+        officer.setDepartments(departments);
 
         return UserSummaryResponse.from(officerRepository.save(officer));
     }
@@ -198,6 +222,59 @@ public class UserProvisioningService {
         administrator.setProvisionedBy(provisioner);
 
         return UserSummaryResponse.from(administratorRepository.save(administrator));
+    }
+
+    /**
+     * Replace the set of departments an existing officer serves (F6-N3).
+     *
+     * This is the repair path as much as the edit path. Every officer
+     * provisioned before departmentCodes existed has an empty set and can see
+     * no routed work; until this method existed, nothing in the application
+     * could fix that, because only the dev seeder ever wrote to
+     * officer_departments.
+     *
+     * 404 for an id that is not an officer - including an id that IS an account
+     * but a student's or an administrator's. The question being asked is "which
+     * officer?", and a student is not a wrong kind of officer, it is no officer
+     * at all. OfficerRepository.findById answers exactly that question, because
+     * under JOINED inheritance it only finds rows that exist in the officers
+     * table.
+     *
+     * The managed collection is cleared and refilled rather than replaced with
+     * a new Set. Hibernate tracks changes on the collection instance it loaded;
+     * swapping in a different object works, but makes Hibernate delete and
+     * re-insert every row, and it is the kind of detail that breaks orphan
+     * handling when a mapping later changes. Mutating in place says what is
+     * actually happening: the same officer, a different set of desks.
+     *
+     * Takes effect on the officer's NEXT request - there is no session to end.
+     * The queue reads the officer's departments from the database each time it
+     * builds a view, so nothing about the officer's login has to change.
+     */
+    @Transactional
+    public UserSummaryResponse updateOfficerDepartments(Long officerId, OfficerDepartmentsRequest request) {
+        Officer officer = officerRepository.findById(officerId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No officer account exists with id " + officerId + "."));
+
+        // A REMOVED officer's departments are not edited (review on PR #56).
+        // Removal is final (AppUser.markRemoved, PR #53): the row is kept so
+        // history still resolves to a name, not so it can go on being changed.
+        // Giving desks to somebody who has left would make that history say
+        // something that never happened - and would put a person who cannot
+        // sign in back into the routing, where tickets could be assigned to
+        // them. 400, not 404: the officer exists; the request is not allowed.
+        if (officer.isRemoved()) {
+            throw new IllegalArgumentException(
+                    "This officer account was removed, so its departments can no longer be changed.");
+        }
+
+        Set<Department> departments = resolveDepartments(request.departmentCodes());
+
+        officer.getDepartments().clear();
+        officer.getDepartments().addAll(departments);
+
+        return UserSummaryResponse.from(officerRepository.save(officer));
     }
 
     // ------------------------------------------------------------------
@@ -398,6 +475,64 @@ public class UserProvisioningService {
                     "Only an administrator can provision accounts.");
         }
         return administrator;
+    }
+
+    /**
+     * Turn the codes an administrator picked into Department entities, refusing
+     * anything that is not a real, open desk (F6-N3).
+     *
+     * ONE QUERY, NOT ONE PER CODE
+     * ---------------------------
+     * findAllById loads every requested department in a single
+     * "WHERE code IN (...)". The request is already bounded to ten codes by
+     * @Size on the DTO, but looping findById would still be ten round trips for
+     * what the database answers in one.
+     *
+     * EVERY FAILURE NAMES THE CODE
+     * ----------------------------
+     * "Unknown department" is useless on a form with six checkboxes; "Unknown
+     * department code: ITT" tells the administrator exactly which one is wrong.
+     * All three failures are IllegalArgumentException, so they arrive as 400:
+     * the request is well-formed, but asks for something the business rules
+     * do not allow.
+     *
+     * WHY AN INACTIVE DEPARTMENT IS REFUSED
+     * -------------------------------------
+     * Department.active = false means the desk is closed - ReferenceDataService
+     * already hides inactive departments from the dropdowns. Assigning a new
+     * officer to a closed desk would recreate the original bug in a subtler
+     * form: an officer who serves "a department", and still sees no work,
+     * because nothing is routed to a desk that is closed.
+     *
+     * Codes are trimmed but not upper-cased. They are identifiers the client
+     * copies from GET /api/departments, not text a person types, so "it" is a
+     * client bug worth surfacing, not a spelling to quietly correct.
+     */
+    private Set<Department> resolveDepartments(Set<String> requestedCodes) {
+        Set<String> codes = new HashSet<>();
+        for (String code : requestedCodes) {
+            if (code == null || code.isBlank()) {
+                throw new IllegalArgumentException("Department codes must not be blank.");
+            }
+            codes.add(code.trim());
+        }
+
+        Map<String, Department> found = departmentRepository.findAllById(codes).stream()
+                .collect(Collectors.toMap(Department::getCode, Function.identity()));
+
+        Set<Department> departments = new HashSet<>();
+        for (String code : codes) {
+            Department department = found.get(code);
+            if (department == null) {
+                throw new IllegalArgumentException("Unknown department code: " + code + ".");
+            }
+            if (!department.isActive()) {
+                throw new IllegalArgumentException(
+                        "Department " + code + " is closed and cannot be assigned to an officer.");
+            }
+            departments.add(department);
+        }
+        return departments;
     }
 
     private void rejectDuplicateEmail(String email) {
