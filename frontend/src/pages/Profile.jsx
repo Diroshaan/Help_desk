@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { API, errorMessage, fieldErrors, initials, request, requestForm } from '../api.js'
-import { Avatar, Field, Notice, SelectField } from '../components/Bits.jsx'
+import { Avatar, Field, Notice, PhoneList, SelectField } from '../components/Bits.jsx'
 import { Sidebar } from '../components/Sidebar.jsx'
 import { useSession } from '../hooks/useSession.jsx'
 
@@ -56,9 +56,15 @@ export default function Profile() {
   useEffect(() => {
     if (!student) return
     setForm({
-      fullName: student.fullName || '',
+      givenName: student.givenName || '',
+      surname: student.surname || '',
       studentId: student.studentId || '',
-      phone: student.phone || '',
+      // StudentResponse.phones is the full ordered list; `phone` is only its
+      // first entry, kept for older screens. Fall back to it for an account
+      // saved before the list existed.
+      phones: Array.isArray(student.phones) && student.phones.length
+        ? student.phones
+        : (student.phone ? [student.phone] : ['']),
       email: student.email || '',
       department: student.department || ''
     })
@@ -87,9 +93,14 @@ export default function Profile() {
        ProfileUpdateRequest excludes it by design — sending it would be ignored,
        and showing an editable box that silently does nothing is worse than
        showing a locked one. */
+    /* The whole phone list is sent, so removing a number is a real change:
+       ProfileUpdateRequest treats `phones` as "replace the list", while the
+       older single `phone` field could only ever edit the first entry.
+       An empty list is how a student removes every number. */
     const payload = {
-      fullName: form.fullName.trim(),
-      phone: form.phone.trim(),
+      givenName: form.givenName.trim(),
+      surname: form.surname.trim(),
+      phones: form.phones.map(p => p.trim()).filter(Boolean),
       department: form.department
     }
 
@@ -102,7 +113,7 @@ export default function Profile() {
         return
       }
 
-      const fields = fieldErrors(result, ['fullName', 'phone', 'department'])
+      const fields = fieldErrors(result, ['givenName', 'surname', 'phones', 'department'])
       if (Object.keys(fields).length) setErrors(fields)
       else setNotice({ kind: 'error', text: errorMessage(result, 'We could not save those changes.') })
     } catch {
@@ -224,17 +235,21 @@ export default function Profile() {
             <h2>Personal details</h2>
 
             <form className="form" style={{ marginTop: 0 }} onSubmit={saveProfile} noValidate>
-              <Field id="fullName" label="Full name" type="text" autoComplete="name"
-                     value={form.fullName} onChange={set('fullName')} error={errors.fullName} />
-
               <div className="field-row">
-                <Field id="studentId" label="Student ID" type="text" className="mono" disabled
-                       value={form.studentId} onChange={() => {}}
-                       hint="Issued by the university. It cannot be changed here." />
+                <Field id="givenName" label="Given name(s)" type="text" autoComplete="given-name"
+                       value={form.givenName} onChange={set('givenName')} error={errors.givenName} />
 
-                <Field id="phone" label="Phone" type="tel" autoComplete="tel"
-                       value={form.phone} onChange={set('phone')} error={errors.phone} />
+                <Field id="surname" label="Surname" type="text" autoComplete="family-name"
+                       value={form.surname} onChange={set('surname')} error={errors.surname} />
               </div>
+
+              <Field id="studentId" label="Student ID" type="text" className="mono" disabled
+                     value={form.studentId} onChange={() => {}}
+                     hint="Issued by the university. It cannot be changed here." />
+
+              <PhoneList values={form.phones}
+                         onChange={phones => setForm(current => ({ ...current, phones }))}
+                         error={errors.phones} />
 
               <Field id="email" label="University email" type="email" disabled
                      value={form.email} onChange={() => {}}
@@ -303,6 +318,17 @@ export default function Profile() {
                 preference changes — appear here as they happen.
               </p>
             )}
+          </section>
+
+          {/* ---------- Security ---------- */}
+          <section className="section" id="security">
+            <h2>Password</h2>
+            <p className="section-note">
+              Changing your password signs you out everywhere else you are logged in.
+            </p>
+            <div className="btn-row">
+              <Link className="btn btn--ghost" to="/account/password">Change password</Link>
+            </div>
           </section>
 
           {/* ---------- Danger zone ---------- */}
