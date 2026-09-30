@@ -235,8 +235,11 @@ export default function Users() {
                     {user.provisionedBy && <span>Provisioned by {user.provisionedBy}</span>}
                   </div>
                   <div className="row-side">
-                    <StatusPill value={user.active ? 'ACTIVE' : 'INACTIVE'} label={user.active ? 'Active' : 'Suspended'} />
-                    {user.role === 'OFFICER' && (
+                    <StatusPill value={user.active ? 'ACTIVE' : 'INACTIVE'}
+                                label={user.removed ? 'Removed' : user.active ? 'Active' : 'Suspended'} />
+                    {/* No department editor for a removed officer: they have left,
+                        and the backend refuses the change anyway (PR #56 review). */}
+                    {!user.removed && user.role === 'OFFICER' && (
                       <button type="button" className="btn btn--ghost"
                               onClick={() => setEditing(editing?.id === user.id ? null : { id: user.id, codes: user.departmentCodes || [] })}>
                         {editing?.id === user.id ? 'Close' : 'Departments'}
