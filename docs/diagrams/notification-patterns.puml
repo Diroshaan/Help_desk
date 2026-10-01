@@ -60,6 +60,10 @@ class AccountSecurityNotifier {
 - NotificationService notificationService
 + void onPasswordChanged(PasswordChangedEvent)
 }
+class TicketHistoryRecorder {
+- TicketHistoryService historyService
++ void on(TicketStatusChangedEvent)
+}
 class QueueService {
 + Ticket updateStatus(Long,Long,TicketStatus)
 ~ Ticket markResolved(Ticket)
@@ -91,4 +95,9 @@ TicketStatusNotifier ..> TicketStatusChangedEvent : listens
 AccountSecurityNotifier ..> PasswordChangedEvent : listens
 TicketStatusNotifier ..> NotificationService : uses
 AccountSecurityNotifier ..> NotificationService : uses
+' F2 #45: a SECOND observer of the same TicketStatusChangedEvent QueueService
+' already publishes for TicketStatusNotifier - F2 added this listener without
+' QueueService (the publisher) changing at all, which is the point of Observer.
+TicketHistoryRecorder ..> TicketStatusChangedEvent : listens
+TicketHistoryRecorder ..> TicketHistoryService : uses
 @enduml

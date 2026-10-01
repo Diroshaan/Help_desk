@@ -1,17 +1,20 @@
 package com.helpdesk.ticket.service;
 
 import com.helpdesk.common.exception.ResourceNotFoundException;
+import com.helpdesk.common.files.FileTypeDetector;
+import com.helpdesk.ticket.dto.AttachmentResponse;
 import com.helpdesk.ticket.entity.Attachment;
+import com.helpdesk.ticket.entity.AttachmentKind;
 import com.helpdesk.ticket.repository.AttachmentRepository;
 import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
-import java.util.Set;
 
 /**
  * F2 - Advanced Ticket Request Engine (Chamikara A. K, IT25102416)
@@ -26,12 +29,10 @@ import java.util.Set;
 public class AttachmentService {
 
     // NFR 5.1: attachments are restricted to PDF and standard image formats
-    // only. An explicit allow-list, not a startsWith("image/") check - that
-    // would also admit image/svg+xml, and an SVG can carry embedded
-    // JavaScript that executes when a browser renders it.
+    // only. The allow-list is FileTypeDetector.ATTACHMENT_TYPES, shared with
+    // F4's resolution files, and it deliberately has no SVG: an SVG can carry
+    // embedded JavaScript that executes when a browser renders it.
     private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
-    private static final Set<String> ALLOWED_TYPES = Set.of(
-            "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp");
 
     private final AttachmentRepository attachmentRepository;
     private final TicketService ticketService;
@@ -52,34 +53,80 @@ public class AttachmentService {
         if (file.getSize() > MAX_FILE_SIZE) {
             throw new ValidationException("File exceeds the 5MB limit");
         }
-        if (file.getContentType() == null || !ALLOWED_TYPES.contains(file.getContentType())) {
-            throw new ValidationException("Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed");
+
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read uploaded file", e);
         }
+
+        // The type is decided from the file's own first bytes, never from
+        // file.getContentType(): the browser's Content-Type is written by the
+        // client; the first bytes of the file are not. A renamed .exe
+        // labelled image/png would otherwise be stored and later served back
+        // to an officer as an "image".
+        String detectedType = FileTypeDetector.detect(bytes, FileTypeDetector.ATTACHMENT_TYPES)
+                .orElseThrow(() -> new ValidationException(
+                        "Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed"));
 
         String fileName = file.getOriginalFilename();
 
         Attachment attachment = new Attachment();
         attachment.setTicketId(ticketId);
         attachment.setFileName((fileName == null || fileName.isBlank()) ? "attachment" : fileName);
-        attachment.setFileType(file.getContentType());
+        attachment.setFileType(detectedType);
         attachment.setFileSize(file.getSize());
-        try {
-            attachment.setData(file.getBytes());
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to read uploaded file", e);
-        }
+        attachment.setData(bytes);
+        // #44, contract C8: the uploader is the SESSION's student id, never
+        // something the request could claim to be. RESOLUTION is reserved -
+        // resolution files stay on the resolutions row (F4, see AttachmentKind).
+        attachment.setUploadedByUserId(studentId);
+        attachment.setKind(AttachmentKind.SUBMISSION);
 
         return attachmentRepository.save(attachment);
     }
 
-    // Read
-    public List<Attachment> listByTicket(Long studentId, Long ticketId) {
+    // Read - metadata only; the bytes are fetched one file at a time, on download.
+    @Transactional(readOnly = true)
+    public List<AttachmentResponse> listByTicket(Long studentId, Long ticketId) {
         ticketService.getOwnedTicket(ticketId, studentId);
-        return attachmentRepository.findByTicketId(ticketId);
+        return attachmentRepository.findMetadataByTicketId(ticketId);
     }
 
+    @Transactional(readOnly = true)
     public Attachment getOwnedAttachment(Long studentId, Long ticketId, Long attachmentId) {
         ticketService.getOwnedTicket(ticketId, studentId);
+        return findByIdAndTicketId(attachmentId, ticketId);
+    }
+
+    // Officer-side reads (contract C1, issue #40). These live here, not in
+    // F4's code, so there is still one class that knows how attachments are
+    // stored. They take no student id because the officer is not the owner:
+    // F4 proves the officer's right to the ticket (department scoping) before
+    // calling, and this class proves only that the file is on that ticket.
+
+    /**
+     * The metadata (no bytes) of every file attached to a ticket, oldest first.
+     *
+     * No ownership check: the caller must already have proved access to the
+     * ticket (F4 calls QueueService.getQueuedTicket first).
+     */
+    @Transactional(readOnly = true)
+    public List<AttachmentResponse> listForTicket(Long ticketId) {
+        return attachmentRepository.findMetadataByTicketId(ticketId);
+    }
+
+    /**
+     * One attachment, with its bytes, for download.
+     *
+     * No ownership check: the caller must already have proved access to the
+     * ticket (F4 calls QueueService.getQueuedTicket first). Still 404 if the
+     * attachment is not on THAT ticket, so access to one ticket can't be used
+     * to read another ticket's files by changing the attachment id.
+     */
+    @Transactional(readOnly = true)
+    public Attachment getForTicket(Long ticketId, Long attachmentId) {
         return findByIdAndTicketId(attachmentId, ticketId);
     }
 

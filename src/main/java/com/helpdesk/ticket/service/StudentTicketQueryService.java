@@ -36,6 +36,13 @@ public class StudentTicketQueryService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
 
+    // PageRequest multiplies page * size internally to compute an offset.
+    // Spring Data clamps neither value, so an arbitrarily large page number
+    // overflowed int and came back as a 500 (F2-N5) instead of an empty
+    // page. 10,000 pages at the max size is 1,000,000 rows - already far
+    // beyond anything a real search page would reach.
+    private static final int MAX_PAGE = 10_000;
+
     private final TicketRepository ticketRepository;
     private final ArchivedTicketRepository archivedTicketRepository;
 
@@ -58,7 +65,7 @@ public class StudentTicketQueryService {
     }
 
     private Pageable toPageable(TicketSearchCriteria criteria) {
-        int page = Math.max(criteria.getPage(), 0);
+        int page = Math.min(Math.max(criteria.getPage(), 0), MAX_PAGE);
         int size = criteria.getSize() <= 0 ? DEFAULT_PAGE_SIZE : Math.min(criteria.getSize(), MAX_PAGE_SIZE);
         String sortBy = SORTABLE_FIELDS.contains(criteria.getSortBy()) ? criteria.getSortBy() : "createdAt";
         Sort.Direction direction = "ASC".equalsIgnoreCase(criteria.getSortDirection())

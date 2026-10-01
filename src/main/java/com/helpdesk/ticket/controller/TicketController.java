@@ -8,13 +8,16 @@ import com.helpdesk.profile.service.StudentService;
 import com.helpdesk.ticket.dto.AttachmentResponse;
 import com.helpdesk.ticket.dto.TicketCreateRequest;
 import com.helpdesk.ticket.dto.TicketResponse;
+import com.helpdesk.ticket.dto.TicketStatusChangeResponse;
 import com.helpdesk.ticket.dto.TicketUpdateRequest;
 import com.helpdesk.ticket.entity.Attachment;
 import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticket.service.AttachmentService;
+import com.helpdesk.ticket.service.TicketHistoryService;
 import com.helpdesk.ticket.service.TicketService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -23,6 +26,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -39,14 +43,17 @@ public class TicketController {
 
     private final TicketService ticketService;
     private final AttachmentService attachmentService;
+    private final TicketHistoryService historyService;
     private final StudentService studentService;
     private final CategoryRepository categoryRepository;
 
     @Autowired
     public TicketController(TicketService ticketService, AttachmentService attachmentService,
-                             StudentService studentService, CategoryRepository categoryRepository) {
+                             TicketHistoryService historyService, StudentService studentService,
+                             CategoryRepository categoryRepository) {
         this.ticketService = ticketService;
         this.attachmentService = attachmentService;
+        this.historyService = historyService;
         this.studentService = studentService;
         this.categoryRepository = categoryRepository;
     }
@@ -103,6 +110,16 @@ public class TicketController {
         return TicketResponse.from(ticket);
     }
 
+    // Contract C3's timeline, over HTTP: ownership first (404 if not yours,
+    // same as every other endpoint here), then the history as it stands -
+    // see TicketHistoryService for why no past state is invented for
+    // tickets that existed before this feature merged.
+    @GetMapping("/{ticketId}/history")
+    public List<TicketStatusChangeResponse> history(@PathVariable Long ticketId, Authentication authentication) {
+        ticketService.getOwnedTicket(ticketId, currentStudentId(authentication));
+        return historyService.listForTicket(ticketId);
+    }
+
     @PostMapping(value = "/{ticketId}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AttachmentResponse> uploadAttachment(@PathVariable Long ticketId,
                                                                   @RequestParam("file") MultipartFile file,
@@ -113,9 +130,7 @@ public class TicketController {
 
     @GetMapping("/{ticketId}/attachments")
     public List<AttachmentResponse> listAttachments(@PathVariable Long ticketId, Authentication authentication) {
-        return attachmentService.listByTicket(currentStudentId(authentication), ticketId).stream()
-                .map(AttachmentResponse::from)
-                .toList();
+        return attachmentService.listByTicket(currentStudentId(authentication), ticketId);
     }
 
     @GetMapping("/{ticketId}/attachments/{attachmentId}")
@@ -126,7 +141,16 @@ public class TicketController {
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(attachment.getFileType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + attachment.getFileName() + "\"")
+                // Built by ContentDisposition, not by gluing strings: a name
+                // containing a quote or a line break could otherwise end the
+                // header early or inject header text, and non-English names
+                // need RFC 5987 encoding (filename*=UTF-8''...) to survive.
+                // attachment, not inline: a file someone else uploaded should
+                // download, never render inside our own page.
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(attachment.getFileName(), StandardCharsets.UTF_8)
+                                .build().toString())
                 .header("X-Content-Type-Options", "nosniff")
                 .body(attachment.getData());
     }

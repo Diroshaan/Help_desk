@@ -12,6 +12,7 @@ import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -36,15 +37,23 @@ public class TicketService {
     // way QueueService announces status changes.
     private final ApplicationEventPublisher eventPublisher;
 
+    // The status-change history (#45). Student-made changes (create,
+    // withdraw) are recorded directly here, because they are never
+    // published as a TicketStatusChangedEvent - that event exists for F4's
+    // officer-made transitions, which TicketHistoryRecorder observes instead.
+    private final TicketHistoryService historyService;
+
     @Autowired
     public TicketService(TicketRepository ticketRepository, CategoryRepository categoryRepository,
-                         ApplicationEventPublisher eventPublisher) {
+                         ApplicationEventPublisher eventPublisher, TicketHistoryService historyService) {
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
         this.eventPublisher = eventPublisher;
+        this.historyService = historyService;
     }
 
     // Create
+    @Transactional
     public Ticket createTicket(Long studentId, TicketCreateRequest request) {
         requireValidCategory(request.getCategory());
 
@@ -58,6 +67,12 @@ public class TicketService {
 
         Ticket saved = ticketRepository.save(ticket);
 
+        // The first history row has no "from" status - the ticket did not
+        // exist a moment before. Recorded directly (not through the event),
+        // and inside this same transaction (record() is MANDATORY), so the
+        // ticket and its first history row commit or roll back together.
+        historyService.record(saved.getId(), null, TicketStatus.OPEN, studentId);
+
         // After the save, so the event carries the real ticket id. The
         // listener runs only once the ticket is committed (AFTER_COMMIT), so
         // a submission that fails never alerts anybody.
@@ -67,16 +82,19 @@ public class TicketService {
     }
 
     // Read
+    @Transactional(readOnly = true)
     public List<Ticket> listByStudent(Long studentId) {
         return ticketRepository.findByStudentId(studentId);
     }
 
+    @Transactional(readOnly = true)
     public Ticket getOwnedTicket(Long ticketId, Long studentId) {
         return findOwnedTicket(ticketId, studentId);
     }
 
     // Ownership + OPEN check together, for callers (e.g. AttachmentService)
     // whose action is only valid while the ticket is still editable.
+    @Transactional(readOnly = true)
     public Ticket getOwnedOpenTicket(Long ticketId, Long studentId) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
         requireOpen(ticket);
@@ -84,6 +102,7 @@ public class TicketService {
     }
 
     // Update - only while OPEN
+    @Transactional
     public Ticket updateTicket(Long ticketId, Long studentId, TicketUpdateRequest request) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
         requireOpen(ticket);
@@ -98,12 +117,17 @@ public class TicketService {
     }
 
     // Withdraw (soft "delete") - only while OPEN
+    @Transactional
     public Ticket withdrawTicket(Long ticketId, Long studentId) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
         requireOpen(ticket);
 
         ticket.setStatus(TicketStatus.WITHDRAWN);
-        return ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
+
+        // requireOpen above already guarantees the "from" was OPEN.
+        historyService.record(ticketId, TicketStatus.OPEN, TicketStatus.WITHDRAWN, studentId);
+        return saved;
     }
 
     private Ticket findOwnedTicket(Long ticketId, Long studentId) {

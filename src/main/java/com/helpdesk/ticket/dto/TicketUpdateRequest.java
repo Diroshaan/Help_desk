@@ -3,21 +3,27 @@ package com.helpdesk.ticket.dto;
 import com.helpdesk.ticket.entity.TicketPriority;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 /**
  * Request body for editing a ticket (US: a student may edit a ticket while
  * it is still OPEN - see Ticket.java). Only the fields a student is allowed
  * to change are here - no "id", "studentId" or "status".
+ *
+ * The @Size limits mirror Ticket's column lengths - see TicketCreateRequest.
  */
 public class TicketUpdateRequest {
 
     @NotBlank(message = "Subject is required")
+    @Size(max = 150, message = "Subject must be 150 characters or fewer")
     private String subject;
 
     @NotBlank(message = "Description is required")
+    @Size(max = 2000, message = "Description must be 2000 characters or fewer")
     private String description;
 
     @NotBlank(message = "Category is required")
+    @Size(max = 120, message = "Category must be 120 characters or fewer")
     private String category;
 
     @NotNull(message = "Priority is required")

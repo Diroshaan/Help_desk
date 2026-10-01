@@ -3,7 +3,9 @@ package com.helpdesk.ticket.entity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import org.hibernate.annotations.CollectionId;
+import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -36,13 +38,32 @@ public class Attachment {
     @Column(nullable = false)
     private String fileType;
 
-    @Lob
-    @Column(nullable = false)
+    // MEDIUMBLOB, not a bare @Lob: on MySQL Hibernate maps @Lob byte[] to
+    // TINYBLOB, which holds only 255 bytes, so every real file failed on Aiven
+    // while passing on H2 (the same trap F1 hit with Student.profilePicture).
+    // MEDIUMBLOB holds 16 MB, comfortably above our 5 MB upload limit.
+    @Column(name = "data", nullable = false, columnDefinition = "MEDIUMBLOB")
     private byte[] data;
 
     private Long fileSize;
 
     private LocalDateTime uploadedAt = LocalDateTime.now();
+
+    // #44, contract C8: who uploaded this file. Set from the SESSION in
+    // AttachmentService.upload, never from the request - the same
+    // mass-assignment protection TicketCreateRequest uses for studentId.
+    @Column(name = "uploaded_by_user_id", nullable = false)
+    private Long uploadedByUserId;
+
+    // RESOLUTION is reserved; resolution files stay on the resolutions row
+    // (F4 keeps its own columns - contract C8), so every attachment created
+    // through this package is SUBMISSION. @JdbcTypeCode(VARCHAR): the same
+    // ENUM-column trap as Ticket.status - see that field's comment.
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "kind", nullable = false, length = 20)
+    @ColumnDefault("'SUBMISSION'")
+    private AttachmentKind kind = AttachmentKind.SUBMISSION;
 
     //Constructors
     public Attachment() {}    // Required no-argument constructor for JPA
@@ -89,5 +110,17 @@ public class Attachment {
     }
     public void setUploadedAt(LocalDateTime uploadedAt) {
         this.uploadedAt = uploadedAt;
+    }
+    public Long getUploadedByUserId() {
+        return uploadedByUserId;
+    }
+    public void setUploadedByUserId(Long uploadedByUserId) {
+        this.uploadedByUserId = uploadedByUserId;
+    }
+    public AttachmentKind getKind() {
+        return kind;
+    }
+    public void setKind(AttachmentKind kind) {
+        this.kind = kind;
     }
 }
