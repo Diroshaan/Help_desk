@@ -21,9 +21,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -118,6 +123,48 @@ class TicketAttachmentIntegrationTest {
         attach(ticket, "receipt.pdf");
 
         mvc.perform(get("/api/tickets/" + ticket.getId() + "/attachments")
+                        .with(user(other.getEmail()).roles("STUDENT")))
+                .andExpect(status().isNotFound());
+    }
+
+    // ---- Download header (F2-N4) ----
+
+    // Why this test exists: the header was built as "inline; filename=\"" +
+    // name + "\"", so a quote in the name ended the value early.
+    @Test
+    @DisplayName("Downloading quote\"d.pdf gives a safely encoded attachment header")
+    void quotedNameIsEncoded() throws Exception {
+        Attachment a = attach(ticket, "quote\"d.pdf");
+
+        mvc.perform(get("/api/tickets/" + ticket.getId() + "/attachments/" + a.getId())
+                        .with(user(owner.getEmail()).roles("STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", startsWith("attachment;")))
+                .andExpect(header().string("Content-Disposition", containsString("filename*=UTF-8''")))
+                .andExpect(header().string("Content-Disposition", not(containsString("\"d.pdf\""))))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(content().bytes(PDF_BYTES));
+    }
+
+    @Test
+    @DisplayName("A non-English file name is percent-encoded as UTF-8")
+    void nonEnglishNameIsEncoded() throws Exception {
+        Attachment a = attach(ticket, "රිසිට්.pdf");   // Sinhala "receipt"
+
+        mvc.perform(get("/api/tickets/" + ticket.getId() + "/attachments/" + a.getId())
+                        .with(user(owner.getEmail()).roles("STUDENT")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        containsString("filename*=UTF-8''%E0%B6%BB")));
+    }
+
+    @Test
+    @DisplayName("Another student downloading the file gets 404")
+    void otherStudentCannotDownload() throws Exception {
+        Attachment a = attach(ticket, "receipt.pdf");
+
+        mvc.perform(get("/api/tickets/" + ticket.getId() + "/attachments/" + a.getId())
                         .with(user(other.getEmail()).roles("STUDENT")))
                 .andExpect(status().isNotFound());
     }

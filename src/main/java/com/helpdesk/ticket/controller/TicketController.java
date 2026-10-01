@@ -15,6 +15,7 @@ import com.helpdesk.ticket.service.AttachmentService;
 import com.helpdesk.ticket.service.TicketService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -23,6 +24,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -124,7 +126,16 @@ public class TicketController {
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(attachment.getFileType()))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + attachment.getFileName() + "\"")
+                // Built by ContentDisposition, not by gluing strings: a name
+                // containing a quote or a line break could otherwise end the
+                // header early or inject header text, and non-English names
+                // need RFC 5987 encoding (filename*=UTF-8''...) to survive.
+                // attachment, not inline: a file someone else uploaded should
+                // download, never render inside our own page.
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(attachment.getFileName(), StandardCharsets.UTF_8)
+                                .build().toString())
                 .header("X-Content-Type-Options", "nosniff")
                 .body(attachment.getData());
     }
