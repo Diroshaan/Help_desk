@@ -1,0 +1,94 @@
+@startuml
+skinparam classAttributeIconSize 0
+skinparam dpi 150
+skinparam linetype ortho
+hide empty members
+interface NotificationChannel {
++ String getName()
++ boolean isEnabledFor(NotificationRecipient)
++ void send(NotificationRecipient,NotificationMessage)
+}
+class PortalNotificationChannel {
+- NotificationRepository notificationRepository
++ String getName()
++ boolean isEnabledFor(NotificationRecipient)
++ void send(NotificationRecipient,NotificationMessage)
+}
+class EmailNotificationChannel {
+- {static} Logger log
++ String getName()
++ boolean isEnabledFor(NotificationRecipient)
++ void send(NotificationRecipient,NotificationMessage)
+~ {static} String mask(String)
+}
+class NotificationService {
+- {static} Logger log
+- List<NotificationChannel> channels
++ List<String> notify(NotificationRecipient,NotificationMessage)
+}
+class NotificationRecipient <<record>> {
+- Long userId
+- String email
+- String displayName
+- boolean emailEnabled
+- boolean portalEnabled
++ {static} NotificationRecipient from(AppUser)
+}
+class NotificationMessage <<record>> {
+- String title
+- String body
+- String link
+}
+class TicketStatusChangedEvent <<record>> {
+- Long ticketId
+- Long studentId
+- String subject
+- TicketStatus fromStatus
+- TicketStatus toStatus
+}
+class PasswordChangedEvent <<record>> {
+- Long userId
+}
+class TicketStatusNotifier {
+- StudentRepository studentRepository
+- NotificationService notificationService
++ void onTicketStatusChanged(TicketStatusChangedEvent)
+~ {static} NotificationMessage messageFor(TicketStatusChangedEvent)
+}
+class AccountSecurityNotifier {
+- AppUserRepository appUserRepository
+- NotificationService notificationService
++ void onPasswordChanged(PasswordChangedEvent)
+}
+class QueueService {
++ Ticket updateStatus(Long,Long,TicketStatus)
+~ Ticket markResolved(Ticket)
+~ Ticket reopen(Ticket)
+}
+class PasswordService {
++ void changePassword(String,String,PasswordChangeRequest)
+}
+class Notification {
+- Long id
+- Long recipientUserId
+- String title
+- String body
+- String link
+- LocalDateTime createdAt
+- LocalDateTime readAt
++ void markRead()
++ boolean isRead()
+}
+QueueService ..> TicketStatusChangedEvent : publishes
+PasswordService ..> PasswordChangedEvent : publishes
+NotificationChannel <|.. PortalNotificationChannel
+NotificationChannel <|.. EmailNotificationChannel
+NotificationService o-- "1..*" NotificationChannel
+PortalNotificationChannel ..> Notification : creates
+NotificationService ..> NotificationRecipient
+NotificationService ..> NotificationMessage
+TicketStatusNotifier ..> TicketStatusChangedEvent : listens
+AccountSecurityNotifier ..> PasswordChangedEvent : listens
+TicketStatusNotifier ..> NotificationService : uses
+AccountSecurityNotifier ..> NotificationService : uses
+@enduml

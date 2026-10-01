@@ -124,6 +124,19 @@ class StudentServiceTest {
                 .hasMessageContaining("deactivated");
     }
 
+    @Test
+    @DisplayName("A Student ID belonging to a closed (removed) account is not promised a restore")
+    void removedAccountIsNotPromisedARestore() {
+        Student closed = new Student();
+        closed.markRemoved();
+        when(studentRepository.findByStudentId("IT25101580")).thenReturn(Optional.of(closed));
+
+        assertThatThrownBy(() -> service.register(registration()))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessageContaining("was closed")
+                .hasMessageNotContaining("restored");
+    }
+
     // ---- Profile update ----
 
     // Why this test exists: "Save preferences" sends only the two booleans.
@@ -178,6 +191,9 @@ class StudentServiceTest {
         ArgumentCaptor<Student> saved = ArgumentCaptor.forClass(Student.class);
         verify(studentRepository).save(saved.capture());
         assertThat(saved.getValue().isActive()).isFalse();
+        // Removed, not merely suspended: the admin screen must not offer it back.
+        assertThat(saved.getValue().isRemoved()).isTrue();
+        assertThat(saved.getValue().getDeletedAt()).isNotNull();
         verify(studentRepository, never()).delete(any());
         verify(sessionRevoker).revokeAllSessionsFor("diro@my.sliit.lk");
     }

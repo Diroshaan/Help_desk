@@ -6,6 +6,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.Set;
 import com.helpdesk.common.exception.DuplicateResourceException;
+import com.helpdesk.common.files.FileTypeDetector;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.profile.dto.ProfileUpdateRequest;
 import com.helpdesk.profile.dto.RegistrationRequest;
@@ -218,6 +219,15 @@ public class StudentService {
                 throw new DuplicateResourceException(
                         label + " is already registered. Please log in instead.");
             }
+            // A REMOVED account (closed by its owner, or removed by an admin)
+            // is final since PR #53 - no screen restores it - so promising a
+            // restore would send the student to an administrator who cannot
+            // help. A merely suspended one can still be restored.
+            if (student.isRemoved()) {
+                throw new DuplicateResourceException(
+                        label + " belongs to an account that was closed, so it cannot be registered again. "
+                                + "Contact the help desk administrator if you need help.");
+            }
             throw new DuplicateResourceException(
                     label + " belongs to an account that has been deactivated. "
                             + "Contact the help desk administrator to have it restored.");
@@ -367,7 +377,19 @@ public class StudentService {
         // Same reasoning as updateProfile above: a missing id is a 404, not a 400.
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
-        student.setActive(false);
+
+        // markRemoved(), not setActive(false). Closing your own account is a
+        // REMOVAL (the student is leaving), not a SUSPENSION (a temporary
+        // block an administrator lifts). Since PR #53 the two are stored
+        // differently - see AppUser.deletedAt - and the admin Users page shows
+        // them differently. Before this, a student who deleted their account
+        // appeared to administrators as merely "Suspended", and one click on
+        // "Reactivate" would have reopened an account its owner asked to close.
+        //
+        // Still a soft delete (US-02): the row stays, so the student's tickets,
+        // feedback and bookmarks keep resolving to a name, and markRemoved()
+        // also sets active = false, so login is refused exactly as before.
+        student.markRemoved();
         studentRepository.save(student);
 
         // REVOKE THE SESSION, not just the ability to start a new one.
@@ -536,39 +558,21 @@ public class StudentService {
     /**
      * Identify the image from its file signature - the "magic bytes" every
      * format begins with. Returns the MIME type, or null if these bytes are not
-     * one of the three formats this system accepts.
+     * one of the formats an avatar may be (JPEG, PNG, WebP).
      *
-     *   JPEG  FF D8 FF
-     *   PNG   89 50 4E 47        ("\x89PNG")
-     *   WebP  "RIFF" ???? "WEBP"  (bytes 4-7 are the file length, so they are
-     *                              skipped rather than matched)
+     * The byte tables used to live here. They now live in the shared
+     * common.files.FileTypeDetector, because F2's ticket attachments and F4's
+     * resolution files need exactly the same check plus PDF, and three private
+     * copies of the same signatures would drift. This method keeps its name
+     * and its null-for-"no" contract so the upload code above reads the same.
      *
      * This returns the type rather than a boolean on purpose. The caller needs
      * to STORE a content type, and the only trustworthy source for it is the
      * file itself: the filename is whatever the uploader typed, and the declared
      * MIME type is whatever their browser - or their script - chose to send.
-     * Both are client-supplied. The signature is the one thing in the request
-     * that cannot be renamed away, so it is the one thing worth recording.
-     *
-     * bytes.length < 12 is rejected outright. No valid file of any of these
-     * formats is that small, and it also guarantees every index read below is in
-     * bounds, so the checks can be written plainly without a length test each.
      */
     private String detectImageType(byte[] bytes) {
-        if (bytes == null || bytes.length < 12) {
-            return null;
-        }
-        if ((bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xD8 && (bytes[2] & 0xFF) == 0xFF) {
-            return "image/jpeg";
-        }
-        if ((bytes[0] & 0xFF) == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G') {
-            return "image/png";
-        }
-        if (bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
-                && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P') {
-            return "image/webp";
-        }
-        return null;
+        return FileTypeDetector.detect(bytes, FileTypeDetector.AVATAR_TYPES).orElse(null);
     }
 
     /** The stored avatar, for the download endpoint. */

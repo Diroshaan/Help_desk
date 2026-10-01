@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * SHARED REFERENCE DATA - not owned by any single feature.
@@ -57,4 +58,16 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
      * starting the application twice does not create duplicates.
      */
     boolean existsByName(String name);
+
+    /**
+     * One category, with its department, by the name a ticket stores.
+     *
+     * Ticket.category holds the category NAME (F2's design), so anything that
+     * needs "which desk owns this ticket" starts here. Added for the new-ticket
+     * alert to officers (US-04, QueueArrivalNotifier). JOIN FETCH for the same
+     * reason as findSelectableWithDepartment above: the caller always wants the
+     * department, so load it in the same query.
+     */
+    @Query("SELECT c FROM Category c JOIN FETCH c.department WHERE c.name = :name")
+    Optional<Category> findByNameWithDepartment(@Param("name") String name);
 }
