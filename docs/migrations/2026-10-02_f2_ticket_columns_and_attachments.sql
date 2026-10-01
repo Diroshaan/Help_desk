@@ -131,14 +131,19 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @current_type := (SELECT column_type FROM information_schema.columns
                       WHERE table_schema = DATABASE() AND table_name = 'tickets' AND column_name = 'category');
 SET @max_len := (SELECT COALESCE(MAX(CHAR_LENGTH(category)), 0) FROM `tickets`);
+SET @cat_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
+                WHERE constraint_schema = DATABASE() AND table_name = 'tickets'
+                  AND constraint_name = 'fk_tickets_category' AND constraint_type = 'FOREIGN KEY');
 SET @sql := IF(@current_type = 'varchar(120)',
     'SELECT ''tickets.category: already varchar(120)'' AS result',
+    IF(@cat_fk > 0,
+       'SELECT ''tickets.category: left as it is - fk_tickets_category already limits it to categories.name'' AS result',
     IF(@max_len > 120,
        CONCAT('SELECT ''tickets.category: NOT modified - longest existing value is ', @max_len,
               ' characters, see section 7'' AS result'),
-       'ALTER TABLE `tickets` MODIFY COLUMN `category` VARCHAR(120) NOT NULL'));
+       'ALTER TABLE `tickets` MODIFY COLUMN `category` VARCHAR(120) NOT NULL')));
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
-SET @sql := IF(@current_type <> 'varchar(120)' AND @max_len <= 120,
+SET @sql := IF(@current_type <> 'varchar(120)' AND @cat_fk = 0 AND @max_len <= 120,
     'SELECT ''tickets.category: set to VARCHAR(120)'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
