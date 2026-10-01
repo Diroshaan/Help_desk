@@ -145,7 +145,8 @@ class AttachmentServiceTest {
     // ---- Listing and reading (F2-N3, contract C1) ----
 
     private AttachmentResponse metadata(Long id) {
-        return new AttachmentResponse(id, TICKET_ID, "receipt.pdf", "application/pdf", 42L, LocalDateTime.now());
+        return new AttachmentResponse(id, TICKET_ID, "receipt.pdf", "application/pdf", 42L, LocalDateTime.now(),
+                STUDENT_ID, com.helpdesk.ticket.entity.AttachmentKind.SUBMISSION);
     }
 
     // Why this test exists: listing used findByTicketId, which loads every
@@ -207,5 +208,24 @@ class AttachmentServiceTest {
 
         assertThatThrownBy(() -> service.getForTicket(TICKET_ID, 5L))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ---- Provenance (#44, contract C8) ----
+
+    // Why this test exists: the uploader must come from the session, never
+    // from the request - there is no "uploadedByUserId" field a client can
+    // set. kind is always SUBMISSION: RESOLUTION is reserved for F4's files,
+    // which live on the resolutions row, not here.
+    @Test
+    @DisplayName("An upload records the caller's id as uploader, with kind SUBMISSION")
+    void uploadRecordsUploaderAndKind() {
+        ticketIsOwnedAndOpen();
+        when(attachmentRepository.save(any(Attachment.class))).thenAnswer(inv -> inv.getArgument(0));
+        MockMultipartFile file = new MockMultipartFile("file", "receipt.pdf", "application/pdf", PDF_BYTES);
+
+        Attachment saved = service.upload(STUDENT_ID, TICKET_ID, file);
+
+        assertThat(saved.getUploadedByUserId()).isEqualTo(STUDENT_ID);
+        assertThat(saved.getKind()).isEqualTo(com.helpdesk.ticket.entity.AttachmentKind.SUBMISSION);
     }
 }

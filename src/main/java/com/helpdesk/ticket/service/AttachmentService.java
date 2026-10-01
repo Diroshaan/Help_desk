@@ -4,6 +4,7 @@ import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.files.FileTypeDetector;
 import com.helpdesk.ticket.dto.AttachmentResponse;
 import com.helpdesk.ticket.entity.Attachment;
+import com.helpdesk.ticket.entity.AttachmentKind;
 import com.helpdesk.ticket.repository.AttachmentRepository;
 import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,6 +78,11 @@ public class AttachmentService {
         attachment.setFileType(detectedType);
         attachment.setFileSize(file.getSize());
         attachment.setData(bytes);
+        // #44, contract C8: the uploader is the SESSION's student id, never
+        // something the request could claim to be. RESOLUTION is reserved -
+        // resolution files stay on the resolutions row (F4, see AttachmentKind).
+        attachment.setUploadedByUserId(studentId);
+        attachment.setKind(AttachmentKind.SUBMISSION);
 
         return attachmentRepository.save(attachment);
     }

@@ -96,6 +96,7 @@ class TicketAttachmentIntegrationTest {
         a.setFileType("application/pdf");
         a.setFileSize((long) PDF_BYTES.length);
         a.setData(PDF_BYTES);
+        a.setUploadedByUserId(t.getStudentId());
         return attachmentRepository.save(a);
     }
 
@@ -113,6 +114,8 @@ class TicketAttachmentIntegrationTest {
                 .andExpect(jsonPath("$[0].fileName").value("receipt.pdf"))
                 .andExpect(jsonPath("$[0].fileType").value("application/pdf"))
                 .andExpect(jsonPath("$[0].fileSize").value(PDF_BYTES.length))
+                .andExpect(jsonPath("$[0].uploadedByUserId").value(owner.getId()))
+                .andExpect(jsonPath("$[0].kind").value("SUBMISSION"))
                 .andExpect(jsonPath("$[0].data").doesNotExist());
     }
 

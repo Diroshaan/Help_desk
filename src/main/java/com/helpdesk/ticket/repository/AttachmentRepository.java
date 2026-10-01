@@ -16,7 +16,7 @@ public interface AttachmentRepository extends JpaRepository<Attachment, Long> {
     // a ticket's files never reads their bytes (up to 5 MB each) just to show
     // names. findByTicketId would load every Attachment, data included.
     @Query("SELECT new com.helpdesk.ticket.dto.AttachmentResponse(a.id, a.ticketId, a.fileName, "
-            + "a.fileType, a.fileSize, a.uploadedAt) FROM Attachment a WHERE a.ticketId = :ticketId "
-            + "ORDER BY a.uploadedAt ASC")
+            + "a.fileType, a.fileSize, a.uploadedAt, a.uploadedByUserId, a.kind) FROM Attachment a "
+            + "WHERE a.ticketId = :ticketId ORDER BY a.uploadedAt ASC")
     List<AttachmentResponse> findMetadataByTicketId(@Param("ticketId") Long ticketId);
 }
