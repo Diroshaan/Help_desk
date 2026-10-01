@@ -8,10 +8,12 @@ import com.helpdesk.profile.service.StudentService;
 import com.helpdesk.ticket.dto.AttachmentResponse;
 import com.helpdesk.ticket.dto.TicketCreateRequest;
 import com.helpdesk.ticket.dto.TicketResponse;
+import com.helpdesk.ticket.dto.TicketStatusChangeResponse;
 import com.helpdesk.ticket.dto.TicketUpdateRequest;
 import com.helpdesk.ticket.entity.Attachment;
 import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticket.service.AttachmentService;
+import com.helpdesk.ticket.service.TicketHistoryService;
 import com.helpdesk.ticket.service.TicketService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,14 +43,17 @@ public class TicketController {
 
     private final TicketService ticketService;
     private final AttachmentService attachmentService;
+    private final TicketHistoryService historyService;
     private final StudentService studentService;
     private final CategoryRepository categoryRepository;
 
     @Autowired
     public TicketController(TicketService ticketService, AttachmentService attachmentService,
-                             StudentService studentService, CategoryRepository categoryRepository) {
+                             TicketHistoryService historyService, StudentService studentService,
+                             CategoryRepository categoryRepository) {
         this.ticketService = ticketService;
         this.attachmentService = attachmentService;
+        this.historyService = historyService;
         this.studentService = studentService;
         this.categoryRepository = categoryRepository;
     }
@@ -103,6 +108,16 @@ public class TicketController {
     public TicketResponse withdraw(@PathVariable Long ticketId, Authentication authentication) {
         Ticket ticket = ticketService.withdrawTicket(ticketId, currentStudentId(authentication));
         return TicketResponse.from(ticket);
+    }
+
+    // Contract C3's timeline, over HTTP: ownership first (404 if not yours,
+    // same as every other endpoint here), then the history as it stands -
+    // see TicketHistoryService for why no past state is invented for
+    // tickets that existed before this feature merged.
+    @GetMapping("/{ticketId}/history")
+    public List<TicketStatusChangeResponse> history(@PathVariable Long ticketId, Authentication authentication) {
+        ticketService.getOwnedTicket(ticketId, currentStudentId(authentication));
+        return historyService.listForTicket(ticketId);
     }
 
     @PostMapping(value = "/{ticketId}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

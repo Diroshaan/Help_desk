@@ -37,12 +37,19 @@ public class TicketService {
     // way QueueService announces status changes.
     private final ApplicationEventPublisher eventPublisher;
 
+    // The status-change history (#45). Student-made changes (create,
+    // withdraw) are recorded directly here, because they are never
+    // published as a TicketStatusChangedEvent - that event exists for F4's
+    // officer-made transitions, which TicketHistoryRecorder observes instead.
+    private final TicketHistoryService historyService;
+
     @Autowired
     public TicketService(TicketRepository ticketRepository, CategoryRepository categoryRepository,
-                         ApplicationEventPublisher eventPublisher) {
+                         ApplicationEventPublisher eventPublisher, TicketHistoryService historyService) {
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
         this.eventPublisher = eventPublisher;
+        this.historyService = historyService;
     }
 
     // Create
@@ -59,6 +66,12 @@ public class TicketService {
         ticket.setStatus(TicketStatus.OPEN);
 
         Ticket saved = ticketRepository.save(ticket);
+
+        // The first history row has no "from" status - the ticket did not
+        // exist a moment before. Recorded directly (not through the event),
+        // and inside this same transaction (record() is MANDATORY), so the
+        // ticket and its first history row commit or roll back together.
+        historyService.record(saved.getId(), null, TicketStatus.OPEN, studentId);
 
         // After the save, so the event carries the real ticket id. The
         // listener runs only once the ticket is committed (AFTER_COMMIT), so
@@ -110,7 +123,11 @@ public class TicketService {
         requireOpen(ticket);
 
         ticket.setStatus(TicketStatus.WITHDRAWN);
-        return ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
+
+        // requireOpen above already guarantees the "from" was OPEN.
+        historyService.record(ticketId, TicketStatus.OPEN, TicketStatus.WITHDRAWN, studentId);
+        return saved;
     }
 
     private Ticket findOwnedTicket(Long ticketId, Long studentId) {
