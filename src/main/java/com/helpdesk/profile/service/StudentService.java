@@ -219,6 +219,15 @@ public class StudentService {
                 throw new DuplicateResourceException(
                         label + " is already registered. Please log in instead.");
             }
+            // A REMOVED account (closed by its owner, or removed by an admin)
+            // is final since PR #53 - no screen restores it - so promising a
+            // restore would send the student to an administrator who cannot
+            // help. A merely suspended one can still be restored.
+            if (student.isRemoved()) {
+                throw new DuplicateResourceException(
+                        label + " belongs to an account that was closed, so it cannot be registered again. "
+                                + "Contact the help desk administrator if you need help.");
+            }
             throw new DuplicateResourceException(
                     label + " belongs to an account that has been deactivated. "
                             + "Contact the help desk administrator to have it restored.");
@@ -368,7 +377,19 @@ public class StudentService {
         // Same reasoning as updateProfile above: a missing id is a 404, not a 400.
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found"));
-        student.setActive(false);
+
+        // markRemoved(), not setActive(false). Closing your own account is a
+        // REMOVAL (the student is leaving), not a SUSPENSION (a temporary
+        // block an administrator lifts). Since PR #53 the two are stored
+        // differently - see AppUser.deletedAt - and the admin Users page shows
+        // them differently. Before this, a student who deleted their account
+        // appeared to administrators as merely "Suspended", and one click on
+        // "Reactivate" would have reopened an account its owner asked to close.
+        //
+        // Still a soft delete (US-02): the row stays, so the student's tickets,
+        // feedback and bookmarks keep resolving to a name, and markRemoved()
+        // also sets active = false, so login is refused exactly as before.
+        student.markRemoved();
         studentRepository.save(student);
 
         // REVOKE THE SESSION, not just the ability to start a new one.
