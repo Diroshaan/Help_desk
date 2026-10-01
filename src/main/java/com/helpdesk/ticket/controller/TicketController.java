@@ -113,9 +113,7 @@ public class TicketController {
 
     @GetMapping("/{ticketId}/attachments")
     public List<AttachmentResponse> listAttachments(@PathVariable Long ticketId, Authentication authentication) {
-        return attachmentService.listByTicket(currentStudentId(authentication), ticketId).stream()
-                .map(AttachmentResponse::from)
-                .toList();
+        return attachmentService.listByTicket(currentStudentId(authentication), ticketId);
     }
 
     @GetMapping("/{ticketId}/attachments/{attachmentId}")

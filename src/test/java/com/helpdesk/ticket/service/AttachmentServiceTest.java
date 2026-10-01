@@ -1,6 +1,7 @@
 package com.helpdesk.ticket.service;
 
 import com.helpdesk.common.exception.ResourceNotFoundException;
+import com.helpdesk.ticket.dto.AttachmentResponse;
 import com.helpdesk.ticket.entity.Attachment;
 import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticket.repository.AttachmentRepository;
@@ -15,11 +16,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -135,5 +140,72 @@ class AttachmentServiceTest {
         ArgumentCaptor<Attachment> captor = ArgumentCaptor.forClass(Attachment.class);
         verify(attachmentRepository).save(captor.capture());
         assertThat(captor.getValue().getFileName()).isEqualTo("attachment");
+    }
+
+    // ---- Listing and reading (F2-N3, contract C1) ----
+
+    private AttachmentResponse metadata(Long id) {
+        return new AttachmentResponse(id, TICKET_ID, "receipt.pdf", "application/pdf", 42L, LocalDateTime.now());
+    }
+
+    // Why this test exists: listing used findByTicketId, which loads every
+    // file's bytes just to show names. It must use the metadata-only query.
+    @Test
+    @DisplayName("Listing your own ticket's files returns metadata and never loads the bytes")
+    void listOwnTicketReturnsMetadataOnly() {
+        when(ticketService.getOwnedTicket(TICKET_ID, STUDENT_ID)).thenReturn(new Ticket());
+        when(attachmentRepository.findMetadataByTicketId(TICKET_ID)).thenReturn(List.of(metadata(5L)));
+
+        List<AttachmentResponse> result = service.listByTicket(STUDENT_ID, TICKET_ID);
+
+        assertThat(result).extracting(AttachmentResponse::getId).containsExactly(5L);
+        verify(attachmentRepository, never()).findByTicketId(any());
+    }
+
+    @Test
+    @DisplayName("Listing another student's ticket's files is 'not found'")
+    void listSomeoneElsesTicketIsNotFound() {
+        when(ticketService.getOwnedTicket(TICKET_ID, STUDENT_ID))
+                .thenThrow(new ResourceNotFoundException("Ticket not found"));
+
+        assertThatThrownBy(() -> service.listByTicket(STUDENT_ID, TICKET_ID))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(attachmentRepository, never()).findMetadataByTicketId(any());
+    }
+
+    // C1: the officer-side list does no ownership check of its own - F4 has
+    // already scoped the officer - so it must not ask TicketService (which
+    // would refuse, because the officer is not the ticket's student).
+    @Test
+    @DisplayName("listForTicket (officer side) returns metadata without a student ownership check")
+    void listForTicketSkipsStudentOwnership() {
+        when(attachmentRepository.findMetadataByTicketId(TICKET_ID)).thenReturn(List.of(metadata(5L)));
+
+        assertThat(service.listForTicket(TICKET_ID)).hasSize(1);
+        verifyNoInteractions(ticketService);
+    }
+
+    @Test
+    @DisplayName("getForTicket returns the file when it is on that ticket")
+    void getForTicketReturnsTheFile() {
+        Attachment a = new Attachment();
+        a.setId(5L);
+        a.setTicketId(TICKET_ID);
+        when(attachmentRepository.findById(5L)).thenReturn(Optional.of(a));
+
+        assertThat(service.getForTicket(TICKET_ID, 5L)).isSameAs(a);
+    }
+
+    // Access to ticket 12 must not open a file that belongs to ticket 99.
+    @Test
+    @DisplayName("getForTicket is 'not found' when the attachment is on a different ticket")
+    void getForTicketRefusesAnotherTicketsFile() {
+        Attachment a = new Attachment();
+        a.setId(5L);
+        a.setTicketId(99L);
+        when(attachmentRepository.findById(5L)).thenReturn(Optional.of(a));
+
+        assertThatThrownBy(() -> service.getForTicket(TICKET_ID, 5L))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }
