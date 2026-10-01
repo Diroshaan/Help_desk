@@ -2,6 +2,7 @@ package com.helpdesk.ticket.service;
 
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.reference.repository.CategoryRepository;
+import com.helpdesk.notification.event.TicketSubmittedEvent;
 import com.helpdesk.ticket.dto.TicketCreateRequest;
 import com.helpdesk.ticket.dto.TicketUpdateRequest;
 import com.helpdesk.ticket.entity.Ticket;
@@ -9,6 +10,7 @@ import com.helpdesk.ticket.entity.TicketStatus;
 import com.helpdesk.ticket.repository.TicketRepository;
 import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -27,10 +29,19 @@ public class TicketService {
     private final TicketRepository ticketRepository;
     private final CategoryRepository categoryRepository;
 
+    // Added with the new-ticket alert for officers (US-04), agreed with
+    // Chamikara: this service only ANNOUNCES that a ticket was submitted. Who
+    // gets told, and how, is decided in the notification module
+    // (QueueArrivalNotifier + the channels) - the Observer pattern, the same
+    // way QueueService announces status changes.
+    private final ApplicationEventPublisher eventPublisher;
+
     @Autowired
-    public TicketService(TicketRepository ticketRepository, CategoryRepository categoryRepository) {
+    public TicketService(TicketRepository ticketRepository, CategoryRepository categoryRepository,
+                         ApplicationEventPublisher eventPublisher) {
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     // Create
@@ -45,7 +56,14 @@ public class TicketService {
         ticket.setPriority(request.getPriority());
         ticket.setStatus(TicketStatus.OPEN);
 
-        return ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
+
+        // After the save, so the event carries the real ticket id. The
+        // listener runs only once the ticket is committed (AFTER_COMMIT), so
+        // a submission that fails never alerts anybody.
+        eventPublisher.publishEvent(new TicketSubmittedEvent(
+                saved.getId(), saved.getSubject(), saved.getCategory(), saved.getAssignedDepartmentId()));
+        return saved;
     }
 
     // Read

@@ -2,6 +2,8 @@ package com.helpdesk.common.user.repository;
 
 import com.helpdesk.common.user.entity.Officer;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -80,4 +82,21 @@ public interface OfficerRepository extends JpaRepository<Officer, Long> {
      * record article authorship.
      */
     Optional<Officer> findByEmail(String email);
+
+    /**
+     * The officers who should hear about work arriving at one department's
+     * queue: active, not removed, and serving that department (US-04).
+     *
+     * active = true excludes suspended officers - they cannot sign in to act
+     * on the alert. deletedAt IS NULL excludes removed ones (PR #53); a removed
+     * officer is also inactive, but saying both keeps the rule readable and
+     * survives anyone ever reactivating an account by hand in the database.
+     *
+     * DISTINCT because the join to departments could repeat an officer if the
+     * same code were ever mapped twice; the set on Officer prevents that today,
+     * and DISTINCT makes the query correct regardless.
+     */
+    @Query("SELECT DISTINCT o FROM Officer o JOIN o.departments d "
+            + "WHERE d.code = :code AND o.active = true AND o.deletedAt IS NULL")
+    List<Officer> findActiveServingDepartment(@Param("code") String departmentCode);
 }
