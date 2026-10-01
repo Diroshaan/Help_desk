@@ -1,6 +1,7 @@
 package com.helpdesk.ticket.service;
 
 import com.helpdesk.common.exception.ResourceNotFoundException;
+import com.helpdesk.common.files.FileTypeDetector;
 import com.helpdesk.ticket.entity.Attachment;
 import com.helpdesk.ticket.repository.AttachmentRepository;
 import jakarta.validation.ValidationException;
@@ -11,7 +12,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
-import java.util.Set;
 
 /**
  * F2 - Advanced Ticket Request Engine (Chamikara A. K, IT25102416)
@@ -26,12 +26,10 @@ import java.util.Set;
 public class AttachmentService {
 
     // NFR 5.1: attachments are restricted to PDF and standard image formats
-    // only. An explicit allow-list, not a startsWith("image/") check - that
-    // would also admit image/svg+xml, and an SVG can carry embedded
-    // JavaScript that executes when a browser renders it.
+    // only. The allow-list is FileTypeDetector.ATTACHMENT_TYPES, shared with
+    // F4's resolution files, and it deliberately has no SVG: an SVG can carry
+    // embedded JavaScript that executes when a browser renders it.
     private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
-    private static final Set<String> ALLOWED_TYPES = Set.of(
-            "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp");
 
     private final AttachmentRepository attachmentRepository;
     private final TicketService ticketService;
@@ -52,22 +50,31 @@ public class AttachmentService {
         if (file.getSize() > MAX_FILE_SIZE) {
             throw new ValidationException("File exceeds the 5MB limit");
         }
-        if (file.getContentType() == null || !ALLOWED_TYPES.contains(file.getContentType())) {
-            throw new ValidationException("Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed");
+
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read uploaded file", e);
         }
+
+        // The type is decided from the file's own first bytes, never from
+        // file.getContentType(): the browser's Content-Type is written by the
+        // client; the first bytes of the file are not. A renamed .exe
+        // labelled image/png would otherwise be stored and later served back
+        // to an officer as an "image".
+        String detectedType = FileTypeDetector.detect(bytes, FileTypeDetector.ATTACHMENT_TYPES)
+                .orElseThrow(() -> new ValidationException(
+                        "Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed"));
 
         String fileName = file.getOriginalFilename();
 
         Attachment attachment = new Attachment();
         attachment.setTicketId(ticketId);
         attachment.setFileName((fileName == null || fileName.isBlank()) ? "attachment" : fileName);
-        attachment.setFileType(file.getContentType());
+        attachment.setFileType(detectedType);
         attachment.setFileSize(file.getSize());
-        try {
-            attachment.setData(file.getBytes());
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to read uploaded file", e);
-        }
+        attachment.setData(bytes);
 
         return attachmentRepository.save(attachment);
     }

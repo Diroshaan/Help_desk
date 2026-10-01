@@ -3,7 +3,6 @@ package com.helpdesk.ticket.entity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import org.hibernate.annotations.CollectionId;
 
 import java.time.LocalDateTime;
 
@@ -36,8 +35,11 @@ public class Attachment {
     @Column(nullable = false)
     private String fileType;
 
-    @Lob
-    @Column(nullable = false)
+    // MEDIUMBLOB, not a bare @Lob: on MySQL Hibernate maps @Lob byte[] to
+    // TINYBLOB, which holds only 255 bytes, so every real file failed on Aiven
+    // while passing on H2 (the same trap F1 hit with Student.profilePicture).
+    // MEDIUMBLOB holds 16 MB, comfortably above our 5 MB upload limit.
+    @Column(name = "data", nullable = false, columnDefinition = "MEDIUMBLOB")
     private byte[] data;
 
     private Long fileSize;
