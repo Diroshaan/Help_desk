@@ -3,6 +3,9 @@ package com.helpdesk.ticket.entity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 /**
@@ -38,25 +41,34 @@ public class Ticket {
     private Long studentId;
 
     @NotBlank(message = "Subject is required")
-    @Column(nullable = false)
+    @Column(nullable = false, length = 150)
     private String subject;
 
     @NotBlank(message = "Description is required")
     @Column(nullable = false, length = 2000)
     private String description;
 
+    // Matches categories.name (VARCHAR(120)), which this column now has a
+    // foreign key to (docs/migrations/2026-10-01_referential_integrity.sql).
     @NotBlank(message = "Category is required")
-    @Column(nullable = false)
+    @Column(nullable = false, length = 120)
     private String category;
 
+    // @JdbcTypeCode(VARCHAR) forces MySQL to store this as varchar rather
+    // than a native ENUM column. ddl-auto=update never alters an existing
+    // column, so a plain @Enumerated(STRING) enum would make adding a fifth
+    // priority later a silent-start, every-insert-fails runtime bug rather
+    // than a schema change. Same fix as knowledgebase/entity/Article.status.
     @NotNull(message = "Priority is required")
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 20)
     private TicketPriority priority = TicketPriority.MEDIUM;
 
     @NotNull(message = "Status is required")
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 20)
     private TicketStatus status = TicketStatus.OPEN;
 
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -72,6 +84,16 @@ public class Ticket {
 
     // Null until the ticket reaches TicketStatus.RESOLVED.
     private LocalDateTime resolvedAt;
+
+    // Optimistic locking (F2-N2): Hibernate adds "WHERE version = ?" to every
+    // UPDATE and bumps this on save. If a student loads the ticket, then an
+    // officer's save lands first, the student's save matches zero rows and
+    // Hibernate throws ObjectOptimisticLockingFailureException instead of
+    // silently overwriting the officer's change - GlobalExceptionHandler maps
+    // that to 409. No setter: Hibernate manages this column, nobody else should.
+    @Version
+    @ColumnDefault("0")
+    private Long version;
 
     @PreUpdate
     public void touchUpdatedAt(){
@@ -159,5 +181,8 @@ public class Ticket {
     }
     public void setResolvedAt(LocalDateTime resolvedAt) {
         this.resolvedAt = resolvedAt;
+    }
+    public Long getVersion() {
+        return version;
     }
 }

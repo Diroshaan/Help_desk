@@ -12,6 +12,7 @@ import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -45,6 +46,7 @@ public class TicketService {
     }
 
     // Create
+    @Transactional
     public Ticket createTicket(Long studentId, TicketCreateRequest request) {
         requireValidCategory(request.getCategory());
 
@@ -67,16 +69,19 @@ public class TicketService {
     }
 
     // Read
+    @Transactional(readOnly = true)
     public List<Ticket> listByStudent(Long studentId) {
         return ticketRepository.findByStudentId(studentId);
     }
 
+    @Transactional(readOnly = true)
     public Ticket getOwnedTicket(Long ticketId, Long studentId) {
         return findOwnedTicket(ticketId, studentId);
     }
 
     // Ownership + OPEN check together, for callers (e.g. AttachmentService)
     // whose action is only valid while the ticket is still editable.
+    @Transactional(readOnly = true)
     public Ticket getOwnedOpenTicket(Long ticketId, Long studentId) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
         requireOpen(ticket);
@@ -84,6 +89,7 @@ public class TicketService {
     }
 
     // Update - only while OPEN
+    @Transactional
     public Ticket updateTicket(Long ticketId, Long studentId, TicketUpdateRequest request) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
         requireOpen(ticket);
@@ -98,6 +104,7 @@ public class TicketService {
     }
 
     // Withdraw (soft "delete") - only while OPEN
+    @Transactional
     public Ticket withdrawTicket(Long ticketId, Long studentId) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
         requireOpen(ticket);
