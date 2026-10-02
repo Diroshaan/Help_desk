@@ -3,11 +3,13 @@ package com.helpdesk.admin.service;
 import com.helpdesk.admin.dto.OfficerDepartmentsRequest;
 import com.helpdesk.admin.dto.ProvisionAdministratorRequest;
 import com.helpdesk.admin.dto.ProvisionOfficerRequest;
+import com.helpdesk.admin.dto.UserSummaryResponse;
 import com.helpdesk.auth.SessionRevoker;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.reference.entity.Department;
 import com.helpdesk.common.reference.repository.DepartmentRepository;
 import com.helpdesk.common.user.entity.Administrator;
+import com.helpdesk.common.user.entity.AppUser;
 import com.helpdesk.common.user.entity.Officer;
 import com.helpdesk.common.user.repository.AdministratorRepository;
 import com.helpdesk.common.user.repository.AppUserRepository;
@@ -28,6 +30,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.AdditionalAnswers.returnsFirstArg;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -288,5 +291,152 @@ class UserProvisioningServiceTest {
 
         verify(officerRepository, never()).save(any(Officer.class));
         verify(departmentRepository, never()).findAllById(any());
+    }
+
+    // ---- #48 / F6-N6 part 2: removal is final, and admins cannot lock themselves out ----
+
+    private Officer officerWithId(long id, String email) {
+        Officer officer = new Officer(email, "hash", "OF-" + id, "Support Officer", "Officer " + id);
+        officer.setId(id);
+        return officer;
+    }
+
+    private Administrator administratorWithId(long id, String email) {
+        Administrator administrator = new Administrator(email, "hash", "Administrator " + id);
+        administrator.setId(id);
+        return administrator;
+    }
+
+    @Test
+    @DisplayName("removing an account marks it removed and ends its sessions")
+    void removingAnAccountIsFinalAndRevokesSessions() {
+        Officer officer = officerWithId(5L, "leaving@helpdesk.local");
+        when(appUserRepository.findById(5L)).thenReturn(Optional.of(officer));
+
+        service.softDelete(5L, CALLER);
+
+        assertThat(officer.isRemoved()).isTrue();
+        assertThat(officer.isActive()).isFalse();
+        verify(appUserRepository).save(officer);
+        verify(sessionRevoker).revokeAllSessionsFor("leaving@helpdesk.local");
+    }
+
+    @Test
+    @DisplayName("restoring a removed account is refused, and nothing is saved")
+    void restoringARemovedAccountIsRefused() {
+        Officer officer = officerWithId(5L, "gone@helpdesk.local");
+        officer.markRemoved();
+        when(appUserRepository.findById(5L)).thenReturn(Optional.of(officer));
+
+        assertThatThrownBy(() -> service.setActive(5L, true, CALLER))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("can't be restored");
+
+        assertThat(officer.isActive()).isFalse();
+        verify(appUserRepository, never()).save(any(AppUser.class));
+    }
+
+    @Test
+    @DisplayName("an administrator cannot remove their own account")
+    void removingYourselfIsRefused() {
+        Administrator self = administratorWithId(1L, CALLER);
+        when(appUserRepository.findById(1L)).thenReturn(Optional.of(self));
+
+        assertThatThrownBy(() -> service.softDelete(1L, CALLER))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("your own account");
+
+        assertThat(self.isRemoved()).isFalse();
+        verify(appUserRepository, never()).save(any(AppUser.class));
+        verify(sessionRevoker, never()).revokeAllSessionsFor(anyString());
+    }
+
+    @Test
+    @DisplayName("an administrator cannot suspend their own account, whatever the case of the email")
+    void suspendingYourselfIsRefused() {
+        Administrator self = administratorWithId(1L, CALLER);
+        when(appUserRepository.findById(1L)).thenReturn(Optional.of(self));
+
+        assertThatThrownBy(() -> service.setActive(1L, false, CALLER.toUpperCase()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("your own account");
+
+        assertThat(self.isActive()).isTrue();
+        verify(appUserRepository, never()).save(any(AppUser.class));
+    }
+
+    @Test
+    @DisplayName("the last active administrator can be neither removed nor suspended")
+    void theLastActiveAdministratorIsProtected() {
+        Administrator last = administratorWithId(2L, "last@helpdesk.local");
+        when(appUserRepository.findById(2L)).thenReturn(Optional.of(last));
+        when(administratorRepository.existsByActiveTrueAndIdNot(2L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.softDelete(2L, CALLER))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("last active administrator");
+        assertThatThrownBy(() -> service.setActive(2L, false, CALLER))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("last active administrator");
+
+        assertThat(last.isActive()).isTrue();
+        assertThat(last.isRemoved()).isFalse();
+        verify(appUserRepository, never()).save(any(AppUser.class));
+    }
+
+    @Test
+    @DisplayName("an administrator can be removed while another active one remains")
+    void anAdministratorCanBeRemovedWhenAnotherRemains() {
+        Administrator other = administratorWithId(2L, "other@helpdesk.local");
+        when(appUserRepository.findById(2L)).thenReturn(Optional.of(other));
+        when(administratorRepository.existsByActiveTrueAndIdNot(2L)).thenReturn(true);
+
+        service.softDelete(2L, CALLER);
+
+        assertThat(other.isRemoved()).isTrue();
+        verify(sessionRevoker).revokeAllSessionsFor("other@helpdesk.local");
+    }
+
+    @Test
+    @DisplayName("removing an already removed account does nothing, and keeps the original date")
+    void removingTwiceIsANoOp() {
+        Officer officer = officerWithId(5L, "gone@helpdesk.local");
+        officer.markRemoved();
+        var originalDate = officer.getDeletedAt();
+        when(appUserRepository.findById(5L)).thenReturn(Optional.of(officer));
+
+        service.softDelete(5L, CALLER);
+
+        assertThat(officer.getDeletedAt()).isEqualTo(originalDate);
+        verify(appUserRepository, never()).save(any(AppUser.class));
+        verify(sessionRevoker, never()).revokeAllSessionsFor(anyString());
+    }
+
+    @Test
+    @DisplayName("suspending somebody else still works and ends their sessions")
+    void suspendingAnotherAccountStillWorks() {
+        Officer officer = officerWithId(5L, "suspended@helpdesk.local");
+        when(appUserRepository.findById(5L)).thenReturn(Optional.of(officer));
+        when(appUserRepository.save(any(AppUser.class))).thenAnswer(returnsFirstArg());
+
+        UserSummaryResponse summary = service.setActive(5L, false, CALLER);
+
+        assertThat(summary.active()).isFalse();
+        assertThat(summary.removed()).isFalse();
+        verify(sessionRevoker).revokeAllSessionsFor("suspended@helpdesk.local");
+    }
+
+    @Test
+    @DisplayName("the listing hides removed accounts unless asked for them")
+    void listingHidesRemovedAccountsByDefault() {
+        Officer active = officerWithId(5L, "active@helpdesk.local");
+        Officer removed = officerWithId(6L, "removed@helpdesk.local");
+        removed.markRemoved();
+        when(appUserRepository.findAll()).thenReturn(List.of(active, removed));
+
+        assertThat(service.findAll(null, false)).extracting(UserSummaryResponse::id)
+                .containsExactly(5L);
+        assertThat(service.findAll(null, true)).extracting(UserSummaryResponse::id)
+                .containsExactly(5L, 6L);
     }
 }

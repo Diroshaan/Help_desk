@@ -307,8 +307,14 @@ public class UserProvisioningService {
      * annotation was a good habit before; it is a requirement now.
      */
     @Transactional(readOnly = true)
-    public List<UserSummaryResponse> findAll(Role role) {
+    public List<UserSummaryResponse> findAll(Role role, boolean includeRemoved) {
         List<AppUser> users = appUserRepository.findAll();
+        // Removed accounts are history, not people to manage, so the default
+        // listing hides them. includeRemoved is there for the audit question
+        // "who has left?", which still needs to see them.
+        if (!includeRemoved) {
+            users = users.stream().filter(user -> !user.isRemoved()).toList();
+        }
         if (role != null) {
             users = users.stream().filter(user -> user.getRole() == role).toList();
         }
@@ -320,64 +326,58 @@ public class UserProvisioningService {
     // ------------------------------------------------------------------
 
     /**
-     * Suspend or restore any account.
+     * Suspend or restore any account other than your own.
      *
-     * ONE SAFETY RULE: THE SYSTEM MUST ALWAYS HAVE AN ACTIVE ADMINISTRATOR
-     * -------------------------------------------------------------------
-     * A deployment with no active administrator is locked out of itself.
-     * Provisioning an administrator is an administrator action, so there is no
-     * way to create a replacement through the application - the only way back
-     * in is a manual UPDATE against the database.
+     * TWO SAFETY RULES
+     * ----------------
+     * 1. You cannot suspend yourself. This screen is for managing other people:
+     *    an administrator who deactivates their own account is signed out at once
+     *    and then needs ANOTHER administrator to bring them back. That is a
+     *    lockout caused by a misclick, and it is cheap to refuse. (An earlier
+     *    version of this method allowed it, as long as another administrator
+     *    remained; the cost of that choice was a recovery step for no benefit.)
+     * 2. The system must always have an active administrator. A deployment with
+     *    none is locked out of itself, because provisioning an administrator is
+     *    an administrator action - the only way back in would be a manual UPDATE
+     *    against the database. See requireAnotherActiveAdmin.
      *
-     * That single invariant is the whole rule, and it deliberately replaces the
-     * two overlapping rules this method used to carry. The earlier version also
-     * refused to let an administrator deactivate THEMSELVES, which sounds like
-     * a separate protection but is not: "do not leave the system without an
-     * administrator" already covers the only case where self-deactivation does
-     * real harm. Worse, the self-check ran first and made the
-     * last-administrator guard unreachable - any OTHER administrator doing the
-     * deactivating is themselves still active, so the guard could never fire
-     * through the API and could never be tested there. One invariant is easier
-     * to defend at a viva than two that shadow each other, and this one is
-     * reachable.
+     * The two rules are not the same rule. The first protects one person from a
+     * mistake; the second protects the deployment, and is the only thing that
+     * stops administrator A suspending administrator B while B suspends A.
      *
-     * The consequence, stated so it is a decision rather than an oversight: an
-     * administrator MAY now deactivate their own account, provided another
-     * active administrator remains. They lock themselves out; the system stays
-     * administrable, which is the property that actually matters. If that ever
-     * needs to be refused as well, it is a separate rule with a separate
-     * message, not a reinterpretation of this one.
+     * A REMOVED ACCOUNT CANNOT BE RESTORED
+     * ------------------------------------
+     * Removal is final (AppUser.markRemoved): the person has left, and the row
+     * only survives so old tickets still resolve to a name. Letting the ordinary
+     * toggle switch such an account back on would make "remove" mean the same as
+     * "suspend" again, which is the bug this rule exists to prevent.
      *
-     * WHY existsByActiveTrueAndIdNot AND NOT existsByActiveTrue
-     * ---------------------------------------------------------
-     * The question is "is there an active administrator OTHER than this one?",
-     * asked while the target is still active. Plain existsByActiveTrue() would
-     * count the account being deactivated and always answer yes, which is why
-     * the earlier version had to flip the flag first, query, and rely on a
-     * rollback to undo it. Excluding the target by id asks the real question
-     * directly, before anything is written - no speculative write, no
-     * dependence on flush ordering, and nothing to undo.
+     * The rules live in the service rather than the controller because they are
+     * facts about the state of the system, not about HTTP. A seeder, a scheduled
+     * job or a future bulk import gets them by calling this method, and cannot
+     * route around them by using a different endpoint or verb.
      *
-     * The rule lives in the service rather than the controller because it is a
-     * fact about the state of the system, not about HTTP. A seeder, a scheduled
-     * job or a future bulk import gets it by calling this method, and cannot
-     * route around it by using a different endpoint or verb.
+     * @param callerEmail the signed-in administrator, taken from the session so a
+     *                    client cannot claim to be someone else
      */
     @Transactional
-    public UserSummaryResponse setActive(Long id, boolean active) {
+    public UserSummaryResponse setActive(Long id, boolean active, String callerEmail) {
         AppUser user = appUserRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No account exists with id " + id + "."));
 
-        // Only deactivating an administrator can break the invariant. Restoring
-        // an account never can, and a student or officer is not an
-        // administrator, so neither case needs the query.
-        if (!active && user.isActive() && user instanceof Administrator) {
-            if (!administratorRepository.existsByActiveTrueAndIdNot(user.getId())) {
-                throw new IllegalArgumentException(
-                        "This is the last active administrator account. Provision another "
-                                + "administrator before deactivating this one.");
-            }
+        if (!active && isCaller(user, callerEmail)) {
+            throw new IllegalArgumentException("You can't deactivate your own account.");
+        }
+        if (active && user.isRemoved()) {
+            throw new IllegalArgumentException("Removed accounts can't be restored.");
+        }
+
+        // Only deactivating an active administrator can break the invariant.
+        // Restoring an account never can, and a student or officer is not an
+        // administrator; the helper ignores those cases.
+        if (!active) {
+            requireAnotherActiveAdmin(user);
         }
 
         user.setActive(active);
@@ -407,30 +407,84 @@ public class UserProvisioningService {
     }
 
     /**
-     * DELETE /api/admin/users/{id} - and it is a SOFT delete, always.
+     * DELETE /api/admin/users/{id} - the account is REMOVED, which is final.
      *
      * Never a hard row delete. Tickets, bookmarks, feedback and activity-log
      * rows all carry user ids; removing the row destroys the history of every
      * ticket that person ever handled, and on the associations that ARE real
-     * foreign keys the database would refuse the delete anyway. AppUser.active
-     * is the mechanism and StudentService.deactivate() is the existing pattern -
-     * a deactivated account cannot authenticate, because
-     * StudentUserDetailsService builds the UserDetails with
-     * .disabled(!isActive()).
+     * foreign keys the database would refuse the delete anyway. Instead
+     * AppUser.markRemoved() sets deletedAt (and active = false, so the account
+     * cannot authenticate - StudentUserDetailsService builds the UserDetails with
+     * .disabled(!isActive())).
      *
-     * This delegates to setActive rather than repeating the flag flip, so the
-     * last-administrator invariant applies to DELETE exactly as it does to
-     * PATCH. An administrator must not be able to route around "you cannot
-     * remove the last administrator" by choosing a different HTTP verb.
+     * This is different from setActive(false) on purpose. Suspension is
+     * temporary and can be undone with the toggle; removal cannot, which is why
+     * it is a separate method rather than a delegate to setActive.
+     *
+     * The same two safety rules apply as for suspension: you cannot remove
+     * yourself, and you cannot remove the last active administrator. The second
+     * is shared with setActive through requireAnotherActiveAdmin, so choosing
+     * DELETE instead of PATCH is not a way round it.
      */
     @Transactional
-    public void softDelete(Long id) {
-        setActive(id, false);
+    public void softDelete(Long id, String callerEmail) {
+        AppUser user = appUserRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No account exists with id " + id + "."));
+
+        if (isCaller(user, callerEmail)) {
+            throw new IllegalArgumentException("You can't remove your own account.");
+        }
+
+        // Idempotent: a second click, or a retry after a timeout, must not fail
+        // and must not rewrite when the person actually left. Nothing to revoke
+        // either - the sessions were ended the first time.
+        if (user.isRemoved()) {
+            return;
+        }
+
+        requireAnotherActiveAdmin(user);
+
+        user.markRemoved();
+        appUserRepository.save(user);
+        sessionRevoker.revokeAllSessionsFor(user.getEmail());
     }
 
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    /**
+     * Whether the account being acted on is the one signed in. Compared by email
+     * because that is what the session carries (see the controller), and
+     * case-insensitively because the sign-in form does not force a case.
+     */
+    private boolean isCaller(AppUser target, String callerEmail) {
+        return callerEmail != null && target.getEmail().equalsIgnoreCase(callerEmail);
+    }
+
+    /**
+     * The last-administrator invariant, shared by suspend and remove.
+     *
+     * Only an ACTIVE administrator can break it: a suspended one is not counted
+     * as available, so losing them changes nothing, and a student or officer is
+     * not an administrator at all. For those the method does nothing.
+     *
+     * existsByActiveTrueAndIdNot rather than existsByActiveTrue: the question is
+     * "is there an active administrator OTHER than this one?", asked while the
+     * target is still active. The plain version would count the account being
+     * deactivated and always answer yes. Excluding the target by id asks the
+     * real question before anything is written - no speculative write and
+     * nothing to undo.
+     */
+    private void requireAnotherActiveAdmin(AppUser user) {
+        if (user instanceof Administrator && user.isActive()
+                && !administratorRepository.existsByActiveTrueAndIdNot(user.getId())) {
+            throw new IllegalArgumentException(
+                    "This is the last active administrator account. Provision another "
+                            + "administrator before deactivating or removing this one.");
+        }
+    }
 
     /**
      * The signed-in administrator, resolved from the email in the security

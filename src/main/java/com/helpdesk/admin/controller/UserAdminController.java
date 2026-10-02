@@ -34,9 +34,10 @@ import java.util.List;
  *   POST   /api/admin/officers            -> 201 create an officer account
  *   PUT    /api/admin/officers/{id}/departments -> 200 replace an officer's departments
  *   POST   /api/admin/administrators      -> 201 create an admin account
- *   GET    /api/admin/users               -> 200 all accounts, ?role= to filter
+ *   GET    /api/admin/users               -> 200 accounts, ?role= to filter,
+ *                                            ?includeRemoved=true to show removed ones
  *   PATCH  /api/admin/users/{id}/status   -> 200 {"active": false} suspend/restore
- *   DELETE /api/admin/users/{id}          -> 204 soft delete
+ *   DELETE /api/admin/users/{id}          -> 204 remove (final)
  *
  * All six are under /api/admin/**, already hasRole("ADMIN") in SecurityConfig.
  * No security change is needed and nothing here re-checks the role.
@@ -78,9 +79,9 @@ public class UserAdminController {
      * student ID or their address. That is what makes findByEmail the right
      * lookup in the service.
      *
-     * Worth reading alongside setStatus below, which explains why it REMOVED its
-     * Authentication parameter. That one existed to enforce a rule that no
-     * longer exists. This one exists because a record of who acted IS the
+     * setStatus and softDelete below take the same parameter for a different
+     * reason: they compare it with the target so an administrator cannot lock
+     * themselves out. Here it is the record of who acted, which IS the
      * requirement, and the session is the only trustworthy place to get it from.
      */
     @PostMapping("/api/admin/officers")
@@ -140,8 +141,8 @@ public class UserAdminController {
     }
 
     /**
-     * Every account of every type, newest first, optionally narrowed to one
-     * role with ?role=OFFICER.
+     * Every account of every type, optionally narrowed to one role with
+     * ?role=OFFICER.
      *
      * A query parameter rather than /api/admin/users/officers, because this IS a
      * filter applied to one collection - all three types live in one table and
@@ -149,16 +150,21 @@ public class UserAdminController {
      * collection with its own identity, and would then owe an answer to "what
      * does /api/admin/users/officers/{id} mean when the id is a student's?".
      *
-     * required = false so the bare /api/admin/users returns everything.
+     * includeRemoved defaults to false: removed accounts are history, not people
+     * to manage, so they only appear when the screen asks for them.
+     *
+     * required = false so the bare /api/admin/users returns every non-removed
+     * account.
      * Spring converts the string to the Role enum automatically; an unknown
      * value produces a 400 rather than silently matching nothing, which is the
      * honest response to ?role=OFICER.
      */
     @GetMapping("/api/admin/users")
     public ResponseEntity<List<UserSummaryResponse>> findAll(
-            @RequestParam(name = "role", required = false) Role role) {
+            @RequestParam(name = "role", required = false) Role role,
+            @RequestParam(name = "includeRemoved", defaultValue = "false") boolean includeRemoved) {
 
-        return ResponseEntity.ok(userProvisioningService.findAll(role));
+        return ResponseEntity.ok(userProvisioningService.findAll(role, includeRemoved));
     }
 
     /**
@@ -169,47 +175,44 @@ public class UserAdminController {
      * would require the client to send back every field it did not want to
      * change - and every one of those is a field it could get wrong.
      *
-     * No Authentication parameter, deliberately. This method used to pass the
-     * caller's email down so the service could refuse an administrator
-     * deactivating themselves. That rule is gone, replaced by the single
-     * invariant "the system must always have an active administrator", which
-     * does not depend on who is asking - see UserProvisioningService.setActive
-     * for why one invariant beats two overlapping ones. A parameter kept only
-     * because it used to be needed is a parameter the next reader has to work
-     * out the purpose of, so it is removed rather than left dangling.
+     * The Authentication parameter is here so the service can refuse an
+     * administrator suspending THEMSELVES. This screen is for managing other
+     * people, and an admin who locks themselves out needs a second admin to
+     * recover. The name comes from the session, never the body, so it cannot be
+     * faked.
      *
-     * The invariant is enforced in the service, not here, because it is a fact
-     * about the state of the system rather than about HTTP. It surfaces as a 400
-     * through GlobalExceptionHandler.
+     * Both rules - not yourself, and not the last active administrator - are
+     * enforced in the service, not here, because they are facts about the state
+     * of the system rather than about HTTP. They surface as a 400 through
+     * GlobalExceptionHandler, as does trying to restore a removed account.
      */
     @PatchMapping("/api/admin/users/{id}/status")
     public ResponseEntity<UserSummaryResponse> setStatus(@PathVariable Long id,
-                                                         @Valid @RequestBody UserStatusRequest request) {
-        return ResponseEntity.ok(userProvisioningService.setActive(id, request.active()));
+                                                         @Valid @RequestBody UserStatusRequest request,
+                                                         Authentication authentication) {
+        return ResponseEntity.ok(
+                userProvisioningService.setActive(id, request.active(), authentication.getName()));
     }
 
     /**
-     * SOFT delete - the row stays, active becomes false.
+     * Remove an account. FINAL: unlike a suspension it cannot be undone with the
+     * status toggle.
      *
-     * Never a hard row delete. Tickets, bookmarks, feedback and activity-log
+     * Still never a hard row delete. Tickets, bookmarks, feedback and activity-log
      * rows all point at user ids, and removing the row destroys the history of
-     * every ticket that person ever handled. A deactivated account cannot log
-     * in, because StudentUserDetailsService builds the UserDetails with
-     * .disabled(!isActive()) - so from the user's side this is indistinguishable
-     * from deletion, while the history survives.
+     * every ticket that person ever handled. The row stays with deletedAt set
+     * (AppUser.markRemoved), and the account cannot sign in.
+     *
+     * Refused with a 400 for your own account and for the last active
+     * administrator. Removing an account that is already removed is a harmless
+     * 204, so a retried request after a network blip does not show an error for
+     * something that did succeed.
      *
      * 204 No Content: it worked and there is nothing to return.
-     *
-     * Worth knowing that DELETE here is not idempotent in the strictest sense -
-     * deleting the last active administrator is refused with a 400 whether it is
-     * the first attempt or the fifth. That is the right trade: HTTP's idempotency
-     * expectation is about repeated requests having the same EFFECT, and
-     * refusing consistently satisfies that better than locking the deployment
-     * out of its own admin panel would.
      */
     @DeleteMapping("/api/admin/users/{id}")
-    public ResponseEntity<Void> softDelete(@PathVariable Long id) {
-        userProvisioningService.softDelete(id);
+    public ResponseEntity<Void> softDelete(@PathVariable Long id, Authentication authentication) {
+        userProvisioningService.softDelete(id, authentication.getName());
         return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 }
