@@ -10,6 +10,7 @@ import com.helpdesk.ticketportal.entity.Feedback;
 import com.helpdesk.ticketportal.repository.FeedbackRepository;
 import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
@@ -49,7 +50,16 @@ public class FeedbackService {
         feedback.setRating(rating);
         feedback.setComment(comment);
 
-        return feedbackRepository.save(feedback);
+        // Same pattern as F5's ArticleBookmarkService.bookmark: the existsBy...
+        // check above gives the common case a clean message, but two submits
+        // at once can both pass it. The uq_feedback_ticket constraint rejects
+        // the second insert; saveAndFlush makes that happen inside this try,
+        // and it becomes the same 409 the check would have given.
+        try {
+            return feedbackRepository.saveAndFlush(feedback);
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateResourceException("Feedback has already been submitted for this ticket");
+        }
     }
 
     // Updating only requires ownership - unlike submission, the ticket's

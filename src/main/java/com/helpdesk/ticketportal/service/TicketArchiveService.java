@@ -10,6 +10,9 @@ import com.helpdesk.ticketportal.repository.ArchivedTicketRepository;
 import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 public class TicketArchiveService {
@@ -24,15 +27,17 @@ public class TicketArchiveService {
         this.ticketRepository = ticketRepository;
     }
 
-    // Only a resolved ticket can be archived - matches "archive closed
-    // tickets from the active student history view" in the proposal, using
-    // RESOLVED as the terminal status (see TicketStatus - CLOSED was removed
-    // as an unused/unreachable state).
+    // Only a finished ticket can be archived - matches "archive closed
+    // tickets from the active student history view" in the proposal. Both
+    // RESOLVED (answered) and WITHDRAWN (cancelled by the student) are final:
+    // nothing moves a ticket out of either, so both may leave the active list
+    // (#41). CLOSED was removed from TicketStatus as an unreachable state.
+    @Transactional
     public ArchivedTicket archiveTicket(Long studentId, Long ticketId) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
 
-        if (ticket.getStatus() != TicketStatus.RESOLVED) {
-            throw new ValidationException("Only resolved tickets can be archived");
+        if (ticket.getStatus() != TicketStatus.RESOLVED && ticket.getStatus() != TicketStatus.WITHDRAWN) {
+            throw new ValidationException("Only a finished ticket (resolved or withdrawn) can be archived");
         }
         if (archivedTicketRepository.existsByStudentIdAndTicketId(studentId, ticketId)) {
             throw new DuplicateResourceException("This ticket is already archived");
@@ -44,7 +49,26 @@ public class TicketArchiveService {
         return archivedTicketRepository.save(archived);
     }
 
+    // Ids of the tickets this student has archived. The frontend removes
+    // these from F2's GET /api/tickets list (search already excludes them,
+    // see StudentTicketQueryService).
+    @Transactional(readOnly = true)
+    public List<Long> archivedTicketIds(Long studentId) {
+        return archivedTicketRepository.findTicketIdsByStudentId(studentId);
+    }
+
+    // The archived tickets themselves, for the "Archived" view. Filtered to
+    // the caller's own tickets as a second guard: an archive row is always
+    // created through findOwnedTicket, but the list should not depend on that.
+    @Transactional(readOnly = true)
+    public List<Ticket> archivedTickets(Long studentId) {
+        return ticketRepository.findAllById(archivedTicketIds(studentId)).stream()
+                .filter(ticket -> studentId.equals(ticket.getStudentId()))
+                .toList();
+    }
+
     // Restores a ticket back into the active view.
+    @Transactional
     public void unarchiveTicket(Long studentId, Long ticketId) {
         ArchivedTicket archived = archivedTicketRepository.findByStudentIdAndTicketId(studentId, ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Archived ticket not found"));
