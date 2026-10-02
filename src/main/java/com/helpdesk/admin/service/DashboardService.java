@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -44,16 +45,13 @@ import java.util.Map;
  * rather than by application code. That is a different design with a different
  * guarantee, not the thing this requirement forbids.
  *
- * ONE OF THE FOUR REQUESTED METRICS IS MISSING, AND THAT IS DELIBERATE
- * --------------------------------------------------------------------
- * 3.1 asks for total volume, queue backlogs, average resolution times and SLA
- * breaches. Three are here. Average resolution time is not, because Ticket has
- * no maintained resolution timestamp - updatedAt is written once at
- * construction and never touched again, so any duration computed from it is
- * approximately zero. Reporting 0.0 hours would not look broken, it would look
- * excellent, and it would sit beside three numbers that are real. An absent
- * tile is visible; a wrong one is not. See TicketMetricsRepository for the one
- * query that restores it once F4's Resolution record exists.
+ * AVERAGE RESOLUTION TIME IS AVERAGED IN JAVA
+ * -------------------------------------------
+ * The average comes from Ticket.resolvedAt, which is set when a resolution is
+ * posted and cleared if it is revoked. The subtraction happens here rather than
+ * in the query because timestamp arithmetic in JPQL is not portable between H2
+ * and MySQL. With no resolved tickets the value is null rather than 0.0, so the
+ * dashboard never reports a made-up "excellent" figure.
  *
  * readOnly = true on the one public method: nothing in it writes, Hibernate can
  * skip dirty-check snapshots of anything it loads, and an accidental setter
@@ -157,6 +155,7 @@ public class DashboardService {
                 byDepartment,
                 backlog,
                 ticketMetricsRepository.countAll(),
+                averageResolutionHours(),
                 breaches,
                 appUserRepository.count(),
                 countActiveUsers(),
@@ -167,6 +166,27 @@ public class DashboardService {
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    /**
+     * Mean creation-to-resolution time in hours, rounded to one decimal, or null
+     * when no ticket has been resolved.
+     *
+     * Null rather than 0.0 on purpose: zero looks like a real, excellent result,
+     * while null lets the screen show "no data". Duration.toMinutes() / 60.0
+     * keeps the fractional hour that a plain toHours() would truncate away.
+     */
+    private Double averageResolutionHours() {
+        List<Object[]> rows = ticketMetricsRepository.resolvedTimestamps(TicketStatus.RESOLVED);
+        if (rows.isEmpty()) {
+            return null;
+        }
+        double totalMinutes = 0;
+        for (Object[] row : rows) {
+            totalMinutes += Duration.between((LocalDateTime) row[0], (LocalDateTime) row[1]).toMinutes();
+        }
+        double hours = totalMinutes / rows.size() / 60.0;
+        return Math.round(hours * 10.0) / 10.0;
+    }
 
     /**
      * The moment before which a ticket of this priority has breached.

@@ -68,37 +68,20 @@ public interface TicketMetricsRepository extends Repository<Ticket, Long> {
     /**
      * Ticket volume per support desk: [department code, count] per row.
      *
-     * THE JOIN IS ON Department.name, AND THAT NEEDS EXPLAINING
-     * --------------------------------------------------------
-     * Ticket.category is still a free-text String - F2 has not converted it to a
-     * reference to common.reference.Category - so there is no association to
-     * navigate and the two tables have to be matched on text.
-     *
-     * The obvious reading of the column name says to match it against
-     * Category.name. That is wrong today: the values F2 actually writes into
-     * that column are DEPARTMENT names ("IT Services", "Registration"), not
-     * category names ("Password & account access"), so a join to Category.name
-     * matches nothing at all and this breakdown comes back empty on a database
-     * full of tickets - the worst kind of wrong, because an empty chart looks
-     * like a quiet system rather than a broken query. Matching Department.name
-     * is what the data in the column supports.
+     * "A department's tickets" means the tickets whose category the department
+     * owns. Ticket.category holds a category name (it is a foreign key to
+     * categories.name), and every category belongs to exactly one department, so
+     * the route to a desk goes through Category. Matching the category text
+     * against Department.name, as this query used to, never matched anything and
+     * left the breakdown empty on a database full of tickets.
      *
      * Written as a JPQL cross join with a WHERE clause rather than an ON clause,
      * because the plain comma form is standard JPQL and works on any provider,
-     * whereas an ad-hoc "JOIN Department d ON ..." between unrelated entities is
+     * whereas an ad-hoc "JOIN Category c ON ..." between unrelated entities is
      * a Hibernate extension.
-     *
-     * The honest limitation, and the reason this is temporary: a ticket whose
-     * category text matches no department name contributes to nothing and is
-     * silently absent here. Free text cannot be joined reliably. This whole
-     * query becomes a real association the day F2 makes Ticket.category a
-     * foreign key, and it should be revisited then - at which point the route to
-     * a department goes through the category, as the specification intends.
-     * DashboardService reports totalTickets separately so the two can be
-     * compared and a gap noticed.
      */
-    @Query("SELECT d.code, COUNT(t) FROM Ticket t, Department d "
-            + "WHERE d.name = t.category GROUP BY d.code")
+    @Query("SELECT c.department.code, COUNT(t) FROM Ticket t, Category c "
+            + "WHERE c.name = t.category GROUP BY c.department.code")
     List<Object[]> countByDepartment();
 
     /**
@@ -106,37 +89,26 @@ public interface TicketMetricsRepository extends Repository<Ticket, Long> {
      * asks for, which is not the same number as total volume: a desk that has
      * answered a thousand tickets and has two open is not a desk in trouble.
      *
-     * Same Department.name join, same reason and same limitation as above.
+     * Same route through Category as countByDepartment, restricted to the given
+     * statuses.
      */
-    @Query("SELECT d.code, COUNT(t) FROM Ticket t, Department d "
-            + "WHERE d.name = t.category AND t.status IN :statuses GROUP BY d.code")
+    @Query("SELECT c.department.code, COUNT(t) FROM Ticket t, Category c "
+            + "WHERE c.name = t.category AND t.status IN :statuses GROUP BY c.department.code")
     List<Object[]> countOpenByDepartment(@Param("statuses") List<TicketStatus> statuses);
 
-    /*
-     * THERE IS DELIBERATELY NO averageResolutionMinutes() QUERY HERE.
-     * --------------------------------------------------------------
-     * The specification asks for average resolution time and this feature cannot
-     * honestly compute it yet, so it reports nothing rather than something.
+    /**
+     * [createdAt, resolvedAt] for every resolved ticket; the average is taken in
+     * DashboardService.
      *
-     * The only two timestamps a ticket has are createdAt and updatedAt, and
-     * updatedAt is not maintained: Ticket has no @PreUpdate and no code path
-     * sets it, so it is written once at construction and keeps its initial
-     * value forever. An average over timestampdiff(createdAt, updatedAt) would
-     * therefore return approximately zero on every row - and zero minutes is not
-     * an obviously broken number, it is a plausible-looking one. A metric that
-     * is silently always 0.0 is worse than an absent metric, because the
-     * dashboard reports it with the same confidence as the numbers that are
-     * real, and nobody thinks to check it.
-     *
-     * The missing piece is a genuine resolution timestamp, which belongs to F4's
-     * Resolution record. When that exists this is one query:
-     *
-     *     SELECT AVG(timestampdiff(MINUTE, t.createdAt, r.createdAt))
-     *     FROM Resolution r JOIN r.ticket t
-     *
-     * and the field returns to DashboardResponse. Until then the tile is absent
-     * from the API rather than present and lying.
+     * The subtraction is done in Java because JPQL has no portable way to
+     * subtract two timestamps: the date functions differ between H2 and MySQL.
+     * resolvedAt is set when a resolution is posted and cleared when it is
+     * revoked, and the IS NOT NULL guard keeps a RESOLVED row that somehow has
+     * no timestamp from skewing the average.
      */
+    @Query("SELECT t.createdAt, t.resolvedAt FROM Ticket t "
+            + "WHERE t.status = :resolved AND t.resolvedAt IS NOT NULL")
+    List<Object[]> resolvedTimestamps(@Param("resolved") TicketStatus resolved);
 
     /**
      * Tickets that have breached their service-level target.
