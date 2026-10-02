@@ -4,6 +4,7 @@ import com.helpdesk.admin.dto.OfficerDepartmentsRequest;
 import com.helpdesk.admin.dto.ProvisionAdministratorRequest;
 import com.helpdesk.admin.dto.ProvisionOfficerRequest;
 import com.helpdesk.admin.dto.UserSummaryResponse;
+import com.helpdesk.admin.repository.AdministratorLockRepository;
 import com.helpdesk.auth.SessionRevoker;
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
@@ -83,19 +84,23 @@ public class UserProvisioningService {
      */
     private final DepartmentRepository departmentRepository;
 
+    private final AdministratorLockRepository administratorLockRepository;
+
     @Autowired
     public UserProvisioningService(AppUserRepository appUserRepository,
                                    OfficerRepository officerRepository,
                                    AdministratorRepository administratorRepository,
                                    PasswordEncoder passwordEncoder,
                                    SessionRevoker sessionRevoker,
-                                   DepartmentRepository departmentRepository) {
+                                   DepartmentRepository departmentRepository,
+                                   AdministratorLockRepository administratorLockRepository) {
         this.appUserRepository = appUserRepository;
         this.officerRepository = officerRepository;
         this.administratorRepository = administratorRepository;
         this.passwordEncoder = passwordEncoder;
         this.sessionRevoker = sessionRevoker;
         this.departmentRepository = departmentRepository;
+        this.administratorLockRepository = administratorLockRepository;
     }
 
     // ------------------------------------------------------------------
@@ -470,16 +475,33 @@ public class UserProvisioningService {
      * as available, so losing them changes nothing, and a student or officer is
      * not an administrator at all. For those the method does nothing.
      *
-     * existsByActiveTrueAndIdNot rather than existsByActiveTrue: the question is
-     * "is there an active administrator OTHER than this one?", asked while the
-     * target is still active. The plain version would count the account being
-     * deactivated and always answer yes. Excluding the target by id asks the
-     * real question before anything is written - no speculative write and
-     * nothing to undo.
+     * THE RACE, AND WHY THE ROWS ARE LOCKED FIRST
+     * -------------------------------------------
+     * Administrator A suspends B while B suspends A. Each request asks "is there
+     * another active administrator?", each is told yes because the other is still
+     * active, and both commit: zero administrators. Checking is not enough when
+     * two checks can overlap.
+     *
+     * lockActiveAdministrators() reads every active administrator with
+     * SELECT ... FOR UPDATE. The second request blocks there until the first
+     * transaction commits, then sees the committed truth and is refused.
+     *
+     * The answer comes from the locked rows themselves, not from a separate
+     * existsBy query afterwards. A locking read always returns the latest
+     * committed data, whereas an ordinary SELECT inside the same MySQL
+     * transaction reads from a snapshot taken at its first read - before the
+     * wait - and could still report the other administrator as active. Only
+     * the ids are used, because the entities may already be in the persistence
+     * context in their older state; which rows come back is decided by the
+     * database.
      */
     private void requireAnotherActiveAdmin(AppUser user) {
-        if (user instanceof Administrator && user.isActive()
-                && !administratorRepository.existsByActiveTrueAndIdNot(user.getId())) {
+        if (!(user instanceof Administrator) || !user.isActive()) {
+            return;
+        }
+        boolean anotherActive = administratorLockRepository.lockActiveAdministrators().stream()
+                .anyMatch(administrator -> !administrator.getId().equals(user.getId()));
+        if (!anotherActive) {
             throw new IllegalArgumentException(
                     "This is the last active administrator account. Provision another "
                             + "administrator before deactivating or removing this one.");

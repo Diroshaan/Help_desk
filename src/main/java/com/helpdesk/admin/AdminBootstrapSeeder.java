@@ -1,7 +1,9 @@
 package com.helpdesk.admin;
 
 import com.helpdesk.common.user.entity.Administrator;
+import com.helpdesk.common.user.entity.AppUser;
 import com.helpdesk.common.user.repository.AdministratorRepository;
+import com.helpdesk.common.user.repository.AppUserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Optional;
 
 /**
  * F6 - System Analytics, Provisioning & Announcements
@@ -77,10 +80,29 @@ import java.util.Base64;
  * to rely on the schema existing and turns any failure into a bean creation
  * error. ApplicationRunner runs once, after the context is up and Hibernate has
  * created the tables. Idempotent on every restart, for the same reason and by
- * the same means as ReferenceDataSeeder: it inserts only what is absent, and it
- * never updates or deletes a row that already exists. Restarting twenty times
- * produces one administrator, and a password changed afterwards is not quietly
- * reverted on the next boot.
+ * the same means as ReferenceDataSeeder: while an active administrator exists it
+ * does nothing, so restarting twenty times produces one administrator and a
+ * password changed afterwards is not quietly reverted on the next boot.
+ *
+ *
+ * WHEN THE BOOTSTRAP ACCOUNT ALREADY EXISTS
+ * -----------------------------------------
+ * "No ACTIVE administrator" does not mean "no admin@helpdesk.local row". On a
+ * database that has run before, the bootstrap account is usually still there,
+ * suspended. Inserting it again would hit the unique email constraint and stop
+ * the application from starting - on exactly the deployment that most needs it
+ * to start. So the seeder looks the email up first:
+ *
+ *   missing                 -> insert it, as on a fresh database
+ *   a SUSPENDED administrator -> reactivate it with a new password
+ *   a REMOVED administrator   -> leave it alone and log an ERROR. Removal is
+ *                              final; quietly undoing it at startup would turn
+ *                              the seeder into a back door around that rule.
+ *   anybody else's account    -> leave it alone and log an ERROR; the address
+ *                              belongs to a student or officer.
+ *
+ * In the last two cases the application still starts, because a locked-out
+ * admin panel is a problem an operator can fix, and a crash loop is not.
  */
 @Component
 public class AdminBootstrapSeeder implements ApplicationRunner {
@@ -88,6 +110,7 @@ public class AdminBootstrapSeeder implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(AdminBootstrapSeeder.class);
 
     private final AdministratorRepository administratorRepository;
+    private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
 
     /**
@@ -109,8 +132,10 @@ public class AdminBootstrapSeeder implements ApplicationRunner {
 
     @Autowired
     public AdminBootstrapSeeder(AdministratorRepository administratorRepository,
+                                AppUserRepository appUserRepository,
                                 PasswordEncoder passwordEncoder) {
         this.administratorRepository = administratorRepository;
+        this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -126,6 +151,27 @@ public class AdminBootstrapSeeder implements ApplicationRunner {
             return;
         }
 
+        // AppUserRepository, not AdministratorRepository, for the lookup: the
+        // email may belong to any kind of account, and the unique constraint
+        // that would otherwise crash startup spans all of them.
+        Optional<AppUser> existing = appUserRepository.findByEmail(bootstrapEmail);
+
+        if (existing.isEmpty()) {
+            createBootstrapAdministrator();
+        } else if (existing.get() instanceof Administrator administrator && !administrator.isRemoved()) {
+            reactivate(administrator);
+        } else {
+            log.error("No active administrator exists, but {} already belongs to an account this "
+                    + "seeder will not reuse ({}), so no administrator was created. It only "
+                    + "reactivates a suspended administrator: it never undoes a removal or takes "
+                    + "over another kind of account. To recover, set "
+                    + "helpdesk.bootstrap-admin.email to an unused address and restart, or fix "
+                    + "the users table by hand.",
+                    bootstrapEmail, describe(existing.get()));
+        }
+    }
+
+    private void createBootstrapAdministrator() {
         boolean generated = bootstrapPassword == null || bootstrapPassword.isBlank();
         String password = generated ? generatePassword() : bootstrapPassword;
 
@@ -140,25 +186,49 @@ public class AdminBootstrapSeeder implements ApplicationRunner {
         // and inventing a fake number would be worse than an empty column.
         administratorRepository.save(administrator);
 
+        reportCredentials("FIRST-RUN ADMINISTRATOR CREATED", "one has been created", password, generated);
+    }
+
+    /**
+     * A suspended bootstrap account comes back with a NEW password. The old hash
+     * may belong to somebody who no longer should have it, and the operator
+     * reading the startup log needs a value they actually know.
+     */
+    private void reactivate(Administrator administrator) {
+        boolean generated = bootstrapPassword == null || bootstrapPassword.isBlank();
+        String password = generated ? generatePassword() : bootstrapPassword;
+
+        administrator.setPassword(passwordEncoder.encode(password));
+        administrator.setActive(true);
+        administratorRepository.save(administrator);
+
+        reportCredentials("BOOTSTRAP ADMINISTRATOR REACTIVATED",
+                "the suspended bootstrap account has been reactivated", password, generated);
+    }
+
+    private void reportCredentials(String headline, String what, String password, boolean generated) {
         if (generated) {
             // Printed once, on the run that creates the account, and never
             // again. The hash is what is stored; this value exists only in this
             // log line and in the operator's memory.
             log.warn("""
 
-                    ================= FIRST-RUN ADMINISTRATOR CREATED =================
-                     No active administrator existed, so one has been created.
+                    ================= {} =================
+                     No active administrator existed, so {}.
                        email    : {}
                        password : {}
                      This password was generated for this run and is not stored
                      anywhere in readable form. Sign in and change it, or set
                      helpdesk.bootstrap-admin.password to choose your own.
                     ===================================================================
-                    """, bootstrapEmail, password);
+                    """, headline, what, bootstrapEmail, password);
         } else {
-            log.warn("First-run administrator created for {} using the configured "
-                    + "bootstrap password.", bootstrapEmail);
+            log.warn("{} for {} using the configured bootstrap password.", headline, bootstrapEmail);
         }
+    }
+
+    private String describe(AppUser user) {
+        return user instanceof Administrator ? "removed administrator" : user.getRole().name().toLowerCase() + " account";
     }
 
     /**

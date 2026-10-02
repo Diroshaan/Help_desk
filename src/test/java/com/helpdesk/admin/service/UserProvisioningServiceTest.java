@@ -4,6 +4,7 @@ import com.helpdesk.admin.dto.OfficerDepartmentsRequest;
 import com.helpdesk.admin.dto.ProvisionAdministratorRequest;
 import com.helpdesk.admin.dto.ProvisionOfficerRequest;
 import com.helpdesk.admin.dto.UserSummaryResponse;
+import com.helpdesk.admin.repository.AdministratorLockRepository;
 import com.helpdesk.auth.SessionRevoker;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.reference.entity.Department;
@@ -65,6 +66,7 @@ class UserProvisioningServiceTest {
     @Mock private AdministratorRepository administratorRepository;
     @Mock private SessionRevoker sessionRevoker;
     @Mock private DepartmentRepository departmentRepository;
+    @Mock private AdministratorLockRepository administratorLockRepository;
 
     private UserProvisioningService service;
     private Administrator caller;
@@ -75,7 +77,7 @@ class UserProvisioningServiceTest {
     void setUp() {
         service = new UserProvisioningService(appUserRepository, officerRepository,
                 administratorRepository, new BCryptPasswordEncoder(4), sessionRevoker,
-                departmentRepository);
+                departmentRepository, administratorLockRepository);
         caller = new Administrator(CALLER, "irrelevant", "System Administrator");
         it = new Department("IT", "IT Services", null, null);
         registration = new Department("REG", "Registration", null, null);
@@ -370,7 +372,8 @@ class UserProvisioningServiceTest {
     void theLastActiveAdministratorIsProtected() {
         Administrator last = administratorWithId(2L, "last@helpdesk.local");
         when(appUserRepository.findById(2L)).thenReturn(Optional.of(last));
-        when(administratorRepository.existsByActiveTrueAndIdNot(2L)).thenReturn(false);
+        // The locked read returns only the target itself: nobody else is active.
+        when(administratorLockRepository.lockActiveAdministrators()).thenReturn(List.of(last));
 
         assertThatThrownBy(() -> service.softDelete(2L, CALLER))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -389,7 +392,8 @@ class UserProvisioningServiceTest {
     void anAdministratorCanBeRemovedWhenAnotherRemains() {
         Administrator other = administratorWithId(2L, "other@helpdesk.local");
         when(appUserRepository.findById(2L)).thenReturn(Optional.of(other));
-        when(administratorRepository.existsByActiveTrueAndIdNot(2L)).thenReturn(true);
+        when(administratorLockRepository.lockActiveAdministrators())
+                .thenReturn(List.of(other, administratorWithId(3L, "third@helpdesk.local")));
 
         service.softDelete(2L, CALLER);
 
