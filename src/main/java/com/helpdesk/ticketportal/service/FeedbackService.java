@@ -2,6 +2,7 @@ package com.helpdesk.ticketportal.service;
 
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
+import com.helpdesk.common.reference.repository.CategoryRepository;
 import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticket.entity.TicketStatus;
 import com.helpdesk.ticket.repository.TicketRepository;
@@ -23,11 +24,14 @@ public class FeedbackService {
 
     private final FeedbackRepository feedbackRepository;
     private final TicketRepository ticketRepository;
+    private final CategoryRepository categoryRepository;
 
     @Autowired
-    public FeedbackService(FeedbackRepository feedbackRepository, TicketRepository ticketRepository) {
+    public FeedbackService(FeedbackRepository feedbackRepository, TicketRepository ticketRepository,
+                           CategoryRepository categoryRepository) {
         this.feedbackRepository = feedbackRepository;
         this.ticketRepository = ticketRepository;
+        this.categoryRepository = categoryRepository;
     }
 
     // Submitting requires: the ticket exists and belongs to this student,
@@ -72,6 +76,14 @@ public class FeedbackService {
     // Aggregate stats across every ticket in a category: average rating,
     // how many feedback entries exist, and a per-star (1-5) breakdown.
     public FeedbackSummaryResponse summaryByCategory(String category) {
+        // An unknown category used to return "0 ratings", which is
+        // indistinguishable from a real category nobody has rated yet. A 400 names
+        // the problem. existsByName also accepts retired categories on purpose:
+        // they still have tickets and feedback worth reporting on.
+        if (category == null || category.isBlank() || !categoryRepository.existsByName(category)) {
+            throw new IllegalArgumentException("Unknown category: " + category);
+        }
+
         List<Long> ticketIds = ticketRepository.findByCategory(category).stream()
                 .map(Ticket::getId)
                 .toList();
