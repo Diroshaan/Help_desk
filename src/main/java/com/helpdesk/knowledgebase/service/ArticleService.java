@@ -76,7 +76,13 @@ public class ArticleService {
      *                         student has no legitimate reason to see an
      *                         unpublished article, and 404 (rather than 403)
      *                         avoids confirming that an id belongs to a real,
-     *                         just-not-visible-to-you article.
+     *                         just-not-visible-to-you article. The same flag
+     *                         also tells ArticleDetailResponse.from() to
+     *                         filter relatedArticles to PUBLISHED only
+     *                         (F5-N1) - protecting the article itself was
+     *                         never enough on its own, since a published
+     *                         article's related list could still name a
+     *                         draft by title.
      */
     @Transactional(readOnly = true)
     public ArticleDetailResponse getById(Long id, boolean callerIsStudent) {
@@ -84,7 +90,7 @@ public class ArticleService {
         if (callerIsStudent && article.getStatus() != ArticleStatus.PUBLISHED) {
             throw new ResourceNotFoundException("Article not found: " + id);
         }
-        return ArticleDetailResponse.from(article);
+        return ArticleDetailResponse.from(article, callerIsStudent);
     }
 
     /**
