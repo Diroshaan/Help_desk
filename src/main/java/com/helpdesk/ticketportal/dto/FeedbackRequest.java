@@ -3,6 +3,7 @@ package com.helpdesk.ticketportal.dto;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 /**
  * Request body for submitting feedback on a ticket.
@@ -15,6 +16,9 @@ public class FeedbackRequest {
     @Max(value = 5, message = "Rating must be at most 5")
     private Integer rating;
 
+    // Matches Feedback.comment's column length (1000). Without this, a longer
+    // comment reached the database and failed there instead of as a clean 400.
+    @Size(max = 1000, message = "Comment must be 1000 characters or fewer")
     private String comment;
 
     public Integer getRating() {

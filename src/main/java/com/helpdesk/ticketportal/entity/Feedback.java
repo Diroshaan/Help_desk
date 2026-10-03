@@ -7,7 +7,12 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "feedback")
+// At most one feedback per ticket, enforced by the database: the existsBy...
+// check in FeedbackService can be raced by two submits at once (#42).
+@Table(
+    name = "feedback",
+    uniqueConstraints = @UniqueConstraint(name = "uq_feedback_ticket", columnNames = {"ticket_id"})
+)
 public class Feedback {
 
     @Id
