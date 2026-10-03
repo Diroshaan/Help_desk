@@ -58,7 +58,15 @@ export default function ArticleEditor() {
 
   async function save(event) {
     event.preventDefault()
-    setErrors({}); setNotice(null); setBusy('save')
+    setErrors({}); setNotice(null)
+
+    // An article must sit in at least one category, or students can never
+    // find it by browsing (F5, and the server says the same with a 400).
+    if (form.categoryIds.length === 0) {
+      setErrors({ categoryIds: 'Choose at least one category.' })
+      return
+    }
+    setBusy('save')
 
     const payload = {
       title: form.title.trim(),
@@ -79,7 +87,7 @@ export default function ArticleEditor() {
         return
       }
 
-      const fields = fieldErrors(result, ['title', 'body'])
+      const fields = fieldErrors(result, ['title', 'body', 'categoryIds'])
       if (Object.keys(fields).length) setErrors(fields)
       else setNotice({ kind: 'error', text: errorMessage(result, 'We could not save this article.') })
     } catch {
@@ -165,17 +173,19 @@ export default function ArticleEditor() {
               <Field id="tags" label="Tags" type="text" hint="Comma-separated, e.g. wifi, printing, vpn"
                      value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} />
 
-              <div className="field">
+              <div className={'field' + (errors.categoryIds ? ' is-invalid' : '')}>
                 <label>Categories</label>
                 <div className="chips">
                   {allCategories.map(c => (
                     <button type="button" key={c.id} className="chip"
                             aria-current={form.categoryIds.includes(c.id)}
+                            aria-pressed={form.categoryIds.includes(c.id)}
                             onClick={() => toggleCategory(c.id)}>
                       {c.name} — {c.departmentName}
                     </button>
                   ))}
                 </div>
+                <p className="field-error">{errors.categoryIds || ''}</p>
               </div>
 
               <div className="btn-row">
