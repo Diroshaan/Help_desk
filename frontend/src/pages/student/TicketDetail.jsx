@@ -263,6 +263,11 @@ export default function TicketDetail() {
           kind: 'info',
           text: archived ? 'This ticket is back in your active list.' : 'This ticket has been archived.'
         })
+      } else if (result.status === 409 && !archived) {
+        // Already archived (e.g. archived earlier, before the archive list
+        // could tell this page): show the true state instead of an error.
+        setArchived(true)
+        setNotice({ kind: 'info', text: 'This ticket is already archived.' })
       } else {
         setNotice({ kind: 'error', text: errorMessage(result, 'We could not archive this ticket.') })
       }

@@ -33,12 +33,13 @@ export default function TicketList() {
   // Active (search, which already leaves archived tickets out) or Archived
   // (F3's GET /api/tickets/archived). Loaded once so the tab can show a count.
   const [view, setView] = useState('active')
-  const [archived, setArchived] = useState(null)       // TicketResponse[] or null if unavailable
+  const [archived, setArchived] = useState(undefined)  // undefined loading, array, 'off' (not on server), null (failed)
 
   useEffect(() => {
     request(API.ticketCategories).then(r => { if (r.ok) setCategories(r.data || []) })
     request(API.ticketsArchived).then(r => {
-      setArchived(r.ok && Array.isArray(r.data) ? r.data : null)
+      // 400/404/405: F3's archive list is not on the server yet.
+      setArchived(r.ok && Array.isArray(r.data) ? r.data : ([400, 404, 405].includes(r.status) ? 'off' : null))
     }).catch(() => setArchived(null))
   }, [])
 
@@ -78,18 +79,21 @@ export default function TicketList() {
           <Tabs label="Ticket view" value={view} onChange={setView}
                 tabs={[
                   { value: 'active', label: 'Active', count: result ? result.totalElements : undefined },
-                  { value: 'archived', label: 'Archived', count: archived ? archived.length : undefined }
+                  { value: 'archived', label: 'Archived', count: Array.isArray(archived) ? archived.length : undefined }
                 ]} />
 
           {view === 'archived' ? (
             <section className="section">
               {archived === null && (
-                <Notice>Archived tickets could not be loaded. Archive a resolved or withdrawn ticket from its page and it will appear here.</Notice>
+                <Notice>Archived tickets could not be loaded. Please try again in a moment.</Notice>
               )}
-              {archived && archived.length === 0 && (
+              {archived === 'off' && (
+                <p className="empty">Archiving is not available yet.</p>
+              )}
+              {Array.isArray(archived) && archived.length === 0 && (
                 <p className="empty">Nothing archived. When a ticket is resolved or withdrawn you can archive it from its page to tidy this list.</p>
               )}
-              {archived && archived.map(ticket => (
+              {Array.isArray(archived) && archived.map(ticket => (
                 <Row key={ticket.id} to={'/tickets/' + ticket.id}
                      title={ticket.subject}
                      subtitle={ticket.category + ' · Opened ' + formatDateTime(ticket.createdAt)}

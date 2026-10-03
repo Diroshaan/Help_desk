@@ -25,8 +25,8 @@ export default function QueueDetail() {
   // The student's files (F4 #40) and the status timeline (F4, from F2's
   // history). null means the endpoint did not answer - shown as a short note
   // rather than as "no files", which would be a different, false statement.
-  const [files, setFiles] = useState(null)
-  const [history, setHistory] = useState(null)
+  const [files, setFiles] = useState(undefined)     // undefined = still loading
+  const [history, setHistory] = useState(undefined)
 
   async function load() {
     setLoading(true)
@@ -51,8 +51,11 @@ export default function QueueDetail() {
       request(API.queueAttachments(id)),
       request(API.queueHistory(id))
     ])
-    setFiles(fileResult.ok && Array.isArray(fileResult.data) ? fileResult.data : null)
-    setHistory(historyResult.ok && Array.isArray(historyResult.data) ? historyResult.data : null)
+    // 400/404/405 = the endpoint is not on the server yet (F4 not merged):
+    // say "not available yet" rather than reporting a failure.
+    const pick = r => r.ok && Array.isArray(r.data) ? r.data : ([400, 404, 405].includes(r.status) ? 'off' : null)
+    setFiles(pick(fileResult))
+    setHistory(pick(historyResult))
   }
 
   useEffect(() => { load() }, [id])
@@ -170,6 +173,9 @@ export default function QueueDetail() {
     return <div className="shell"><Sidebar /><main className="content">
       <div className="content-col">
         <div className="page-head"><h1>Ticket not found</h1></div>
+        {/* Officers only see tickets routed to departments they serve, so a
+            ticket re-routed elsewhere disappears from here - say so. */}
+        <p className="lede">It may not exist, or it was routed to a department you do not serve.</p>
         <div className="btn-row" style={{ marginTop: 20 }}>
           <Link className="btn btn--ghost" to="/queue">Back to the queue</Link>
         </div>
@@ -181,6 +187,10 @@ export default function QueueDetail() {
   // Nothing is re-routed or answered once a ticket is finished (F4 rule).
   const closed = ticket.status === 'RESOLVED' || ticket.status === 'WITHDRAWN'
   const mine = user && ticket.assignedOfficerId === user.id
+  // The server only accepts an answer while the ticket is IN_PROGRESS (an OPEN
+  // one comes back 400 "can only be resolved while it is in progress"), so
+  // the form stays locked until the ticket is picked up.
+  const answerLocked = ticket.status === 'OPEN' && !resolution
 
   function chooseFile(event) {
     const file = event.target.files?.[0] || null
@@ -236,8 +246,9 @@ export default function QueueDetail() {
           <section className="section">
             <h2>Student's files</h2>
             {files === null && <p className="empty">The student's files could not be loaded.</p>}
-            {files && files.length === 0 && <p className="empty">The student did not attach any files.</p>}
-            {files && files.map(file => (
+            {files === 'off' && <p className="empty">Officers cannot open the student's files yet.</p>}
+            {Array.isArray(files) && files.length === 0 && <p className="empty">The student did not attach any files.</p>}
+            {Array.isArray(files) && files.map(file => (
               <div className="pref" key={file.id}>
                 <div className="pref__text">
                   <strong>{file.fileName}</strong>
@@ -252,9 +263,9 @@ export default function QueueDetail() {
 
           <section className="section">
             <h2>Status timeline</h2>
-            {history === null
-              ? <p className="empty">The timeline could not be loaded.</p>
-              : <StatusTimeline entries={history} />}
+            {history === null && <p className="empty">The timeline could not be loaded.</p>}
+            {history === 'off' && <p className="empty">The timeline is not available yet.</p>}
+            {Array.isArray(history) && <StatusTimeline entries={history} />}
           </section>
 
           <section className="section">
@@ -309,13 +320,13 @@ export default function QueueDetail() {
             <form className="form" style={{ marginTop: 0 }} onSubmit={saveResolution}>
               <div className="field">
                 <label htmlFor="responseText">Response to the student</label>
-                <textarea id="responseText" rows={5} value={responseText} maxLength={4000}
+                <textarea id="responseText" rows={5} value={responseText} maxLength={4000} disabled={answerLocked}
                           placeholder="What you did, and what the student needs to do next."
                           onChange={e => setResponseText(e.target.value)} />
               </div>
               <div className="field">
                 <label htmlFor="resolutionFile">Attachment (optional)</label>
-                <input id="resolutionFile" key={fileKey} type="file" accept={UPLOAD_ACCEPT} onChange={chooseFile} />
+                <input id="resolutionFile" key={fileKey} type="file" accept={UPLOAD_ACCEPT} onChange={chooseFile} disabled={answerLocked} />
                 <p className="hint">PDF or image, up to 5 MB. The student can download it with your answer.</p>
               </div>
               {resolution?.attachmentFileName && (
@@ -325,7 +336,7 @@ export default function QueueDetail() {
                 </a>
               )}
               <div className="btn-row">
-                <button type="submit" className="btn btn--primary" disabled={busy === 'resolution' || !responseText.trim()}>
+                <button type="submit" className="btn btn--primary" disabled={answerLocked || busy === 'resolution' || !responseText.trim()}>
                   {busy === 'resolution' ? 'Saving…' : resolution ? 'Update answer' : 'Post answer and resolve'}
                 </button>
                 {resolution && (
