@@ -46,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 class TicketResolutionIntegrationTest {
 
-    private static final AtomicInteger SEQ = new AtomicInteger(7000);
+    private static final AtomicInteger SEQ = new AtomicInteger(12000);
 
     @Autowired private MockMvc mvc;
     @Autowired private StudentRepository studentRepository;
