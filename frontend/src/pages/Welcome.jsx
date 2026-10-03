@@ -70,8 +70,34 @@ const POSTER =
              letter-spacing="3" fill="#c3ded6" text-anchor="middle">HOW IT WORKS</text>
      </svg>`)
 
+/* What the two footer buttons open. Plain statements of what this system
+   actually does - nothing it does not. */
+const FOOT_INFO = [
+  {
+    key: 'access',
+    label: 'Accessibility',
+    lines: [
+      'Every page works with a keyboard: Tab moves between fields and buttons, Enter submits.',
+      'Form fields have labels, and when a form has a mistake the page takes you straight to it.',
+      'Text grows with your browser zoom, and the layout adjusts down to phone size.',
+      'If something is hard to use, email itdesk@university.lk and tell us which page.'
+    ]
+  },
+  {
+    key: 'privacy',
+    label: 'Privacy policy',
+    lines: [
+      'We keep only what you enter: your name, Student ID, email, phone numbers and your tickets.',
+      'A ticket is seen by you, the officers of the department handling it, and administrators.',
+      'Passwords are stored hashed, never as plain text, and staff cannot read them.',
+      'You can delete your account from My profile. To ask about your data, email itdesk@university.lk.'
+    ]
+  }
+]
+
 export default function Welcome() {
   const { status, student, role } = useSession()
+  const [footInfo, setFootInfo] = useState(null)
   const signedIn = status === 'signedIn'
   const navigate = useNavigate()
 
@@ -204,16 +230,27 @@ export default function Welcome() {
           ))}
 
           <div className="foot-links">
-            {/* Placeholders for pages that are out of scope for this project.
-                preventDefault matters here rather than being tidiness: under
-                HashRouter a bare href="#" is a route change, so clicking one
-                reset the route and threw the visitor back to the top of the
-                page for no reason. Doing nothing is the honest behaviour
-                until the pages exist. */}
-            <a href="#" onClick={event => event.preventDefault()}>Accessibility</a>
-            <a href="#" onClick={event => event.preventDefault()}>Privacy policy</a>
+            {/* These used to be dead links (href="#" that did nothing). Each
+                now opens a short statement under the footer; a second click
+                closes it. Buttons, not links: they do not go anywhere. */}
+            {FOOT_INFO.map(info => (
+              <button type="button" key={info.key}
+                      aria-expanded={footInfo === info.key}
+                      aria-controls="foot-info"
+                      onClick={() => setFootInfo(open => open === info.key ? null : info.key)}>
+                {info.label}
+              </button>
+            ))}
           </div>
         </div>
+
+        {footInfo && (
+          <div className="foot-info" id="foot-info" role="region"
+               aria-label={FOOT_INFO.find(i => i.key === footInfo).label}>
+            <strong>{FOOT_INFO.find(i => i.key === footInfo).label}</strong>
+            {FOOT_INFO.find(i => i.key === footInfo).lines.map(line => <p key={line}>{line}</p>)}
+          </div>
+        )}
 
         <p className="site-foot__legal">SE2030 · Web-Based Help Desk System · Group MLBB8G204</p>
       </footer>
@@ -259,9 +296,10 @@ function Walkthrough() {
     }
   }, [])
 
-  function seek(seconds) {
+  function seek(seconds, index) {
     const video = videoRef.current
-    if (!video) return
+    // No video yet: still mark the step, so the button visibly responds.
+    if (!video) { setCurrent(index); return }
     video.currentTime = seconds
     // Autoplay policies can refuse this; the poster simply stays put.
     video.play().catch(() => {})
@@ -283,7 +321,7 @@ function Walkthrough() {
             <li key={chapter.at}>
               <button type="button"
                       aria-current={current === index}
-                      onClick={() => seek(chapter.at)}>
+                      onClick={() => seek(chapter.at, index)}>
                 <span className="chapters__t mono">{chapter.stamp}</span>
                 {chapter.label}
               </button>
@@ -293,13 +331,19 @@ function Walkthrough() {
       </div>
 
       <div className="howto__player">
-        {/* No file on the server yet: show where to put it, rather than a black
-            rectangle with a broken control bar. */}
+        {/* No video on the server yet. Visitors used to see a developer note
+            with a file path here; now they get the next step instead.
+            To add the video, put the file at
+            src/main/resources/static/media/how-it-works.mp4 and the player
+            picks it up on the next load. */}
         {missing ? (
           <div className="howto__missing">
-            <strong>The walkthrough is not uploaded yet.</strong>
-            <p>Drop an MP4 here and this player picks it up:</p>
-            <code>src/main/resources/static/media/how-it-works.mp4</code>
+            <strong>The walkthrough video is coming soon.</strong>
+            <p>Until then, follow the steps on the left, or start now:</p>
+            <div className="btn-row">
+              <Link className="btn btn--primary" to="/kb">Browse articles</Link>
+              <Link className="btn btn--ghost howto__ghost" to="/tickets/new">Submit a ticket</Link>
+            </div>
           </div>
         ) : (
           <video ref={videoRef} controls preload="metadata" poster={POSTER}>
