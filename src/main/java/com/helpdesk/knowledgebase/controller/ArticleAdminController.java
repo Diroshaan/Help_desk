@@ -102,12 +102,18 @@ public class ArticleAdminController {
         return ResponseEntity.noContent().build();
     }
 
-    /** All statuses, for the authoring workspace - see F5_Build_Guide.md gate list, step 3. */
+    /**
+     * All statuses, for the authoring workspace - see F5_Build_Guide.md gate
+     * list, step 3. Same page/size clamp as ArticleController.list (F5-N3) -
+     * this endpoint runs the same kind of paged query, so it needs the same
+     * bound, not a smaller one just because it's officer-only.
+     */
     @GetMapping("/api/articles/manage")
     public Page<ArticleSummaryResponse> manage(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return articleService.listForManagement(PageRequest.of(page, size));
+        return articleService.listForManagement(
+                PageRequest.of(PageBounds.clampPage(page), PageBounds.clampSize(size)));
     }
 
     /**
