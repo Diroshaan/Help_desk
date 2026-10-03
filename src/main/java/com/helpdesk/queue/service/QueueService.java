@@ -142,6 +142,20 @@ public class QueueService {
                 .toList();
     }
 
+    // The ticket an officer may WORK on (change status, resolve, add notes).
+    // Reads stay open for unrouted tickets (triage), but working one needs a
+    // department first. Package-visible: ResolutionService and StaffNoteService
+    // share this package and only hold an officerId.
+    Ticket getWorkableTicket(Long officerId, Long ticketId) {
+        Officer officer = requireActiveOfficer(officerId);
+        Ticket ticket = findTicket(ticketId);
+        if (ticket.getAssignedDepartmentId() == null) {
+            throw new ValidationException("Route this ticket to a department first");
+        }
+        requireOfficerInTicketDepartment(officer, ticket);
+        return ticket;
+    }
+
     // Assignment ------------------------------------------------------------
 
     @Transactional
@@ -149,6 +163,10 @@ public class QueueService {
         Officer officer = requireActiveOfficer(officerId);
         Ticket ticket = findTicket(ticketId);
         requireOfficerInTicketDepartment(officer, ticket);
+
+        if (ticket.getStatus() == TicketStatus.RESOLVED || ticket.getStatus() == TicketStatus.WITHDRAWN) {
+            throw new ValidationException("A " + ticket.getStatus() + " ticket cannot be re-routed");
+        }
 
         if (targetOfficerId == null && targetDepartmentId == null) {
             throw new ValidationException("Either officerId or departmentId is required");
@@ -175,6 +193,15 @@ public class QueueService {
             throw new ResourceNotFoundException("Department not found");
         }
 
+        // An IN_PROGRESS ticket already has an owner in the old department; moving
+        // it elsewhere without naming who takes it over would leave it ownerless.
+        if (ticket.getStatus() == TicketStatus.IN_PROGRESS && targetOfficerId == null
+                && ticket.getAssignedDepartmentId() != null
+                && !resolvedDepartmentId.equals(ticket.getAssignedDepartmentId())) {
+            throw new ValidationException(
+                    "Moving an in-progress ticket to another department needs a target officer");
+        }
+
         ticket.setAssignedDepartmentId(resolvedDepartmentId);
         ticket.setAssignedOfficerId(targetOfficerId);
         ticket.setAssignedAt(LocalDateTime.now());
@@ -185,9 +212,7 @@ public class QueueService {
 
     @Transactional
     public Ticket updateStatus(Long officerId, Long ticketId, TicketStatus targetStatus) {
-        Officer officer = requireActiveOfficer(officerId);
-        Ticket ticket = findTicket(ticketId);
-        requireOfficerInTicketDepartment(officer, ticket);
+        Ticket ticket = getWorkableTicket(officerId, ticketId);
 
         if (targetStatus == TicketStatus.RESOLVED) {
             throw new ValidationException(
@@ -201,9 +226,20 @@ public class QueueService {
                     "Cannot move a ticket from " + currentStatus + " to " + targetStatus);
         }
 
+        if (targetStatus == TicketStatus.IN_PROGRESS) {
+            Long owner = ticket.getAssignedOfficerId();
+            if (owner == null) {
+                // Claiming: picking a ticket up records who has it.
+                ticket.setAssignedOfficerId(officerId);
+                ticket.setAssignedAt(LocalDateTime.now());
+            } else if (!owner.equals(officerId)) {
+                throw new ValidationException("This ticket is assigned to another officer");
+            }
+        }
+
         ticket.setStatus(targetStatus);
         Ticket saved = ticketRepository.save(ticket);
-        publishStatusChange(saved, currentStatus);
+        publishStatusChange(saved, currentStatus, officerId);
         return saved;
     }
 
@@ -213,24 +249,24 @@ public class QueueService {
     // @Transactional itself - it always runs inside a transaction already
     // opened by the calling ResolutionService method, and a non-public
     // method wouldn't be proxied by Spring's transaction advice anyway.
-    Ticket markResolved(Ticket ticket) {
+    Ticket markResolved(Ticket ticket, Long officerId) {
         TicketStatus previous = ticket.getStatus();
         ticket.setStatus(TicketStatus.RESOLVED);
         ticket.setResolvedAt(LocalDateTime.now());
         Ticket saved = ticketRepository.save(ticket);
-        publishStatusChange(saved, previous);
+        publishStatusChange(saved, previous, officerId);
         return saved;
     }
 
     // Called by ResolutionService.revoke to reopen a ticket whose resolution
     // was pulled back before final closure. Same non-@Transactional
     // reasoning as markResolved above.
-    Ticket reopen(Ticket ticket) {
+    Ticket reopen(Ticket ticket, Long officerId) {
         TicketStatus previous = ticket.getStatus();
         ticket.setStatus(TicketStatus.IN_PROGRESS);
         ticket.setResolvedAt(null);
         Ticket saved = ticketRepository.save(ticket);
-        publishStatusChange(saved, previous);
+        publishStatusChange(saved, previous, officerId);
         return saved;
     }
 
@@ -240,9 +276,9 @@ public class QueueService {
     // history for issue #45 could listen to the same event later without another
     // edit here. Listeners run after this transaction commits, so a rolled-back
     // change never reaches the student.
-    private void publishStatusChange(Ticket ticket, TicketStatus previous) {
+    private void publishStatusChange(Ticket ticket, TicketStatus previous, Long officerId) {
         eventPublisher.publishEvent(new TicketStatusChangedEvent(
-                ticket.getId(), ticket.getStudentId(), ticket.getSubject(), previous, ticket.getStatus()));
+                ticket.getId(), ticket.getStudentId(), ticket.getSubject(), previous, ticket.getStatus(), officerId));
     }
 
     // Shared lookups ----------------------------------------------------------
