@@ -19,6 +19,7 @@ import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -149,6 +150,10 @@ public class Announcement {
      * ActivityLog.type shows this fix. Forcing VARCHAR stores the same text and
      * survives a new constant.
      */
+    // BatchSize: listing N announcements and reading each one's roles would run N
+    // extra queries (one lazy load per announcement). With a batch of 50,
+    // Hibernate loads the roles of up to 50 announcements in a single IN query.
+    @BatchSize(size = 50)
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(
             name = "announcement_visible_roles",

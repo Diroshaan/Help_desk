@@ -1,5 +1,6 @@
 package com.helpdesk.admin;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,8 +17,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -145,5 +150,87 @@ class UserAdminIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"departmentCodes\":[\"IT\"]}"))
                 .andExpect(status().isForbidden());
+    }
+
+    // ---- #48 / F6-N6 part 2 ----
+
+    private long createOfficer(int n) throws Exception {
+        MvcResult created = mvc.perform(post("/api/admin/officers").with(user(ADMIN).roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(officerBody(n, List.of("IT"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private JsonNode listUsers(String query) throws Exception {
+        MvcResult result = mvc.perform(get("/api/admin/users" + query).with(user(ADMIN).roles("ADMIN")))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private boolean listContains(JsonNode rows, long id) {
+        for (JsonNode row : rows) {
+            if (row.get("id").asLong() == id) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private long bootstrapAdminId() throws Exception {
+        for (JsonNode row : listUsers("?role=ADMIN")) {
+            if (ADMIN.equals(row.get("email").asText())) {
+                return row.get("id").asLong();
+            }
+        }
+        throw new AssertionError("the bootstrap administrator should exist in the test database");
+    }
+
+    @Test
+    @DisplayName("An administrator cannot remove or suspend their own account (400)")
+    void administratorCannotLockThemselvesOut() throws Exception {
+        long selfId = bootstrapAdminId();
+
+        mvc.perform(delete("/api/admin/users/" + selfId).with(user(ADMIN).roles("ADMIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("your own account")));
+
+        mvc.perform(patch("/api/admin/users/" + selfId + "/status").with(user(ADMIN).roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":false}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("your own account")));
+    }
+
+    @Test
+    @DisplayName("A removed account is hidden by default, listed on request, and cannot be restored")
+    void removedAccountIsFinal() throws Exception {
+        long id = createOfficer(SEQ.incrementAndGet());
+
+        mvc.perform(delete("/api/admin/users/" + id).with(user(ADMIN).roles("ADMIN")))
+                .andExpect(status().isNoContent());
+
+        assertThat(listContains(listUsers("?role=OFFICER"), id)).isFalse();
+
+        JsonNode withRemoved = listUsers("?role=OFFICER&includeRemoved=true");
+        assertThat(listContains(withRemoved, id)).isTrue();
+        for (JsonNode row : withRemoved) {
+            if (row.get("id").asLong() == id) {
+                assertThat(row.get("removed").asBoolean()).isTrue();
+                assertThat(row.get("active").asBoolean()).isFalse();
+            }
+        }
+
+        mvc.perform(patch("/api/admin/users/" + id + "/status").with(user(ADMIN).roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"active\":true}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("can't be restored")));
+
+        // A repeated DELETE is a harmless 204, not an error.
+        mvc.perform(delete("/api/admin/users/" + id).with(user(ADMIN).roles("ADMIN")))
+                .andExpect(status().isNoContent());
     }
 }

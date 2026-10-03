@@ -56,25 +56,12 @@ public record DashboardResponse(
         /** Every ticket ever raised, including withdrawn ones. */
         long totalTickets,
 
-        /*
-         * THERE IS NO averageResolutionHours FIELD, ON PURPOSE.
-         * ----------------------------------------------------
-         * The specification asks for average resolution time and the schema
-         * cannot support it yet: Ticket carries createdAt and updatedAt, and
-         * updatedAt is never maintained - no @PreUpdate, no code path setting
-         * it - so it keeps its construction value forever and any duration
-         * derived from it is approximately zero.
-         *
-         * Zero is the dangerous answer rather than the obviously wrong one. A
-         * dashboard showing "0.0 hours average resolution" looks like a
-         * spectacularly fast help desk, sits beside numbers that ARE real, and
-         * gives nobody a reason to check it. Absent is honest; absent is also
-         * visible, because the frontend has no tile to render.
-         *
-         * The field comes back when F4's Resolution record supplies a genuine
-         * resolution timestamp - see the comment in TicketMetricsRepository for
-         * the one query it needs.
+        /**
+         * Mean hours from creation to resolution over resolved tickets, one
+         * decimal. Null, not 0, when nothing has been resolved yet: zero would
+         * read as an excellent real result rather than "no data".
          */
+        Double averageResolutionHours,
 
         /**
          * Tickets past their service-level target and still unresolved.
