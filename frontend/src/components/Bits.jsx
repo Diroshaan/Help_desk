@@ -1,4 +1,32 @@
+import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+
+/**
+ * When something goes wrong, take the reader to the message.
+ *
+ * A long form (registration, profile) can show its error far above or below
+ * where the user is looking, so the screen looked as if nothing happened.
+ * Each error-capable block calls this; only the FIRST error on the page acts,
+ * so a form with three invalid fields scrolls once, to the topmost one, and
+ * puts the cursor in that field so it can be fixed straight away.
+ */
+function useRevealError(active, focusInput, key) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!active) return
+    const frame = requestAnimationFrame(() => {
+      const el = ref.current
+      if (!el) return
+      const first = document.querySelector('.notice--error, .field.is-invalid')
+      if (first !== el) return
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' })
+      if (focusInput) el.querySelector('input, select, textarea')?.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [active, focusInput, key])
+  return ref
+}
 
 /**
  * The muted-vs-teal split every status-ish word in the app uses: a live/
@@ -28,6 +56,7 @@ function humanize(value) {
  * kind: 'info' (default) | 'error' | 'warn'
  */
 export function Notice({ kind = 'info', children, style }) {
+  const ref = useRevealError(kind === 'error' && Boolean(children), false, typeof children === 'string' ? children : '')
   if (!children) return null
   const className = 'notice' + (kind === 'info' ? '' : ' notice--' + kind)
   /* NFR 5.4: a screen reader must hear "Your profile has been updated" without
@@ -36,7 +65,7 @@ export function Notice({ kind = 'info', children, style }) {
      pause, which is right for a confirmation. Without either, the message is
      only visible, and a blind user never learns whether the save worked. */
   const role = kind === 'error' ? 'alert' : 'status'
-  return <div className={className} style={style} role={role}>{children}</div>
+  return <div ref={ref} className={className} style={style} role={role}>{children}</div>
 }
 
 /**
@@ -52,6 +81,7 @@ export function Notice({ kind = 'info', children, style }) {
  */
 export function PhoneList({ values, onChange, max = 3, error }) {
   const list = values.length ? values : ['']
+  const ref = useRevealError(Boolean(error), true, error)
 
   function update(index, value) {
     const next = [...list]
@@ -60,7 +90,7 @@ export function PhoneList({ values, onChange, max = 3, error }) {
   }
 
   return (
-    <div className={'field' + (error ? ' is-invalid' : '')}>
+    <div ref={ref} className={'field' + (error ? ' is-invalid' : '')}>
       <label htmlFor="phone-0">Contact number{max > 1 ? 's' : ''}</label>
       {list.map((value, index) => (
         <div className="row-between" key={index} style={{ gap: 10, marginTop: index ? 8 : 0 }}>
@@ -92,8 +122,9 @@ export function PhoneList({ values, onChange, max = 3, error }) {
  * Anything extra (a strength meter, a hint) goes in as children.
  */
 export function Field({ id, label, error, hint, children, ...inputProps }) {
+  const ref = useRevealError(Boolean(error), true, error)
   return (
-    <div className={'field' + (error ? ' is-invalid' : '')}>
+    <div ref={ref} className={'field' + (error ? ' is-invalid' : '')}>
       <label htmlFor={id}>{label}</label>
       <input id={id} name={id} {...inputProps} />
       {children}
@@ -105,8 +136,9 @@ export function Field({ id, label, error, hint, children, ...inputProps }) {
 
 /** The same, for a <select>. */
 export function SelectField({ id, label, error, options, ...selectProps }) {
+  const ref = useRevealError(Boolean(error), true, error)
   return (
-    <div className={'field' + (error ? ' is-invalid' : '')}>
+    <div ref={ref} className={'field' + (error ? ' is-invalid' : '')}>
       <label htmlFor={id}>{label}</label>
       <select id={id} name={id} {...selectProps}>
         {options.map(option => (
@@ -143,7 +175,6 @@ export function BrandPanel({ home = '/', heading, points }) {
         </ul>
       </div>
 
-      <p className="brand-panel__foot">SE2030 · Web-Based Help Desk System</p>
     </aside>
   )
 }
