@@ -59,26 +59,16 @@ helpdesk-system/
 
 ---
 
-### `ticketportal/` — F3: Ticket Lifecycle & Feedback (Amarasinghe) ✅
+### `ticketportal/` — F3: Ticket Lifecycle & Feedback (Amarasinghe) ⬜
 
 | File | Purpose | Status |
 |---|---|---|
-| `Bookmark.java` | Entity — a student's bookmarked ticket, optionally filed in a folder; one per student per ticket (unique constraint) | ✅ |
-| `BookmarkFolder.java` | Entity — a student's named, coloured folder; names unique per student, ignoring case | ✅ |
-| `Feedback.java` | Entity — 1–5 rating and comment on a resolved ticket; at most one per ticket (unique constraint) | ✅ |
-| `ArchivedTicket.java` | Entity — hides a finished ticket from the student's active list (soft archive; the ticket itself is untouched) | ✅ |
-| `BookmarkRepository.java` · `BookmarkFolderRepository.java` · `FeedbackRepository.java` · `ArchivedTicketRepository.java` | Database access for the four entities above | ✅ |
-| `BookmarkService.java` | Logic — bookmark only your own ticket (404 otherwise), file into your own folder, duplicate → 409 | ✅ |
-| `BookmarkFolderService.java` | Logic — create/rename/recolour/delete folders; deleting unfiles its bookmarks rather than deleting them | ✅ |
-| `FeedbackService.java` | Logic — feedback only on your own RESOLVED ticket, edit later, per-category summary for staff | ✅ |
-| `TicketArchiveService.java` | Logic — archive a RESOLVED or WITHDRAWN ticket, unarchive, list archived tickets | ✅ |
-| `TicketResolutionService.java` | Logic — the owner reads the officer's answer (read-only use of F4's `ResolutionRepository`); staff notes never included | ✅ |
-| `BookmarkController.java` | `/api/bookmarks` — create, list (all or by folder), move to folder, delete | ✅ |
-| `BookmarkFolderController.java` | `/api/bookmark-folders` — create, list with counts, PATCH rename/colour, delete | ✅ |
-| `FeedbackController.java` | `/api/tickets/{id}/feedback` (submit/edit/view) and `/api/feedback/summary` (officer/admin) | ✅ |
-| `TicketArchiveController.java` · `ArchivedTicketListController.java` | `/api/tickets/{id}/archive` (archive/unarchive) and `/api/tickets/archived` (list) | ✅ |
-| `TicketResolutionController.java` | `/api/tickets/{id}/resolution` and `/resolution/attachment` — the student reads/downloads the answer | ✅ |
-| `dto/` | Request/response bodies — no `id`/`studentId` accepted from clients; colour must be `#RRGGBB`, comment ≤ 1000 characters | ✅ |
+| `Bookmark.java` | Entity — a student's saved/bookmarked ticket | ⬜ |
+| `Feedback.java` | Entity — rating/feedback left on a resolved ticket | ⬜ |
+| `BookmarkRepository.java` | Database access for bookmarks | ⬜ |
+| `FeedbackRepository.java` | Database access for feedback | ⬜ |
+| `TicketPortalService.java` | Logic — filtering by status, folder organization, feedback rules | ⬜ |
+| `TicketPortalController.java` | Endpoints for tracking, bookmarking, feedback | ⬜ |
 
 ---
 
