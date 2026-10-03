@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { API, errorMessage, request } from '../../api.js'
-import { Field, Notice, StatusPill } from '../../components/Bits.jsx'
+import { ConfirmButton, Field, Notice, StatusPill } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 export default function Bookmarks() {
@@ -10,6 +10,7 @@ export default function Bookmarks() {
   const [tickets, setTickets] = useState({})     // id -> TicketResponse
   const [activeFolder, setActiveFolder] = useState('all')   // 'all' | 'none' | folderId
   const [newFolderName, setNewFolderName] = useState('')
+  const [newFolderColour, setNewFolderColour] = useState('#155446')
   const [renaming, setRenaming] = useState(null)   // folder id being renamed
   const [renameValue, setRenameValue] = useState('')
   const [notice, setNotice] = useState(null)
@@ -40,7 +41,8 @@ export default function Bookmarks() {
     event.preventDefault()
     if (!newFolderName.trim()) return
     setBusy('create-folder')
-    const result = await request(API.bookmarkFolders, { method: 'POST', body: { name: newFolderName.trim() } })
+    setNotice(null)
+    const result = await request(API.bookmarkFolders, { method: 'POST', body: { name: newFolderName.trim(), colour: newFolderColour.toUpperCase() } })
     if (result.ok) {
       setFolders(current => [...current, result.data])
       setNewFolderName('')
@@ -136,7 +138,7 @@ export default function Bookmarks() {
                   </div>
                 ) : (
                   <div className="pref__text">
-                    <strong>{folder.name}</strong>
+                    <strong>{folder.colour && <span className="swatch" style={{ background: folder.colour }} />}{folder.name}</strong>
                     <span>{folder.bookmarkCount} bookmark{folder.bookmarkCount === 1 ? '' : 's'}</span>
                   </div>
                 )}
@@ -152,9 +154,10 @@ export default function Bookmarks() {
                     <>
                       <button type="button" className="text-link" style={{ background: 'none', border: 0, cursor: 'pointer' }}
                               onClick={() => { setRenaming(folder.id); setRenameValue(folder.name) }}>Rename</button>
-                      <button type="button" className="danger-link" style={{ background: 'none', border: 0, cursor: 'pointer' }}
-                              disabled={busy === 'delete-folder-' + folder.id}
-                              onClick={() => deleteFolder(folder.id)}>Delete</button>
+                      <ConfirmButton label="Delete" confirmLabel="Yes, delete"
+                                     question={'Delete "' + folder.name + '"? Its bookmarks are kept, unfiled.'}
+                                     busy={busy === 'delete-folder-' + folder.id}
+                                     onConfirm={() => deleteFolder(folder.id)} />
                     </>
                   )}
                 </div>
@@ -162,8 +165,11 @@ export default function Bookmarks() {
             ))}
 
             <form className="btn-row" style={{ marginTop: 18 }} onSubmit={createFolder}>
-              <input type="text" placeholder="New folder name" value={newFolderName}
+              <input type="text" placeholder="New folder name" value={newFolderName} maxLength={60}
+                     aria-label="New folder name"
                      onChange={e => setNewFolderName(e.target.value)} style={{ maxWidth: 240 }} />
+              <input type="color" value={newFolderColour} aria-label="Folder colour"
+                     onChange={e => setNewFolderColour(e.target.value)} />
               <button type="submit" className="btn btn--ghost" disabled={busy === 'create-folder'}>Add folder</button>
             </form>
           </section>
@@ -176,7 +182,9 @@ export default function Bookmarks() {
               <button type="button" className="chip" aria-current={activeFolder === 'none'} onClick={() => setActiveFolder('none')}>Unfiled</button>
               {folders.map(f => (
                 <button type="button" key={f.id} className="chip" aria-current={activeFolder === f.id}
-                        onClick={() => setActiveFolder(f.id)}>{f.name}</button>
+                        onClick={() => setActiveFolder(f.id)}>
+                  {f.colour && <span className="swatch" style={{ background: f.colour }} />}{f.name}
+                </button>
               ))}
             </div>
 

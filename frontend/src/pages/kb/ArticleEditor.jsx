@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { API, errorMessage, fieldErrors, request } from '../../api.js'
-import { Field, Notice, StatusPill } from '../../components/Bits.jsx'
+import { Field, Notice, StatusPill, TextAreaField } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 export default function ArticleEditor() {
@@ -58,7 +58,20 @@ export default function ArticleEditor() {
 
   async function save(event) {
     event.preventDefault()
-    setErrors({}); setNotice(null); setBusy('save')
+    setErrors({}); setNotice(null)
+
+    // An article must sit in at least one category, or students can never
+    // find it by browsing (F5, and the server says the same with a 400).
+    // Title and body are checked too, so a blank form marks all three at once.
+    const missing = {}
+    if (!form.title.trim()) missing.title = 'Give the article a title.'
+    if (!form.body.trim()) missing.body = 'Write the article.'
+    if (form.categoryIds.length === 0) missing.categoryIds = 'Choose at least one category.'
+    if (Object.keys(missing).length) {
+      setErrors(missing)
+      return
+    }
+    setBusy('save')
 
     const payload = {
       title: form.title.trim(),
@@ -79,7 +92,7 @@ export default function ArticleEditor() {
         return
       }
 
-      const fields = fieldErrors(result, ['title', 'body'])
+      const fields = fieldErrors(result, ['title', 'body', 'categoryIds'])
       if (Object.keys(fields).length) setErrors(fields)
       else setNotice({ kind: 'error', text: errorMessage(result, 'We could not save this article.') })
     } catch {
@@ -155,27 +168,25 @@ export default function ArticleEditor() {
                      value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                      error={errors.title} />
 
-              <div className="field">
-                <label htmlFor="body">Body</label>
-                <textarea id="body" rows={10} value={form.body}
-                          onChange={e => setForm(f => ({ ...f, body: e.target.value }))} />
-                <p className="field-error">{errors.body || ''}</p>
-              </div>
+              <TextAreaField id="body" label="Body" rows={10} value={form.body}
+                             onChange={e => setForm(f => ({ ...f, body: e.target.value }))} error={errors.body} />
 
               <Field id="tags" label="Tags" type="text" hint="Comma-separated, e.g. wifi, printing, vpn"
                      value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} />
 
-              <div className="field">
+              <div className={'field' + (errors.categoryIds ? ' is-invalid' : '')}>
                 <label>Categories</label>
                 <div className="chips">
                   {allCategories.map(c => (
                     <button type="button" key={c.id} className="chip"
                             aria-current={form.categoryIds.includes(c.id)}
+                            aria-pressed={form.categoryIds.includes(c.id)}
                             onClick={() => toggleCategory(c.id)}>
                       {c.name} — {c.departmentName}
                     </button>
                   ))}
                 </div>
+                <p className="field-error">{errors.categoryIds || ''}</p>
               </div>
 
               <div className="btn-row">

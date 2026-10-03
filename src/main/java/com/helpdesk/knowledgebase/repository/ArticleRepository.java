@@ -1,4 +1,3 @@
-
 package com.helpdesk.knowledgebase.repository;
 
 import com.helpdesk.knowledgebase.entity.Article;
@@ -66,6 +65,14 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
      * tag, and without DISTINCT the same article would come back multiple
      * times for a term that hits two of its own tags.
      *
+     * ESCAPE '\\' (a single backslash, in the SQL text this produces) after
+     * each LIKE: without it, a search for the literal term "100%" would use
+     * % as a wildcard and match "100" followed by anything, not just the
+     * string "100%" - F5-N4. ArticleSearchService.escapeLikeWildcards is the
+     * other half of this fix: it doubles any backslash already in the term
+     * and escapes % and _ with \ before the term ever reaches here, so this
+     * clause has something consistent to interpret.
+     *
      * Known weakness, said up front rather than hidden: LIKE '%term%' cannot
      * use an index, so this is a full scan of title/body/tags on every call,
      * and it also returns every match unpaged - ArticleSearchService pages
@@ -80,9 +87,9 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
             SELECT DISTINCT a FROM Article a
             LEFT JOIN a.tags t
             WHERE a.status = com.helpdesk.knowledgebase.entity.ArticleStatus.PUBLISHED
-              AND (LOWER(a.title) LIKE LOWER(CONCAT('%', :term, '%'))
-                OR LOWER(a.body)  LIKE LOWER(CONCAT('%', :term, '%'))
-                OR LOWER(t)       LIKE LOWER(CONCAT('%', :term, '%')))
+              AND (LOWER(a.title) LIKE LOWER(CONCAT('%', :term, '%')) ESCAPE '\\'
+                OR LOWER(a.body)  LIKE LOWER(CONCAT('%', :term, '%')) ESCAPE '\\'
+                OR LOWER(t)       LIKE LOWER(CONCAT('%', :term, '%')) ESCAPE '\\')
             """)
     List<Article> searchOneTerm(@Param("term") String term);
 

@@ -1,6 +1,7 @@
 package com.helpdesk.knowledgebase.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
 import java.util.Set;
@@ -32,15 +33,26 @@ public record ArticleRequest(
         // here, so the same normalisation logic isn't duplicated per caller.
         Set<String> tags,
 
-        // Resolved through ReferenceDataService.requireCategory(id) in the
-        // service layer, which throws ResourceNotFoundException (-> 404) for
-        // an id that doesn't exist, rather than silently ignoring it.
+        // DB requirement: "each article in one or more categories" - zero
+        // was accepted before this (F5 DB requirement gap). @NotEmpty works
+        // against the compact constructor below, which turns a null
+        // categoryIds into Set.of(): without that normalisation, @NotEmpty
+        // would only catch an explicit [] in the request body and let a
+        // missing field through as null. @Size(max = 5) is a sanity bound,
+        // not a spec requirement - an article genuinely spanning more than
+        // five categories is more likely a mis-tagged article than a real
+        // one. Resolved through ReferenceDataService.requireCategory(id) in
+        // the service layer, which throws ResourceNotFoundException (-> 404)
+        // for an id that doesn't exist, rather than silently ignoring it.
+        @NotEmpty(message = "Choose at least one category")
+        @Size(max = 5)
         Set<Long> categoryIds
 ) {
     public ArticleRequest {
         // Records are immutable, but callers may still pass null for the two
         // optional collections - normalise here so the service never has to
-        // null-check them.
+        // null-check them. categoryIds null -> Set.of() specifically is what
+        // lets @NotEmpty catch an omitted field, not just an explicit [].
         if (tags == null) {
             tags = Set.of();
         }

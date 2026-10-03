@@ -5,6 +5,7 @@ import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.knowledgebase.dto.ArticleSummaryResponse;
 import com.helpdesk.knowledgebase.entity.Article;
 import com.helpdesk.knowledgebase.entity.ArticleBookmark;
+import com.helpdesk.knowledgebase.entity.ArticleStatus;
 import com.helpdesk.knowledgebase.repository.ArticleBookmarkRepository;
 import com.helpdesk.knowledgebase.repository.ArticleRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -42,7 +43,18 @@ public class ArticleBookmarkService {
 
     @Transactional
     public void bookmark(Long articleId, Long studentId) {
-        if (!articleRepository.existsById(articleId)) {
+        // F5-N2: existsById only checked the article was there, not that it
+        // was PUBLISHED - so a student who learned a draft's id (from a
+        // related-articles list, say, or just by guessing sequential ids)
+        // could bookmark and then read a draft through
+        // GET /api/articles/bookmarked, bypassing getById's own 404. Loading
+        // the article and checking status here closes that: a draft or
+        // archived article is reported 404, the same code a nonexistent id
+        // gets, so a student can't tell "doesn't exist" from "exists but you
+        // can't see it" - same reasoning as ArticleService.getById.
+        Article article = articleRepository.findById(articleId)
+                .orElseThrow(() -> new ResourceNotFoundException("Article not found: " + articleId));
+        if (article.getStatus() != ArticleStatus.PUBLISHED) {
             throw new ResourceNotFoundException("Article not found: " + articleId);
         }
         if (bookmarkRepository.existsByStudentIdAndArticleId(studentId, articleId)) {
@@ -72,6 +84,14 @@ public class ArticleBookmarkService {
      * Caller's own saved articles only - studentId always comes from the
      * session in ArticleBookmarkController, never from a path or query
      * parameter, so there is no way to pass another student's id in here.
+     *
+     * F5-N2: only PUBLISHED articles are returned, even though the
+     * underlying bookmark row is never deleted for a non-published one (see
+     * bookmark() above - archiving doesn't delete the row, so this method,
+     * not the data, is what hides it). If the article is republished later,
+     * the student's save simply reappears here with no re-save needed -
+     * that's the point of filtering at read time instead of deleting the
+     * bookmark when the article is archived.
      */
     @Transactional(readOnly = true)
     public List<ArticleSummaryResponse> listBookmarked(Long studentId) {
@@ -88,7 +108,7 @@ public class ArticleBookmarkService {
         var byId = articles.stream().collect(Collectors.toMap(Article::getId, a -> a));
         return articleIds.stream()
                 .map(byId::get)
-                .filter(a -> a != null)
+                .filter(a -> a != null && a.getStatus() == ArticleStatus.PUBLISHED)
                 .map(ArticleSummaryResponse::from)
                 .collect(Collectors.toList());
     }

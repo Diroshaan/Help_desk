@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { API, formatDateTime, request, withQuery } from '../../api.js'
-import { Field, Notice, Row, SelectField, StatusPill } from '../../components/Bits.jsx'
+import { Field, Notice, Row, SelectField, StatusPill, Tabs, humanize } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 const STATUSES = [
@@ -30,8 +30,17 @@ export default function TicketList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // Active (search, which already leaves archived tickets out) or Archived
+  // (F3's GET /api/tickets/archived). Loaded once so the tab can show a count.
+  const [view, setView] = useState('active')
+  const [archived, setArchived] = useState(undefined)  // undefined loading, array, 'off' (not on server), null (failed)
+
   useEffect(() => {
     request(API.ticketCategories).then(r => { if (r.ok) setCategories(r.data || []) })
+    request(API.ticketsArchived).then(r => {
+      // 400/404/405: F3's archive list is not on the server yet.
+      setArchived(r.ok && Array.isArray(r.data) ? r.data : ([400, 404, 405].includes(r.status) ? 'off' : null))
+    }).catch(() => setArchived(null))
   }, [])
 
   useEffect(() => {
@@ -67,6 +76,32 @@ export default function TicketList() {
             <Link className="btn btn--primary" to="/tickets/new">Submit a ticket</Link>
           </div>
 
+          <Tabs label="Ticket view" value={view} onChange={setView}
+                tabs={[
+                  { value: 'active', label: 'Active', count: result ? result.totalElements : undefined },
+                  { value: 'archived', label: 'Archived', count: Array.isArray(archived) ? archived.length : undefined }
+                ]} />
+
+          {view === 'archived' ? (
+            <section className="section">
+              {archived === null && (
+                <Notice>Archived tickets could not be loaded. Please try again in a moment.</Notice>
+              )}
+              {archived === 'off' && (
+                <p className="empty">Archiving is not available yet.</p>
+              )}
+              {Array.isArray(archived) && archived.length === 0 && (
+                <p className="empty">Nothing archived. When a ticket is resolved or withdrawn you can archive it from its page to tidy this list.</p>
+              )}
+              {Array.isArray(archived) && archived.map(ticket => (
+                <Row key={ticket.id} to={'/tickets/' + ticket.id}
+                     title={ticket.subject}
+                     subtitle={ticket.category + ' · Opened ' + formatDateTime(ticket.createdAt)}
+                     meta={<span>{humanize(ticket.priority)}</span>}
+                     right={<StatusPill value={ticket.status} />} />
+              ))}
+            </section>
+          ) : (<>
           <section className="section">
             <h2>Filter</h2>
             <div className="field-row">
@@ -92,7 +127,11 @@ export default function TicketList() {
             {!error && loading && <p className="empty">Loading tickets…</p>}
 
             {!error && !loading && tickets.length === 0 && (
-              <p className="empty">No tickets match those filters.</p>
+              <p className="empty">
+                {Object.values(filters).some(Boolean)
+                  ? 'No tickets match those filters.'
+                  : 'You have no active tickets. Submit one and it will appear here.'}
+              </p>
             )}
 
             {!error && !loading && tickets.length > 0 && (
@@ -101,7 +140,7 @@ export default function TicketList() {
                   <Row key={ticket.id} to={'/tickets/' + ticket.id}
                        title={ticket.subject}
                        subtitle={ticket.category + ' · Opened ' + formatDateTime(ticket.createdAt)}
-                       meta={<span>{ticket.priority}</span>}
+                       meta={<span>{humanize(ticket.priority)}</span>}
                        right={<StatusPill value={ticket.status} />} />
                 ))}
               </div>
@@ -117,6 +156,7 @@ export default function TicketList() {
               </div>
             )}
           </section>
+          </>)}
         </div>
       </main>
     </div>

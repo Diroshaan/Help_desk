@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { API, errorMessage, request } from '../api.js'
 import { BrandPanel, Field, Notice } from '../components/Bits.jsx'
 import { useSession } from '../hooks/useSession.jsx'
+import { afterLogin, nextFrom } from '../routes.jsx'
 
 const POINTS = [
   'Tickets routed automatically to the department that owns them.',
@@ -12,7 +13,9 @@ const POINTS = [
 
 export default function Login() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { refresh } = useSession()
+  const next = nextFrom(location.search)
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -89,8 +92,11 @@ export default function Login() {
         /* Re-ask who is logged in before navigating, so the welcome page's top
            bar already knows the answer when it renders. Without this it would
            paint Login and Register for a moment and then swap. */
-        await refresh()
-        navigate('/')
+        // Each role lands on its own page: the one they were trying to open
+        // (?next=), or their home - the student's tickets, the officer's
+        // queue, the administrator's dashboard.
+        const me = await refresh()
+        navigate(afterLogin(me?.role, location.search), { replace: true })
         return
       }
 
@@ -121,7 +127,9 @@ export default function Login() {
           <Link className="back-link" to="/">&larr; Back to help desk</Link>
 
           <h1>Log in</h1>
-          <p className="lede">Use your Student ID or university email.</p>
+          <p className="lede">
+            {next ? 'Log in to continue. We will take you straight back.' : 'Use your Student ID or university email.'}
+          </p>
 
           {expired && !notice && (
             <Notice kind="warn" style={{ marginTop: 22 }}>
@@ -167,7 +175,7 @@ export default function Login() {
 
           <hr className="rule" />
 
-          <p className="foot-note">New here? <Link to="/register">Create an account</Link></p>
+          <p className="foot-note">New here? <Link to={next ? '/register?next=' + encodeURIComponent(next) : '/register'}>Create an account</Link></p>
         </div>
       </main>
     </div>

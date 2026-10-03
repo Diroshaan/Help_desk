@@ -35,6 +35,11 @@ public class ArticleController {
      * GET /api/articles?q=&category=&page=0&size=20 - PUBLISHED only. Both
      * q and category are optional; q missing means "everything published",
      * not an error (F5_Knowledge_Base_Spec.md section 6).
+     *
+     * page and size are clamped (F5-N3) before PageRequest.of() ever sees
+     * them - page to 0-10,000, size to 1-50 - so a request for size=2000000
+     * or a negative page can't force a disproportionate amount of work back
+     * through ArticleSearchService.
      */
     @GetMapping("/api/articles")
     public Page<ArticleSummaryResponse> list(
@@ -42,7 +47,8 @@ public class ArticleController {
             @RequestParam(required = false) Long category,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return searchService.search(q, category, PageRequest.of(page, size));
+        return searchService.search(q, category,
+                PageRequest.of(PageBounds.clampPage(page), PageBounds.clampSize(size)));
     }
 
     /**

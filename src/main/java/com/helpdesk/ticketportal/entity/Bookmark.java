@@ -5,7 +5,12 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "bookmarks")
+// One bookmark per (student, ticket), enforced by the database: the existsBy...
+// check in BookmarkService can be raced by two clicks at once (#42).
+@Table(
+    name = "bookmarks",
+    uniqueConstraints = @UniqueConstraint(name = "uq_bookmark_student_ticket", columnNames = {"student_id", "ticket_id"})
+)
 public class Bookmark {
 
     @Id

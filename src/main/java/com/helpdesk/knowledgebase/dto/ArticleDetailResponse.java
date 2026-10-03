@@ -35,17 +35,40 @@ public record ArticleDetailResponse(
 ) {
 
     /**
-     * Builds the full detail view, including relatedArticles as summaries.
+     * "Show all" - every related article regardless of status, for the
+     * officer/admin view where managing the links (deciding whether a draft
+     * is worth pointing at yet) is exactly the point.
+     */
+    public static ArticleDetailResponse from(Article article) {
+        return from(article, false);
+    }
+
+    /**
+     * F5-N1 fix: a related article's own status was never checked here,
+     * only the top-level article's - so a published article linked to a
+     * draft (or one later archived) leaked the draft's title through this
+     * list, even though GET /api/articles/{draftId} itself correctly 404s
+     * for a student. {@code publishedRelatedOnly} filters relatedArticles to
+     * PUBLISHED before mapping, when true.
+     *
+     * Filtered at *read* time, not at link time - addRelated still allows
+     * linking any status, deliberately. An article PUBLISHED today can be
+     * ARCHIVED tomorrow, and a link made while both sides were published
+     * shouldn't need every existing link revisited the moment one side's
+     * status changes; checking status on every read is the simpler rule
+     * that stays correct automatically as statuses move.
+     *
      * Must run inside the same transaction that loaded {@code article} - see
      * the same warning on ArticleSummaryResponse.from().
      */
-    public static ArticleDetailResponse from(Article article) {
+    public static ArticleDetailResponse from(Article article, boolean publishedRelatedOnly) {
         List<String> categoryNames = article.getCategories().stream()
                 .map(c -> c.getName())
                 .sorted()
                 .collect(Collectors.toList());
 
         List<ArticleSummaryResponse> related = article.getRelatedArticles().stream()
+                .filter(r -> !publishedRelatedOnly || r.getStatus() == ArticleStatus.PUBLISHED)
                 .map(ArticleSummaryResponse::from)
                 .collect(Collectors.toList());
 
@@ -56,9 +79,6 @@ public record ArticleDetailResponse(
                 article.getStatus(),
                 article.getTags(),
                 categoryNames,
-                // See the same Officer.getFullName() note in
-                // ArticleSummaryResponse.from() - depends on Diroshaan's
-                // shared-file PR, not yet on develop.
                 article.getAuthor().getFullName(),
                 related,
                 article.getCreatedAt(),
