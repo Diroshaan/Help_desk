@@ -65,7 +65,8 @@ export default function TicketNew() {
 
           <section className="section">
             <form className="form" onSubmit={handleSubmit} noValidate>
-              <Field id="subject" label="Subject" type="text"
+              <Field id="subject" label="Subject" type="text" maxLength={150}
+                     placeholder="e.g. Can't log in to the LMS after the password reset"
                      value={form.subject} onChange={set('subject')} error={errors.subject} />
 
               <div className="field-row">
@@ -78,8 +79,10 @@ export default function TicketNew() {
 
               <div className="field">
                 <label htmlFor="description">Description</label>
-                <textarea id="description" name="description" rows={6}
+                <textarea id="description" name="description" rows={6} maxLength={2000}
+                          placeholder="What happened, what you expected, and anything you already tried."
                           value={form.description} onChange={set('description')} />
+                <p className="hint">You can attach screenshots or documents on the next page.</p>
                 <p className="field-error">{errors.description || ''}</p>
               </div>
 
