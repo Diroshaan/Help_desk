@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { SessionProvider, useSession } from './hooks/useSession.jsx'
+import { Link } from 'react-router-dom'
 import { ROUTES, afterLogin, homeFor, loginFor } from './routes.jsx'
 import './styles/app.css'
 
@@ -115,10 +116,26 @@ function AnimatedRoutes() {
             } />
           ))}
 
-          {/* Anything unrecognised goes home rather than showing a blank page. */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* An address that does not exist says so, with a way back,
+              instead of silently dropping the visitor on the home page. */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </motion.div>
     </AnimatePresence>
+  )
+}
+
+function NotFound() {
+  const { status, role } = useSession()
+  const home = status === 'signedIn' ? homeFor(role) : '/'
+  return (
+    <main className="not-found">
+      <span className="code">404</span>
+      <h1>We could not find that page.</h1>
+      <p>The link may be out of date, or the page may have moved.</p>
+      <div className="btn-row">
+        <Link className="btn btn--primary" to={home}>{status === 'signedIn' ? 'Go to my home page' : 'Go to the help desk'}</Link>
+      </div>
+    </main>
   )
 }
