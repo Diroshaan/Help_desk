@@ -17,6 +17,14 @@ import com.helpdesk.queue.entity.StaffNote;
 import com.helpdesk.queue.service.QueueService;
 import com.helpdesk.queue.service.ResolutionService;
 import com.helpdesk.queue.service.StaffNoteService;
+import com.helpdesk.ticket.dto.AttachmentResponse;
+import com.helpdesk.ticket.dto.TicketStatusChangeResponse;
+import com.helpdesk.ticket.entity.Attachment;
+import com.helpdesk.ticket.service.AttachmentService;
+import com.helpdesk.ticket.service.TicketHistoryService;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import java.nio.charset.StandardCharsets;
 import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticket.entity.TicketStatus;
 import jakarta.validation.Valid;
@@ -47,14 +55,19 @@ public class QueueController {
     private final ResolutionService resolutionService;
     private final StaffNoteService staffNoteService;
     private final AppUserRepository appUserRepository;
+    private final AttachmentService attachmentService;
+    private final TicketHistoryService ticketHistoryService;
 
     @Autowired
     public QueueController(QueueService queueService, ResolutionService resolutionService,
-                            StaffNoteService staffNoteService, AppUserRepository appUserRepository) {
+                            StaffNoteService staffNoteService, AppUserRepository appUserRepository,
+                            AttachmentService attachmentService, TicketHistoryService ticketHistoryService) {
         this.queueService = queueService;
         this.resolutionService = resolutionService;
         this.staffNoteService = staffNoteService;
         this.appUserRepository = appUserRepository;
+        this.attachmentService = attachmentService;
+        this.ticketHistoryService = ticketHistoryService;
     }
 
     // List/filter (departmentId/status) or search (studentId) the queue.
@@ -124,6 +137,52 @@ public class QueueController {
     public ResponseEntity<Void> revokeResolution(@PathVariable Long ticketId, Authentication authentication) {
         resolutionService.revoke(currentOfficerId(authentication), ticketId);
         return ResponseEntity.noContent().build();
+    }
+
+    // The officer's own resolution file (students use /api/tickets/{id}/resolution/attachment).
+    @GetMapping("/{ticketId}/resolution/attachment")
+    public ResponseEntity<byte[]> downloadResolutionAttachment(@PathVariable Long ticketId,
+                                                                 Authentication authentication) {
+        Resolution resolution = resolutionService.getByTicketId(currentOfficerId(authentication), ticketId);
+        if (resolution.getAttachmentData() == null) {
+            throw new ResourceNotFoundException("Resolution has no attachment");
+        }
+        return fileResponse(resolution.getAttachmentFileType(), resolution.getAttachmentFileName(),
+                resolution.getAttachmentData());
+    }
+
+    // The student's attachments, scoped by the officer's department first.
+    @GetMapping("/{ticketId}/attachments")
+    public List<AttachmentResponse> listAttachments(@PathVariable Long ticketId, Authentication authentication) {
+        queueService.getQueuedTicket(currentOfficerId(authentication), ticketId);
+        return attachmentService.listForTicket(ticketId);
+    }
+
+    @GetMapping("/{ticketId}/attachments/{attachmentId}")
+    public ResponseEntity<byte[]> downloadAttachment(@PathVariable Long ticketId, @PathVariable Long attachmentId,
+                                                       Authentication authentication) {
+        queueService.getQueuedTicket(currentOfficerId(authentication), ticketId);
+        Attachment attachment = attachmentService.getForTicket(ticketId, attachmentId);
+        return fileResponse(attachment.getFileType(), attachment.getFileName(), attachment.getData());
+    }
+
+    // The ticket's status timeline (F2's history), scoped by department first.
+    @GetMapping("/{ticketId}/history")
+    public List<TicketStatusChangeResponse> history(@PathVariable Long ticketId, Authentication authentication) {
+        queueService.getQueuedTicket(currentOfficerId(authentication), ticketId);
+        return ticketHistoryService.listForTicket(ticketId);
+    }
+
+    // attachment, not inline: a file someone else uploaded should download, never
+    // render inside our own page. ContentDisposition builds the header safely
+    // (quotes, line breaks, non-English names).
+    private ResponseEntity<byte[]> fileResponse(String type, String name, byte[] data) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(type))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(name, StandardCharsets.UTF_8).build().toString())
+                .header("X-Content-Type-Options", "nosniff")
+                .body(data);
     }
 
     @PostMapping("/{ticketId}/notes")

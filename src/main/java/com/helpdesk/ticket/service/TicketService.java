@@ -3,6 +3,7 @@ package com.helpdesk.ticket.service;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.reference.repository.CategoryRepository;
 import com.helpdesk.notification.event.TicketSubmittedEvent;
+import com.helpdesk.queue.service.RoutingService;
 import com.helpdesk.ticket.dto.TicketCreateRequest;
 import com.helpdesk.ticket.dto.TicketUpdateRequest;
 import com.helpdesk.ticket.entity.Ticket;
@@ -43,13 +44,18 @@ public class TicketService {
     // officer-made transitions, which TicketHistoryRecorder observes instead.
     private final TicketHistoryService historyService;
 
+    // Category-based routing (WBHD-25), agreed with Chamikara (contract C4).
+    private final RoutingService routingService;
+
     @Autowired
     public TicketService(TicketRepository ticketRepository, CategoryRepository categoryRepository,
-                         ApplicationEventPublisher eventPublisher, TicketHistoryService historyService) {
+                         ApplicationEventPublisher eventPublisher, TicketHistoryService historyService,
+                         RoutingService routingService) {
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
         this.eventPublisher = eventPublisher;
         this.historyService = historyService;
+        this.routingService = routingService;
     }
 
     // Create
@@ -64,6 +70,7 @@ public class TicketService {
         ticket.setCategory(request.getCategory());
         ticket.setPriority(request.getPriority());
         ticket.setStatus(TicketStatus.OPEN);
+        ticket.setAssignedDepartmentId(routingService.departmentFor(request.getCategory()));
 
         Ticket saved = ticketRepository.save(ticket);
 

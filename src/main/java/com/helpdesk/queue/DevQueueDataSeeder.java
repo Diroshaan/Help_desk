@@ -40,7 +40,8 @@ import java.util.Set;
  * officer, regardless of what else has been seeded.
  */
 @Component
-@Profile("!test")
+// default = no profile = H2 only; "!test" silently included mysql, the shared database
+@Profile("default")
 public class DevQueueDataSeeder implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DevQueueDataSeeder.class);

@@ -32,7 +32,7 @@ public class StaffNoteService {
 
     @Transactional
     public StaffNote create(Long officerId, Long ticketId, String note) {
-        queueService.getQueuedTicket(officerId, ticketId);
+        queueService.getWorkableTicket(officerId, ticketId);
 
         if (note == null || note.isBlank()) {
             throw new ValidationException("Note text is required");
@@ -54,7 +54,7 @@ public class StaffNoteService {
     // Delete/purge
     @Transactional
     public void delete(Long officerId, Long ticketId, Long noteId) {
-        queueService.getQueuedTicket(officerId, ticketId);
+        queueService.getWorkableTicket(officerId, ticketId);
 
         StaffNote note = staffNoteRepository.findById(noteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Note not found"));

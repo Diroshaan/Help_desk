@@ -2,6 +2,9 @@ package com.helpdesk.queue.service;
 
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
+import com.helpdesk.common.files.FileTypeDetector;
+import com.helpdesk.common.user.entity.Officer;
+import com.helpdesk.common.user.repository.OfficerRepository;
 import com.helpdesk.queue.entity.Resolution;
 import com.helpdesk.queue.repository.ResolutionRepository;
 import com.helpdesk.ticket.entity.Ticket;
@@ -16,7 +19,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
@@ -42,19 +44,19 @@ public class ResolutionService {
     // utility class and duplicating two constants is cheaper than
     // introducing one for this alone.
     private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
-    private static final Set<String> ALLOWED_TYPES = Set.of(
-            "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp");
 
     private final ResolutionRepository resolutionRepository;
     private final QueueService queueService;
     private final FeedbackRepository feedbackRepository;
+    private final OfficerRepository officerRepository;
 
     @Autowired
     public ResolutionService(ResolutionRepository resolutionRepository, QueueService queueService,
-                              FeedbackRepository feedbackRepository) {
+                              FeedbackRepository feedbackRepository, OfficerRepository officerRepository) {
         this.resolutionRepository = resolutionRepository;
         this.queueService = queueService;
         this.feedbackRepository = feedbackRepository;
+        this.officerRepository = officerRepository;
     }
 
     // Create - also moves the ticket to RESOLVED and stamps resolvedAt.
@@ -63,7 +65,7 @@ public class ResolutionService {
     // OPEN -> IN_PROGRESS -> RESOLVED order intact end to end.
     @Transactional
     public Resolution create(Long officerId, Long ticketId, String responseText, MultipartFile attachment) {
-        Ticket ticket = queueService.getQueuedTicket(officerId, ticketId);
+        Ticket ticket = queueService.getWorkableTicket(officerId, ticketId);
         if (ticket.getStatus() != TicketStatus.IN_PROGRESS) {
             throw new ValidationException("A ticket can only be resolved while it is in progress");
         }
@@ -78,7 +80,7 @@ public class ResolutionService {
         applyAttachment(resolution, attachment);
         resolution = resolutionRepository.save(resolution);
 
-        queueService.markResolved(ticket);
+        queueService.markResolved(ticket, officerId);
         return resolution;
     }
 
@@ -100,8 +102,9 @@ public class ResolutionService {
     // Update - blocked once the student has left feedback (see class comment)
     @Transactional
     public Resolution edit(Long officerId, Long ticketId, String responseText, MultipartFile attachment) {
-        queueService.getQueuedTicket(officerId, ticketId);
+        queueService.getWorkableTicket(officerId, ticketId);
         Resolution resolution = findByTicketId(ticketId);
+        requireAuthorOrSupervisor(resolution, officerId);
         requireNotFinalized(ticketId);
 
         applyResponseText(resolution, responseText);
@@ -115,17 +118,34 @@ public class ResolutionService {
     // Same finalization guard as edit.
     @Transactional
     public void revoke(Long officerId, Long ticketId) {
-        Ticket ticket = queueService.getQueuedTicket(officerId, ticketId);
+        Ticket ticket = queueService.getWorkableTicket(officerId, ticketId);
         Resolution resolution = findByTicketId(ticketId);
+        requireAuthorOrSupervisor(resolution, officerId);
         requireNotFinalized(ticketId);
 
         resolutionRepository.delete(resolution);
-        queueService.reopen(ticket);
+        queueService.reopen(ticket, officerId);
     }
 
     private Resolution findByTicketId(Long ticketId) {
         return resolutionRepository.findByTicketId(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Resolution not found"));
+    }
+
+    // Only the officer who wrote the answer (or that officer's supervisor) may
+    // change it; otherwise the response would still credit the original author
+    // with words they never wrote.
+    private void requireAuthorOrSupervisor(Resolution resolution, Long officerId) {
+        if (resolution.getOfficerId().equals(officerId)) {
+            return;
+        }
+        boolean isSupervisor = officerRepository.findById(resolution.getOfficerId())
+                .map(Officer::getSupervisor)
+                .map(supervisor -> supervisor.getId().equals(officerId))
+                .orElse(false);
+        if (!isSupervisor) {
+            throw new ValidationException("Only the officer who wrote this answer can change it");
+        }
     }
 
     private void requireNotFinalized(Long ticketId) {
@@ -150,18 +170,22 @@ public class ResolutionService {
         if (attachment.getSize() > MAX_FILE_SIZE) {
             throw new ValidationException("File exceeds the 5MB limit");
         }
-        if (attachment.getContentType() == null || !ALLOWED_TYPES.contains(attachment.getContentType())) {
-            throw new ValidationException("Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed");
-        }
 
-        String fileName = attachment.getOriginalFilename();
-        resolution.setAttachmentFileName((fileName == null || fileName.isBlank()) ? "attachment" : fileName);
-        resolution.setAttachmentFileType(attachment.getContentType());
-        resolution.setAttachmentFileSize(attachment.getSize());
+        byte[] bytes;
         try {
-            resolution.setAttachmentData(attachment.getBytes());
+            bytes = attachment.getBytes();
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read uploaded file", e);
         }
+        // The type comes from the file's own bytes, never from the client's label.
+        String type = FileTypeDetector.detect(bytes, FileTypeDetector.ATTACHMENT_TYPES)
+                .orElseThrow(() -> new ValidationException(
+                        "Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed"));
+
+        String fileName = attachment.getOriginalFilename();
+        resolution.setAttachmentFileName((fileName == null || fileName.isBlank()) ? "attachment" : fileName);
+        resolution.setAttachmentFileType(type);
+        resolution.setAttachmentFileSize(attachment.getSize());
+        resolution.setAttachmentData(bytes);
     }
 }

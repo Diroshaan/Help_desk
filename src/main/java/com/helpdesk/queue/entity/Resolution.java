@@ -47,7 +47,8 @@ public class Resolution {
 
     private String attachmentFileType;
 
-    @Lob
+    // Explicit MEDIUMBLOB: a bare @Lob byte[] is TINYBLOB (255 bytes) on MySQL.
+    @Column(name = "attachment_data", columnDefinition = "MEDIUMBLOB")
     private byte[] attachmentData;
 
     private Long attachmentFileSize;

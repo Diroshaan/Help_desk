@@ -175,6 +175,12 @@ public class Officer extends AppUser {
     )
     private Set<Department> departments = new HashSet<>();
 
+    // #46 (F4): each officer is supervised by at most one senior officer - a recursive
+    // one-to-many on officers. Nullable: most officers have no supervisor recorded.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "supervisor_id", foreignKey = @ForeignKey(name = "fk_officer_supervisor"))
+    private Officer supervisor;
+
     /**
      * US-04 - "As a help desk officer, I want to update my own profile and
      * notification preferences, so that I'm alerted through my preferred
@@ -289,6 +295,14 @@ public class Officer extends AppUser {
 
     public void setProvisionedBy(Administrator provisionedBy) {
         this.provisionedBy = provisionedBy;
+    }
+
+    public Officer getSupervisor() {
+        return supervisor;
+    }
+
+    public void setSupervisor(Officer supervisor) {
+        this.supervisor = supervisor;
     }
 
     public Set<Department> getDepartments() {
