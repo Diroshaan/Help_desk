@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { SessionProvider, useSession } from './hooks/useSession.jsx'
@@ -34,14 +34,26 @@ export default function App() {
  */
 function ScrollToTop() {
   const { pathname, hash } = useLocation()
+  const lastPath = useRef(pathname)
 
   useEffect(() => {
+    const samePage = lastPath.current === pathname
+    lastPath.current = pathname
     if (hash) {
-      const target = document.getElementById(hash.slice(1))
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth' })
-        return
-      }
+      // Coming from another page (the sidebar's "Browse FAQ"), the page
+      // transition means the target is not on screen yet when this runs, so
+      // the visitor stayed at the top. Look for it every 50 ms for up to a
+      // second, then jump; smooth only when already on the page.
+      let tries = 0
+      const timer = setInterval(() => {
+        const target = document.getElementById(hash.slice(1))
+        if (target || ++tries > 20) {
+          clearInterval(timer)
+          if (target) target.scrollIntoView({ behavior: samePage ? 'smooth' : 'auto', block: 'start' })
+        }
+      }, 50)
+      if (!samePage) window.scrollTo({ top: 0 })
+      return () => clearInterval(timer)
     }
     window.scrollTo({ top: 0 })
   }, [pathname, hash])
@@ -73,6 +85,12 @@ function Protected({ access, children }) {
   }
 
   if (access === 'public') return children
+
+  // A page that is fading out (the address bar already shows the next page)
+  // must never redirect. Without this, "Log out" sent the old page's guard to
+  // "Log in ?next=old page" while the visitor was on their way home.
+  const showing = (window.location.hash.replace(/^#/, '').split('?')[0]) || '/'
+  if (showing !== location.pathname && status !== 'signedIn') return null
 
   if (access === 'guest') {
     // Signed in on the login page: go where they were heading (?next=), or home.
