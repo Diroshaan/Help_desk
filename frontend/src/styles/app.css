@@ -14,8 +14,9 @@
    -------------------------------------------------------------------------- */
 :root {
     /* Brand */
-    --teal:        #1e6454;   /* primary: brand panel, buttons, links        */
-    --teal-press:  #17503f;   /* pressed / hovered primary                   */
+    --teal:        #155446;   /* primary: brand panel, buttons, links        */
+    --teal-press:  #0f4237;   /* pressed / hovered primary                   */
+    --teal-light:  #1d705c;   /* top of the shiny button gradient            */
     --teal-tint:   #eef4f2;   /* very light wash, used behind notices        */
 
     /* Neutrals */
@@ -42,6 +43,22 @@
     --r:   3px;
     --r-lg: 4px;
 
+    /* Rounded controls: every button, text field, dropdown and search bar. */
+    --r-ctl: 10px;
+
+    /* Type: Helvetica for everything people read and type, Archivo for headings. */
+    --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-head: "Archivo", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+    /* The green buttons' shine and glow, and the soft shine on green panels. */
+    --btn-shine: linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 50%);
+    --btn-green: linear-gradient(180deg, var(--teal-light) 0%, var(--teal) 58%, var(--teal-press) 100%);
+    --btn-glow: 0 4px 14px rgba(21, 84, 70, .30);
+    --btn-glow-strong: 0 6px 22px rgba(21, 84, 70, .42);
+    --btn-edge: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.18);
+    --panel-shine: radial-gradient(120% 70% at 0% 0%, rgba(255,255,255,.13) 0%, rgba(255,255,255,0) 60%),
+                   radial-gradient(90% 60% at 100% 100%, rgba(255,255,255,.06) 0%, rgba(255,255,255,0) 60%);
+
     /* Motion */
     --ease: cubic-bezier(.22, .61, .36, 1);
 }
@@ -55,7 +72,7 @@ html { -webkit-text-size-adjust: 100%; }
 
 body {
     margin: 0;
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    font-family: var(--font-body);
     font-size: 15px;
     line-height: 1.55;
     color: var(--ink);
@@ -64,6 +81,9 @@ body {
 }
 
 h1, h2, h3, p, ul, ol, figure { margin: 0; }
+
+/* Headings in Archivo; everything else stays in Helvetica. */
+h1, h2, h3, .brand { font-family: var(--font-head); }
 ul { padding: 0; list-style: none; }
 
 a { color: var(--teal); }
@@ -123,23 +143,31 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---- Left brand panel ---- */
 .brand-panel {
-    background: var(--teal);
+    background: var(--panel-shine), var(--teal);
     color: var(--on-teal);
     padding: 42px 52px;
     display: flex;
     flex-direction: column;
+    /* One screen tall and pinned, so the text sits in the middle of what you
+       can see on every auth page, however long the form beside it is. */
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    align-self: start;
 }
 
 .brand {
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: .06em;
+    font-size: 27px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    line-height: 1.1;
     text-transform: uppercase;
     color: var(--on-teal);
     text-decoration: none;
 }
 
-.brand-panel__body { margin-top: auto; padding-bottom: 8px; }
+/* Vertically centred between the wordmark and the bottom of the panel. */
+.brand-panel__body { margin-block: auto; }
 
 .brand-panel h1 {
     font-size: clamp(34px, 3.4vw, 50px);
@@ -179,12 +207,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
     background: var(--on-teal);
 }
 
-.brand-panel__foot {
-    margin-top: auto;
-    padding-top: 40px;
-    font-size: 13px;
-    color: var(--on-teal-2);
-}
 
 /* ---- Right form side ---- */
 .form-side {
@@ -247,10 +269,10 @@ input[type="password"], select, textarea {
     padding: 12px 13px;
     background: var(--field);
     border: 1px solid transparent;
-    border-radius: var(--r);
+    border-radius: var(--r-ctl);
     font-size: 15px;
     color: var(--ink);
-    transition: background .16s var(--ease), border-color .16s var(--ease);
+    transition: background .16s var(--ease), border-color .16s var(--ease), box-shadow .16s var(--ease);
 }
 
 textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
@@ -261,7 +283,7 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
     outline: none;
     background: var(--surface);
     border-color: var(--teal);
-    box-shadow: 0 0 0 3px rgba(30, 100, 84, .13);
+    box-shadow: 0 0 0 3px rgba(21, 84, 70, .15);
 }
 
 .input:disabled, input:disabled {
@@ -353,29 +375,37 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 13px 22px;
-    border: 1px solid transparent;
-    border-radius: var(--r);
+    padding: 12px 22px;
+    border: 2px solid transparent;
+    border-radius: var(--r-ctl);
+    font-family: var(--font-body);
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1.2;
     cursor: pointer;
     text-decoration: none;
     transition: background .16s var(--ease), color .16s var(--ease),
-                border-color .16s var(--ease), transform .08s var(--ease);
+                border-color .16s var(--ease), box-shadow .2s var(--ease),
+                filter .16s var(--ease), transform .08s var(--ease);
 }
 
 .btn:active { transform: translateY(1px); }
 
-.btn--primary { background: var(--teal); color: #fff; }
-.btn--primary:hover { background: var(--teal-press); }
+/* Green buttons: a glossy top half, a soft glow underneath. */
+.btn--primary {
+    background: var(--btn-shine), var(--btn-green);
+    color: #fff;
+    box-shadow: var(--btn-edge), var(--btn-glow);
+}
+.btn--primary:hover { filter: brightness(1.06); box-shadow: var(--btn-edge), var(--btn-glow-strong); }
 
+/* Outline buttons: a thick 2px border. */
 .btn--ghost {
     background: transparent;
     color: var(--ink);
     border-color: var(--line);
 }
-.btn--ghost:hover { background: #e8e8e6; }
+.btn--ghost:hover { background: var(--teal-tint); border-color: var(--teal); color: var(--teal); }
 
 .btn--danger { background: var(--danger); color: #fff; }
 .btn--danger:hover { background: #8c2b22; }
@@ -386,6 +416,8 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
     opacity: .45;
     cursor: not-allowed;
     transform: none;
+    box-shadow: none;
+    filter: none;
 }
 
 .btn-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -399,7 +431,7 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
     padding: 14px 18px;
     background: var(--teal-tint);
     border-left: 3px solid var(--teal);
-    border-radius: 0 var(--r) var(--r) 0;
+    border-radius: 0 var(--r-ctl) var(--r-ctl) 0;
     font-size: 14.5px;
     line-height: 1.5;
     color: var(--ink);
@@ -432,6 +464,10 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
        a long profile page. */
     background: linear-gradient(to right, var(--teal) 0 258px, var(--page) 258px);
 }
+
+/* The soft shine on the green sidebar, painted on the sidebar itself so it
+   stays put while the content scrolls. */
+.sidebar { background: var(--panel-shine); }
 
 .sidebar {
     color: var(--on-teal);
@@ -729,10 +765,9 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 @media (max-width: 980px) {
     .split { grid-template-columns: 1fr; }
 
-    .brand-panel { padding: 34px 28px 40px; min-height: auto; }
+    .brand-panel { padding: 34px 28px 40px; min-height: auto; position: static; height: auto; }
     .brand-panel h1 { font-size: 32px; max-width: none; margin-top: 26px; }
     .brand-points { margin-top: 24px; max-width: none; }
-    .brand-panel__foot { padding-top: 30px; }
 
     .form-side { padding: 36px 24px 56px; }
     .back-link { margin-bottom: 24px; }
@@ -741,7 +776,7 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
     .shell { grid-template-columns: 1fr; background: var(--page); }
 
     .sidebar {
-        background: var(--teal);
+        background: var(--panel-shine), var(--teal);
         position: static;
         height: auto;
         padding: 22px 24px;
@@ -784,7 +819,8 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 
 .topbar__brand { display: flex; align-items: baseline; gap: 12px; text-decoration: none; }
 
-.topbar__brand .brand { color: var(--teal); font-size: 19px; }
+.topbar__brand { align-items: center; }
+.topbar__brand .brand { color: var(--teal); font-size: 25px; }
 
 .topbar__tag {
     font-size: 12px;
@@ -808,7 +844,7 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 .topbar__nav .btn--primary,
 .topbar__nav .btn--primary:hover { color: #fff; }
 
-.topbar__nav .btn { padding: 9px 18px; font-size: 14.5px; }
+.topbar__nav .btn { padding: 8px 18px; font-size: 14.5px; }
 
 /* ---- Hero ---- */
 .hero { padding: 54px 40px 50px; }
@@ -850,7 +886,7 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
     align-items: stretch;
     max-width: 820px;
     border: 1px solid var(--ink);
-    border-radius: var(--r);
+    border-radius: 14px;
     background: var(--surface);
     overflow: hidden;
 }
@@ -880,14 +916,16 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
     border: 0;
     border-radius: 0;
     padding: 0 30px;
-    background: var(--teal);
+    background: var(--btn-shine), var(--btn-green);
+    box-shadow: var(--btn-edge);
     color: #fff;
+    font-family: var(--font-body);
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
-    transition: background .16s var(--ease);
+    transition: filter .16s var(--ease);
 }
-.searchbar button:hover { background: var(--teal-press); }
+.searchbar button:hover { filter: brightness(1.08); }
 
 .search-note { margin-top: 14px; max-width: 820px; }
 
@@ -935,13 +973,13 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 .route__action { margin-top: 18px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 
 .route__action .btn {
-    padding: 10px 18px;
+    padding: 9px 18px;
     font-size: 14px;
     background: var(--surface);
     border-color: var(--line);
     color: var(--ink);
 }
-.route__action .btn:hover { background: #e8e8e6; }
+.route__action .btn:hover { background: var(--teal-tint); border-color: var(--teal); color: var(--teal); }
 
 .route__gate { font-size: 12.5px; color: var(--ink-3); }
 
@@ -960,10 +998,12 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 
 .chip {
     padding: 9px 16px;
-    border: 1px solid var(--line);
-    border-radius: var(--r);
+    border: 2px solid var(--line);
+    border-radius: var(--r-ctl);
     background: var(--surface);
+    font-family: var(--font-body);
     font-size: 14px;
+    font-weight: 700;
     color: var(--ink);
     cursor: pointer;
     transition: border-color .15s var(--ease), background .15s var(--ease);
@@ -973,7 +1013,7 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 
 /* ---- Call to action band ---- */
 .cta {
-    background: var(--teal);
+    background: var(--panel-shine), var(--teal);
     color: #fff;
     padding: 52px 40px;
 }
