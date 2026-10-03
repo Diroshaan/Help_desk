@@ -1,28 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { TopBar } from '../components/TopBar.jsx'
 import { Notice } from '../components/Bits.jsx'
 import { useReveal } from '../hooks/useReveal.js'
 import { useSession } from '../hooks/useSession.jsx'
+import { homeFor } from '../routes.jsx'
 
 /* The three ways into the help desk, and the chapters of the walkthrough.
-   Kept as data so the markup below stays about layout, not content. */
+   Kept as data so the markup below stays about layout, not content.
+
+   Each one links straight to the page it names. A guest is sent to log in
+   first and then brought back to that page (Protected in App.jsx), so
+   "Submit a ticket" always ends on the ticket form, never on the profile. */
 const ROUTES = [
   {
     num: '01',
     title: 'Search the Knowledge Base',
-    body: 'Guides, policies and step-by-steps from every department. No account needed.',
+    body: 'Guides, policies and step-by-steps from every department, searchable by keyword.',
     action: 'Browse articles',
-    to: '#topics',
-    gated: false
+    to: '/kb',
+    gated: true
   },
   {
     num: '02',
     title: 'Submit a Ticket',
     body: 'Describe the problem once. It is routed and tracked against your Student ID.',
     action: 'Submit a ticket',
-    to: '/register',
-    signedInTo: '/profile',
+    to: '/tickets/new',
     gated: true
   },
   {
@@ -30,8 +34,7 @@ const ROUTES = [
     title: 'Track Your Request',
     body: 'Follow every status change, officer response and resolution in one thread.',
     action: 'Track requests',
-    to: '/register',
-    signedInTo: '/profile',
+    to: '/tickets',
     gated: true
   }
 ]
@@ -61,15 +64,16 @@ const POSTER =
   "data:image/svg+xml;utf8," + encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
        <rect width="1600" height="900" fill="#10322c"/>
-       <text x="800" y="470" font-family="Inter,Arial,sans-serif" font-size="54" font-weight="700"
+       <text x="800" y="470" font-family="Archivo,Helvetica,Arial,sans-serif" font-size="54" font-weight="700"
              letter-spacing="6" fill="#ffffff" text-anchor="middle">UNIHELP</text>
-       <text x="800" y="530" font-family="Inter,Arial,sans-serif" font-size="24"
+       <text x="800" y="530" font-family="Helvetica,Arial,sans-serif" font-size="24"
              letter-spacing="3" fill="#c3ded6" text-anchor="middle">HOW IT WORKS</text>
      </svg>`)
 
 export default function Welcome() {
-  const { status, student } = useSession()
-  const signedIn = status === 'signedIn' && student
+  const { status, student, role } = useSession()
+  const signedIn = status === 'signedIn'
+  const navigate = useNavigate()
 
   const [query, setQuery] = useState('')
   const [searchNote, setSearchNote] = useState('')
@@ -87,12 +91,10 @@ export default function Welcome() {
       return
     }
 
-    // The knowledge base is F5 and is not built yet. Saying what will happen
-    // beats a button that appears broken.
-    setSearchNote(
-      'Knowledge base search arrives with the FAQ portal in Sprint 4. In the meantime, ' +
-      'submit a ticket describing “' + text + '” and it will reach the right desk.'
-    )
+    // Straight into the knowledge base with the words already searched. A
+    // guest logs in first and lands on the same results.
+    setSearchNote('')
+    navigate('/kb?q=' + encodeURIComponent(text))
   }
 
   return (
@@ -141,13 +143,8 @@ export default function Welcome() {
             <p>{route.body}</p>
 
             <div className="route__action">
-              {route.to.startsWith('#')
-                ? <a className="btn btn--ghost" href={route.to}>{route.action}</a>
-                : <Link className="btn btn--ghost"
-                        to={signedIn && route.signedInTo ? route.signedInTo : route.to}>
-                    {route.action}
-                  </Link>}
-              {route.gated && !signedIn && <span className="route__gate">Requires an account</span>}
+              <Link className="btn btn--ghost" to={route.to}>{route.action}</Link>
+              {route.gated && !signedIn && <span className="route__gate">You'll be asked to log in</span>}
             </div>
           </article>
         ))}
@@ -182,7 +179,9 @@ export default function Welcome() {
             <>
               <h2>Welcome back{firstNameOf(student) ? ', ' + firstNameOf(student) : ''}.
                   Pick up where you left off.</h2>
-              <Link className="btn" to="/profile">Go to my profile</Link>
+              <Link className="btn" to={homeFor(role)}>
+                {role === 'OFFICER' ? 'Go to my queue' : role === 'ADMIN' ? 'Go to the dashboard' : 'Go to my tickets'}
+              </Link>
             </>
           ) : (
             <>
@@ -223,7 +222,7 @@ export default function Welcome() {
 }
 
 function firstNameOf(student) {
-  return (student.fullName || '').split(' ')[0] || ''
+  return (student?.fullName || '').split(' ')[0] || ''
 }
 
 /* --------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { SessionProvider, useSession } from './hooks/useSession.jsx'
-import { ROUTES, homeFor } from './routes.jsx'
+import { ROUTES, afterLogin, homeFor, loginFor } from './routes.jsx'
 import './styles/app.css'
 
 /**
@@ -65,6 +65,7 @@ function ScrollToTop() {
  */
 function Protected({ access, children }) {
   const { status, role } = useSession()
+  const location = useLocation()
 
   if (status === 'loading') {
     return <div className="content"><div className="content-col"><p className="empty">Loading…</p></div></div>
@@ -73,11 +74,19 @@ function Protected({ access, children }) {
   if (access === 'public') return children
 
   if (access === 'guest') {
-    return status === 'signedIn' ? <Navigate to={homeFor(role)} replace /> : children
+    // Signed in on the login page: go where they were heading (?next=), or home.
+    return status === 'signedIn' ? <Navigate to={afterLogin(role, location.search)} replace /> : children
   }
 
-  if (status !== 'signedIn' || !access.includes(role)) {
-    return <Navigate to="/" replace />
+  // A guest asking for a signed-in page logs in first and is then brought
+  // back to it, so "Submit a ticket" on the home page ends on the ticket form.
+  if (status !== 'signedIn') {
+    return <Navigate to={loginFor(location.pathname + location.search)} replace />
+  }
+
+  // Signed in, but this page belongs to another role: their own home instead.
+  if (!access.includes(role)) {
+    return <Navigate to={homeFor(role)} replace />
   }
 
   return children
