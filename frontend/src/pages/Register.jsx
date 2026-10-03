@@ -69,6 +69,21 @@ export default function Register() {
     setErrors({})
     setNotice(null)
 
+    // Empty boxes are caught here first, so pressing "Create account" on a
+    // blank form marks every missing field and jumps to the first one, instead
+    // of only showing the policy message at the bottom.
+    const missing = {}
+    if (!form.givenName.trim()) missing.givenName = 'Enter your given name(s).'
+    if (!form.surname.trim()) missing.surname = 'Enter your surname.'
+    if (!form.studentId.trim()) missing.studentId = 'Enter your Student ID.'
+    if (!form.email.trim()) missing.email = 'Enter your university email.'
+    if (!form.department) missing.department = 'Choose your faculty or department.'
+    if (!form.password) missing.password = 'Choose a password.'
+    if (Object.keys(missing).length) {
+      setErrors(missing)
+      return
+    }
+
     // The two-password check has no server equivalent — the server only ever
     // receives one — so it has to happen here.
     if (form.password !== form.confirm) {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { API, errorMessage, fieldErrors, request } from '../../api.js'
-import { Field, Notice, StatusPill } from '../../components/Bits.jsx'
+import { Field, Notice, StatusPill, TextAreaField } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 export default function ArticleEditor() {
@@ -62,8 +62,13 @@ export default function ArticleEditor() {
 
     // An article must sit in at least one category, or students can never
     // find it by browsing (F5, and the server says the same with a 400).
-    if (form.categoryIds.length === 0) {
-      setErrors({ categoryIds: 'Choose at least one category.' })
+    // Title and body are checked too, so a blank form marks all three at once.
+    const missing = {}
+    if (!form.title.trim()) missing.title = 'Give the article a title.'
+    if (!form.body.trim()) missing.body = 'Write the article.'
+    if (form.categoryIds.length === 0) missing.categoryIds = 'Choose at least one category.'
+    if (Object.keys(missing).length) {
+      setErrors(missing)
       return
     }
     setBusy('save')
@@ -163,12 +168,8 @@ export default function ArticleEditor() {
                      value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                      error={errors.title} />
 
-              <div className="field">
-                <label htmlFor="body">Body</label>
-                <textarea id="body" rows={10} value={form.body}
-                          onChange={e => setForm(f => ({ ...f, body: e.target.value }))} />
-                <p className="field-error">{errors.body || ''}</p>
-              </div>
+              <TextAreaField id="body" label="Body" rows={10} value={form.body}
+                             onChange={e => setForm(f => ({ ...f, body: e.target.value }))} error={errors.body} />
 
               <Field id="tags" label="Tags" type="text" hint="Comma-separated, e.g. wifi, printing, vpn"
                      value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} />

@@ -136,6 +136,19 @@ export function Field({ id, label, error, hint, children, ...inputProps }) {
   )
 }
 
+/** The same, for a <textarea>: marked red and jumped to like any other field. */
+export function TextAreaField({ id, label, error, hint, ...areaProps }) {
+  const ref = useRevealError(Boolean(error), true, error)
+  return (
+    <div ref={ref} className={'field' + (error ? ' is-invalid' : '')}>
+      <label htmlFor={id}>{label}</label>
+      <textarea id={id} name={id} {...areaProps} />
+      {hint && !error && <p className="hint">{hint}</p>}
+      <p className="field-error">{error || ''}</p>
+    </div>
+  )
+}
+
 /** The same, for a <select>. */
 export function SelectField({ id, label, error, options, ...selectProps }) {
   const ref = useRevealError(Boolean(error), true, error)
@@ -305,7 +318,9 @@ export function StatusTimeline({ entries, emptyText = 'No status changes recorde
                 ? humanize(entry.fromStatus) + ' → ' + humanize(entry.toStatus)
                 : 'Submitted as ' + humanize(entry.toStatus)}
             </strong>
-            <span>{entry.changedBy || 'Unknown'} · {formatDateTime(entry.changedAt)}</span>
+            {/* "Unknown" comes back when the server does not record which officer
+                made the change; to the student that is simply the help desk. */}
+            <span>{!entry.changedBy || entry.changedBy === 'Unknown' ? 'Help desk' : entry.changedBy} · {formatDateTime(entry.changedAt)}</span>
           </div>
         </motion.li>
       ))}
@@ -326,7 +341,10 @@ export function ConfirmButton({ label, question, confirmLabel, onConfirm, busy =
 
   if (!asking) {
     return (
-      <button type="button" className={'btn btn--' + kind} disabled={disabled || busy}
+      // First click: an outline button in the warning colour. Only the
+      // "Yes, ..." step is solid red, so a page is not shouting before anything
+      // has been asked.
+      <button type="button" className={'btn btn--' + (kind === 'danger' ? 'danger-line' : kind)} disabled={disabled || busy}
               onClick={() => setAsking(true)}>
         {busy ? 'Working…' : label}
       </button>

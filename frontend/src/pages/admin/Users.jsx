@@ -100,6 +100,15 @@ function SupervisorPicker({ officer, officers, onSaved, onError }) {
   )
 }
 
+/** The server's rule for a temporary password, checked before sending. */
+function passwordProblem(password) {
+  if (!password) return 'Set a temporary password.'
+  if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    return 'At least 8 characters, with an upper case letter, a lower case letter and a digit.'
+  }
+  return null
+}
+
 export default function Users() {
   const { user: me } = useSession()
   const [roleFilter, setRoleFilter] = useState('')
@@ -196,7 +205,18 @@ export default function Users() {
 
   async function provisionOfficer(event) {
     event.preventDefault()
-    setOfficerErrors({}); setNotice(null); setBusy('officer')
+    setOfficerErrors({}); setNotice(null)
+    // Each empty box is marked and jumped to; the server answers a blank form
+    // with one long combined sentence instead.
+    const missing = {}
+    if (!officerForm.fullName.trim()) missing.fullName = 'Enter the officer\'s full name.'
+    if (!officerForm.email.trim()) missing.email = 'Enter their email.'
+    if (!officerForm.staffNumber.trim()) missing.staffNumber = 'Enter their staff number.'
+    if (!officerForm.jobTitle.trim()) missing.jobTitle = 'Enter their job title.'
+    const officerPassword = passwordProblem(officerForm.password)
+    if (officerPassword) missing.password = officerPassword
+    if (Object.keys(missing).length) { setOfficerErrors(missing); return }
+    setBusy('officer')
 
     const result = await request(API.adminOfficers, { method: 'POST', body: officerForm })
     if (result.ok) {
@@ -213,7 +233,14 @@ export default function Users() {
 
   async function provisionAdmin(event) {
     event.preventDefault()
-    setAdminErrors({}); setNotice(null); setBusy('admin')
+    setAdminErrors({}); setNotice(null)
+    const missing = {}
+    if (!adminForm.displayName.trim()) missing.displayName = 'Enter a display name.'
+    if (!adminForm.email.trim()) missing.email = 'Enter their email.'
+    const adminPassword = passwordProblem(adminForm.password)
+    if (adminPassword) missing.password = adminPassword
+    if (Object.keys(missing).length) { setAdminErrors(missing); return }
+    setBusy('admin')
 
     const result = await request(API.adminAdministrators, { method: 'POST', body: adminForm })
     if (result.ok) {
