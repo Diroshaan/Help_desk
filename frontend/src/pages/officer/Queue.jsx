@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { API, formatDateTime, request, withQuery } from '../../api.js'
-import { Field, Notice, Row, SelectField, StatusPill } from '../../components/Bits.jsx'
+import { Field, Notice, Row, SelectField, StatusPill, humanize } from '../../components/Bits.jsx'
+import { useSession } from '../../hooks/useSession.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 const STATUSES = [
@@ -12,6 +13,7 @@ const STATUSES = [
 ]
 
 export default function Queue() {
+  const { user } = useSession()
   const [departments, setDepartments] = useState([])
   const [status, setStatus] = useState('')
   const [departmentId, setDepartmentId] = useState('')
@@ -74,7 +76,10 @@ export default function Queue() {
               <Row key={ticket.id} to={'/queue/' + ticket.id}
                    title={ticket.subject}
                    subtitle={ticket.category + ' · Student #' + ticket.studentId + ' · Opened ' + formatDateTime(ticket.createdAt)}
-                   meta={<span>{ticket.priority}</span>}
+                   meta={<>
+                     {user && ticket.assignedOfficerId === user.id && <span className="tag">Yours</span>}
+                     <span>{humanize(ticket.priority)}</span>
+                   </>}
                    right={<StatusPill value={ticket.status} />} />
             ))}
           </section>
