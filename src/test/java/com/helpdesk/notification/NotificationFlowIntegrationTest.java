@@ -60,6 +60,7 @@ class NotificationFlowIntegrationTest {
 
     private Student student;
     private Officer officer;
+    private Department department;
 
     @BeforeEach
     void setUp() {
@@ -72,7 +73,7 @@ class NotificationFlowIntegrationTest {
         s.setDepartment("Faculty of Computing");
         student = studentRepository.save(s);
 
-        Department department = departmentRepository.findAll().get(0);
+        department = departmentRepository.findAll().get(0);
         Officer o = new Officer("officer" + n + "@helpdesk.local", passwordEncoder.encode("Officer123"),
                 "OF" + (30000000 + n), "Support Officer", "Test Officer");
         o.setDepartments(Set.of(department));
@@ -87,6 +88,8 @@ class NotificationFlowIntegrationTest {
         t.setCategory("Network");
         t.setPriority(TicketPriority.MEDIUM);
         t.setStatus(TicketStatus.OPEN);
+        // Routed: working an unrouted ticket is refused (F4-N3).
+        t.setAssignedDepartmentId(department.getCode());
         return ticketRepository.save(t);
     }
 

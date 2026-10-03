@@ -65,6 +65,7 @@ class TicketHistoryIntegrationTest {
 
     private Student student;
     private Officer officer;
+    private com.helpdesk.common.reference.entity.Department department;
 
     @BeforeEach
     void setUp() {
@@ -77,7 +78,7 @@ class TicketHistoryIntegrationTest {
         s.setDepartment("Faculty of Computing");
         student = studentRepository.save(s);
 
-        var department = departmentRepository.findAll().get(0);
+        department = departmentRepository.findAll().get(0);
         Officer o = new Officer("officer" + n + "@helpdesk.local", passwordEncoder.encode("Officer123"),
                 "OF" + (32000000 + n), "Support Officer", "Test Officer");
         o.setDepartments(Set.of(department));
@@ -122,8 +123,7 @@ class TicketHistoryIntegrationTest {
         historyRepository.save(new com.helpdesk.ticket.entity.TicketStatusChange(
                 ticket.getId(), 1, null, TicketStatus.OPEN, student.getId(), java.time.LocalDateTime.now()));
 
-        // Contract C2: until F4 passes the officer id, the event's
-        // changedByOfficerId is null and the history records "Unknown".
+        // Contract C2: F4 now passes the officer id, so the history names the officer.
         queueService.updateStatus(officer.getId(), ticket.getId(), TicketStatus.IN_PROGRESS);
 
         mvc.perform(get("/api/tickets/" + ticket.getId() + "/history")
@@ -133,7 +133,7 @@ class TicketHistoryIntegrationTest {
                 .andExpect(jsonPath("$[1].sequenceNo").value(2))
                 .andExpect(jsonPath("$[1].fromStatus").value("OPEN"))
                 .andExpect(jsonPath("$[1].toStatus").value("IN_PROGRESS"))
-                .andExpect(jsonPath("$[1].changedBy").value("Unknown"));
+                .andExpect(jsonPath("$[1].changedBy").value("Test Officer"));
     }
 
     @Test
@@ -180,6 +180,8 @@ class TicketHistoryIntegrationTest {
         t.setCategory("Network");
         t.setPriority(TicketPriority.MEDIUM);
         t.setStatus(TicketStatus.OPEN);
+        // Routed: working an unrouted ticket is refused (F4-N3).
+        t.setAssignedDepartmentId(department.getCode());
         return ticketRepository.save(t);
     }
 }
