@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { API, errorMessage, fieldErrors, formatDateTime, request } from '../../api.js'
-import { Field, Notice, StatusPill } from '../../components/Bits.jsx'
+import { ConfirmButton, Field, Notice, StatusPill, TextAreaField } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 const ROLES = ['STUDENT', 'OFFICER', 'ADMIN']
+const ROLE_LABEL = { STUDENT: 'Students', OFFICER: 'Officers', ADMIN: 'Administrators' }
 const EMPTY_FORM = { title: '', body: '', expiresAt: '', visibleToRoles: [] }
 
 export default function Announcements() {
@@ -55,7 +56,16 @@ export default function Announcements() {
 
   async function save(event) {
     event.preventDefault()
-    setErrors({}); setNotice(null); setBusy('save')
+    setErrors({}); setNotice(null)
+
+    // Checked here so each empty box is marked and jumped to; the server only
+    // sends one combined sentence for the two of them.
+    const missing = {}
+    if (!form.title.trim()) missing.title = 'Give the announcement a title.'
+    if (!form.body.trim()) missing.body = 'Write the announcement.'
+    if (Object.keys(missing).length) { setErrors(missing); return }
+
+    setBusy('save')
 
     const payload = {
       title: form.title.trim(),
@@ -109,12 +119,8 @@ export default function Announcements() {
                      value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                      error={errors.title} />
 
-              <div className="field">
-                <label htmlFor="body">Body</label>
-                <textarea id="body" rows={5} value={form.body}
-                          onChange={e => setForm(f => ({ ...f, body: e.target.value }))} />
-                <p className="field-error">{errors.body || ''}</p>
-              </div>
+              <TextAreaField id="body" label="Body" rows={5} value={form.body}
+                             onChange={e => setForm(f => ({ ...f, body: e.target.value }))} error={errors.body} />
 
               <Field id="expiresAt" label="Expires (optional)" type="datetime-local"
                      value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))}
@@ -126,8 +132,9 @@ export default function Announcements() {
                   {ROLES.map(role => (
                     <button type="button" key={role} className="chip"
                             aria-current={form.visibleToRoles.includes(role)}
+                            aria-pressed={form.visibleToRoles.includes(role)}
                             onClick={() => toggleRole(role)}>
-                      {role}
+                      {ROLE_LABEL[role]}
                     </button>
                   ))}
                 </div>
@@ -159,14 +166,17 @@ export default function Announcements() {
                   <span>
                     By {a.publishedByName} · Published {formatDateTime(a.publishedAt)}
                     {a.expiresAt ? ' · Expires ' + formatDateTime(a.expiresAt) : ' · No expiry'}
-                    {a.visibleToRoles?.length ? ' · ' + a.visibleToRoles.join(', ') : ' · Everyone'}
+                    {a.visibleToRoles?.length ? ' · ' + a.visibleToRoles.map(r => ROLE_LABEL[r] || r).join(', ') : ' · Everyone'}
                   </span>
                 </div>
                 <div className="row-side">
                   {a.expired && <StatusPill value="EXPIRED" label="Expired" />}
                   <button type="button" className="btn btn--ghost" onClick={() => startEdit(a)}>Edit</button>
-                  <button type="button" className="btn btn--ghost" disabled={busy === 'delete-' + a.id}
-                          onClick={() => remove(a.id)}>Delete</button>
+                  {/* Deleting takes the notice off every user's feed at once,
+                      so it asks first (it used to delete on the first click). */}
+                  <ConfirmButton label="Delete" confirmLabel="Yes, delete"
+                                 question={'Delete "' + a.title + '"?'}
+                                 busy={busy === 'delete-' + a.id} onConfirm={() => remove(a.id)} />
                 </div>
               </div>
             ))}

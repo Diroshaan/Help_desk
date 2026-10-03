@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { API, formatDateTime, request, withQuery } from '../../api.js'
 import { Field, Notice, Row, SelectField } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
@@ -10,7 +10,10 @@ const PAGE_SIZE = 20
 export default function Articles() {
   const { role } = useSession()
   const [categories, setCategories] = useState([])
-  const [q, setQ] = useState('')
+  // The home page's search box and topic chips arrive as /kb?q=..., so the
+  // search is already filled in and run.
+  const [searchParams] = useSearchParams()
+  const [q, setQ] = useState(searchParams.get('q') || '')
   const [category, setCategory] = useState('')
   const [page, setPage] = useState(0)
   const [result, setResult] = useState(null)

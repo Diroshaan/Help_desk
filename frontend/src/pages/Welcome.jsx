@@ -1,28 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { TopBar } from '../components/TopBar.jsx'
 import { Notice } from '../components/Bits.jsx'
 import { useReveal } from '../hooks/useReveal.js'
 import { useSession } from '../hooks/useSession.jsx'
+import { homeFor } from '../routes.jsx'
 
 /* The three ways into the help desk, and the chapters of the walkthrough.
-   Kept as data so the markup below stays about layout, not content. */
+   Kept as data so the markup below stays about layout, not content.
+
+   Each one links straight to the page it names. A guest is sent to log in
+   first and then brought back to that page (Protected in App.jsx), so
+   "Submit a ticket" always ends on the ticket form, never on the profile. */
 const ROUTES = [
   {
     num: '01',
     title: 'Search the Knowledge Base',
-    body: 'Guides, policies and step-by-steps from every department. No account needed.',
+    body: 'Guides, policies and step-by-steps from every department, searchable by keyword.',
     action: 'Browse articles',
-    to: '#topics',
-    gated: false
+    to: '/kb',
+    gated: true
   },
   {
     num: '02',
     title: 'Submit a Ticket',
     body: 'Describe the problem once. It is routed and tracked against your Student ID.',
     action: 'Submit a ticket',
-    to: '/register',
-    signedInTo: '/profile',
+    to: '/tickets/new',
     gated: true
   },
   {
@@ -30,8 +34,7 @@ const ROUTES = [
     title: 'Track Your Request',
     body: 'Follow every status change, officer response and resolution in one thread.',
     action: 'Track requests',
-    to: '/register',
-    signedInTo: '/profile',
+    to: '/tickets',
     gated: true
   }
 ]
@@ -61,15 +64,42 @@ const POSTER =
   "data:image/svg+xml;utf8," + encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
        <rect width="1600" height="900" fill="#10322c"/>
-       <text x="800" y="470" font-family="Inter,Arial,sans-serif" font-size="54" font-weight="700"
+       <text x="800" y="470" font-family="Archivo,Helvetica,Arial,sans-serif" font-size="54" font-weight="700"
              letter-spacing="6" fill="#ffffff" text-anchor="middle">UNIHELP</text>
-       <text x="800" y="530" font-family="Inter,Arial,sans-serif" font-size="24"
+       <text x="800" y="530" font-family="Helvetica,Arial,sans-serif" font-size="24"
              letter-spacing="3" fill="#c3ded6" text-anchor="middle">HOW IT WORKS</text>
      </svg>`)
 
+/* What the two footer buttons open. Plain statements of what this system
+   actually does - nothing it does not. */
+const FOOT_INFO = [
+  {
+    key: 'access',
+    label: 'Accessibility',
+    lines: [
+      'Every page works with a keyboard: Tab moves between fields and buttons, Enter submits.',
+      'Form fields have labels, and when a form has a mistake the page takes you straight to it.',
+      'Text grows with your browser zoom, and the layout adjusts down to phone size.',
+      'If something is hard to use, email itdesk@university.lk and tell us which page.'
+    ]
+  },
+  {
+    key: 'privacy',
+    label: 'Privacy policy',
+    lines: [
+      'We keep only what you enter: your name, Student ID, email, phone numbers and your tickets.',
+      'A ticket is seen by you, the officers of the department handling it, and administrators.',
+      'Passwords are stored hashed, never as plain text, and staff cannot read them.',
+      'You can delete your account from My profile. To ask about your data, email itdesk@university.lk.'
+    ]
+  }
+]
+
 export default function Welcome() {
-  const { status, student } = useSession()
-  const signedIn = status === 'signedIn' && student
+  const { status, student, role } = useSession()
+  const [footInfo, setFootInfo] = useState(null)
+  const signedIn = status === 'signedIn'
+  const navigate = useNavigate()
 
   const [query, setQuery] = useState('')
   const [searchNote, setSearchNote] = useState('')
@@ -87,12 +117,10 @@ export default function Welcome() {
       return
     }
 
-    // The knowledge base is F5 and is not built yet. Saying what will happen
-    // beats a button that appears broken.
-    setSearchNote(
-      'Knowledge base search arrives with the FAQ portal in Sprint 4. In the meantime, ' +
-      'submit a ticket describing “' + text + '” and it will reach the right desk.'
-    )
+    // Straight into the knowledge base with the words already searched. A
+    // guest logs in first and lands on the same results.
+    setSearchNote('')
+    navigate('/kb?q=' + encodeURIComponent(text))
   }
 
   return (
@@ -141,13 +169,8 @@ export default function Welcome() {
             <p>{route.body}</p>
 
             <div className="route__action">
-              {route.to.startsWith('#')
-                ? <a className="btn btn--ghost" href={route.to}>{route.action}</a>
-                : <Link className="btn btn--ghost"
-                        to={signedIn && route.signedInTo ? route.signedInTo : route.to}>
-                    {route.action}
-                  </Link>}
-              {route.gated && !signedIn && <span className="route__gate">Requires an account</span>}
+              <Link className="btn btn--ghost" to={route.to}>{route.action}</Link>
+              {route.gated && !signedIn && <span className="route__gate">You'll be asked to log in</span>}
             </div>
           </article>
         ))}
@@ -182,7 +205,9 @@ export default function Welcome() {
             <>
               <h2>Welcome back{firstNameOf(student) ? ', ' + firstNameOf(student) : ''}.
                   Pick up where you left off.</h2>
-              <Link className="btn" to="/profile">Go to my profile</Link>
+              <Link className="btn" to={homeFor(role)}>
+                {role === 'OFFICER' ? 'Go to my queue' : role === 'ADMIN' ? 'Go to the dashboard' : 'Go to my tickets'}
+              </Link>
             </>
           ) : (
             <>
@@ -205,16 +230,27 @@ export default function Welcome() {
           ))}
 
           <div className="foot-links">
-            {/* Placeholders for pages that are out of scope for this project.
-                preventDefault matters here rather than being tidiness: under
-                HashRouter a bare href="#" is a route change, so clicking one
-                reset the route and threw the visitor back to the top of the
-                page for no reason. Doing nothing is the honest behaviour
-                until the pages exist. */}
-            <a href="#" onClick={event => event.preventDefault()}>Accessibility</a>
-            <a href="#" onClick={event => event.preventDefault()}>Privacy policy</a>
+            {/* These used to be dead links (href="#" that did nothing). Each
+                now opens a short statement under the footer; a second click
+                closes it. Buttons, not links: they do not go anywhere. */}
+            {FOOT_INFO.map(info => (
+              <button type="button" key={info.key}
+                      aria-expanded={footInfo === info.key}
+                      aria-controls="foot-info"
+                      onClick={() => setFootInfo(open => open === info.key ? null : info.key)}>
+                {info.label}
+              </button>
+            ))}
           </div>
         </div>
+
+        {footInfo && (
+          <div className="foot-info" id="foot-info" role="region"
+               aria-label={FOOT_INFO.find(i => i.key === footInfo).label}>
+            <strong>{FOOT_INFO.find(i => i.key === footInfo).label}</strong>
+            {FOOT_INFO.find(i => i.key === footInfo).lines.map(line => <p key={line}>{line}</p>)}
+          </div>
+        )}
 
         <p className="site-foot__legal">SE2030 · Web-Based Help Desk System · Group MLBB8G204</p>
       </footer>
@@ -223,7 +259,7 @@ export default function Welcome() {
 }
 
 function firstNameOf(student) {
-  return (student.fullName || '').split(' ')[0] || ''
+  return (student?.fullName || '').split(' ')[0] || ''
 }
 
 /* --------------------------------------------------------------------------
@@ -260,9 +296,10 @@ function Walkthrough() {
     }
   }, [])
 
-  function seek(seconds) {
+  function seek(seconds, index) {
     const video = videoRef.current
-    if (!video) return
+    // No video yet: still mark the step, so the button visibly responds.
+    if (!video) { setCurrent(index); return }
     video.currentTime = seconds
     // Autoplay policies can refuse this; the poster simply stays put.
     video.play().catch(() => {})
@@ -284,7 +321,7 @@ function Walkthrough() {
             <li key={chapter.at}>
               <button type="button"
                       aria-current={current === index}
-                      onClick={() => seek(chapter.at)}>
+                      onClick={() => seek(chapter.at, index)}>
                 <span className="chapters__t mono">{chapter.stamp}</span>
                 {chapter.label}
               </button>
@@ -294,13 +331,19 @@ function Walkthrough() {
       </div>
 
       <div className="howto__player">
-        {/* No file on the server yet: show where to put it, rather than a black
-            rectangle with a broken control bar. */}
+        {/* No video on the server yet. Visitors used to see a developer note
+            with a file path here; now they get the next step instead.
+            To add the video, put the file at
+            src/main/resources/static/media/how-it-works.mp4 and the player
+            picks it up on the next load. */}
         {missing ? (
           <div className="howto__missing">
-            <strong>The walkthrough is not uploaded yet.</strong>
-            <p>Drop an MP4 here and this player picks it up:</p>
-            <code>src/main/resources/static/media/how-it-works.mp4</code>
+            <strong>The walkthrough video is coming soon.</strong>
+            <p>Until then, follow the steps on the left, or start now:</p>
+            <div className="btn-row">
+              <Link className="btn btn--primary" to="/kb">Browse articles</Link>
+              <Link className="btn btn--ghost howto__ghost" to="/tickets/new">Submit a ticket</Link>
+            </div>
           </div>
         ) : (
           <video ref={videoRef} controls preload="metadata" poster={POSTER}>

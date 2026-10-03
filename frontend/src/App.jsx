@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { SessionProvider, useSession } from './hooks/useSession.jsx'
-import { ROUTES, homeFor } from './routes.jsx'
+import { Link } from 'react-router-dom'
+import { ROUTES, afterLogin, homeFor, loginFor } from './routes.jsx'
 import './styles/app.css'
 
 /**
@@ -33,14 +34,26 @@ export default function App() {
  */
 function ScrollToTop() {
   const { pathname, hash } = useLocation()
+  const lastPath = useRef(pathname)
 
   useEffect(() => {
+    const samePage = lastPath.current === pathname
+    lastPath.current = pathname
     if (hash) {
-      const target = document.getElementById(hash.slice(1))
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth' })
-        return
-      }
+      // Coming from another page (the sidebar's "Browse FAQ"), the page
+      // transition means the target is not on screen yet when this runs, so
+      // the visitor stayed at the top. Look for it every 50 ms for up to a
+      // second, then jump; smooth only when already on the page.
+      let tries = 0
+      const timer = setInterval(() => {
+        const target = document.getElementById(hash.slice(1))
+        if (target || ++tries > 20) {
+          clearInterval(timer)
+          if (target) target.scrollIntoView({ behavior: samePage ? 'smooth' : 'auto', block: 'start' })
+        }
+      }, 50)
+      if (!samePage) window.scrollTo({ top: 0 })
+      return () => clearInterval(timer)
     }
     window.scrollTo({ top: 0 })
   }, [pathname, hash])
@@ -65,6 +78,7 @@ function ScrollToTop() {
  */
 function Protected({ access, children }) {
   const { status, role } = useSession()
+  const location = useLocation()
 
   if (status === 'loading') {
     return <div className="content"><div className="content-col"><p className="empty">Loading…</p></div></div>
@@ -72,12 +86,26 @@ function Protected({ access, children }) {
 
   if (access === 'public') return children
 
+  // A page that is fading out (the address bar already shows the next page)
+  // must never redirect. Without this, "Log out" sent the old page's guard to
+  // "Log in ?next=old page" while the visitor was on their way home.
+  const showing = (window.location.hash.replace(/^#/, '').split('?')[0]) || '/'
+  if (showing !== location.pathname && status !== 'signedIn') return null
+
   if (access === 'guest') {
-    return status === 'signedIn' ? <Navigate to={homeFor(role)} replace /> : children
+    // Signed in on the login page: go where they were heading (?next=), or home.
+    return status === 'signedIn' ? <Navigate to={afterLogin(role, location.search)} replace /> : children
   }
 
-  if (status !== 'signedIn' || !access.includes(role)) {
-    return <Navigate to="/" replace />
+  // A guest asking for a signed-in page logs in first and is then brought
+  // back to it, so "Submit a ticket" on the home page ends on the ticket form.
+  if (status !== 'signedIn') {
+    return <Navigate to={loginFor(location.pathname + location.search)} replace />
+  }
+
+  // Signed in, but this page belongs to another role: their own home instead.
+  if (!access.includes(role)) {
+    return <Navigate to={homeFor(role)} replace />
   }
 
   return children
@@ -106,10 +134,26 @@ function AnimatedRoutes() {
             } />
           ))}
 
-          {/* Anything unrecognised goes home rather than showing a blank page. */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* An address that does not exist says so, with a way back,
+              instead of silently dropping the visitor on the home page. */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </motion.div>
     </AnimatePresence>
+  )
+}
+
+function NotFound() {
+  const { status, role } = useSession()
+  const home = status === 'signedIn' ? homeFor(role) : '/'
+  return (
+    <main className="not-found">
+      <span className="code">404</span>
+      <h1>We could not find that page.</h1>
+      <p>The link may be out of date, or the page may have moved.</p>
+      <div className="btn-row">
+        <Link className="btn btn--primary" to={home}>{status === 'signedIn' ? 'Go to my home page' : 'Go to the help desk'}</Link>
+      </div>
+    </main>
   )
 }

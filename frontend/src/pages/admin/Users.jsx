@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { API, errorMessage, fieldErrors, formatDateTime, request, withQuery } from '../../api.js'
-import { Field, Notice, SelectField, StatusPill } from '../../components/Bits.jsx'
+import { ConfirmButton, Field, Notice, SelectField, StatusPill } from '../../components/Bits.jsx'
+import { useSession } from '../../hooks/useSession.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 const ROLE_FILTERS = [
@@ -49,8 +50,71 @@ function departmentsText(user, departments) {
   return ' · ' + names.join(', ')
 }
 
+/**
+ * Who an officer reports to (F4 #46). Loaded when the row is opened, because
+ * only then is it needed; the choices are the other active officers.
+ */
+function SupervisorPicker({ officer, officers, onSaved, onError }) {
+  const [current, setCurrent] = useState(undefined)   // undefined = loading, null = none / unavailable
+  const [choice, setChoice] = useState('')
+  const [unavailable, setUnavailable] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    request(API.adminOfficerSupervisor(officer.id)).then(result => {
+      if (result.ok && result.data) {
+        setCurrent(result.data)
+        setChoice(result.data.supervisorId ? String(result.data.supervisorId) : '')
+      } else {
+        setCurrent(null)
+        setUnavailable(!result.ok)
+      }
+    }).catch(() => { setCurrent(null); setUnavailable(true) })
+  }, [officer.id])
+
+  async function save() {
+    setBusy(true)
+    const result = await request(API.adminOfficerSupervisor(officer.id), {
+      method: 'PUT', body: { supervisorId: choice ? Number(choice) : null }
+    })
+    if (result.ok) { setCurrent(result.data); onSaved('Supervisor updated.') }
+    else onError(errorMessage(result, 'We could not set that supervisor.'))
+    setBusy(false)
+  }
+
+  if (unavailable) return <p className="hint">Supervisors can be set once the queue update is live.</p>
+
+  const candidates = officers.filter(o => o.id !== officer.id && o.active && !o.removed)
+  return (
+    <div className="field-row" style={{ alignItems: 'end' }}>
+      <SelectField id={'supervisor' + officer.id} label="Supervisor"
+                   value={choice} onChange={e => setChoice(e.target.value)}
+                   options={[{ value: '', label: current === undefined ? 'Loading…' : 'No supervisor' },
+                             ...candidates.map(o => ({ value: String(o.id), label: o.label }))]} />
+      <div className="btn-row" style={{ paddingBottom: 6 }}>
+        <button type="button" className="btn btn--ghost" disabled={busy || current === undefined} onClick={save}>
+          {busy ? 'Saving…' : 'Save supervisor'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** The server's rule for a temporary password, checked before sending. */
+function passwordProblem(password) {
+  if (!password) return 'Set a temporary password.'
+  if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    return 'At least 8 characters, with an upper case letter, a lower case letter and a digit.'
+  }
+  return null
+}
+
 export default function Users() {
+  const { user: me } = useSession()
   const [roleFilter, setRoleFilter] = useState('')
+  // Removed accounts are history, hidden unless asked for (F6 #48).
+  const [showRemoved, setShowRemoved] = useState(false)
+  const [officers, setOfficers] = useState([])
   const [users, setUsers] = useState([])
   const [departments, setDepartments] = useState([])
   const [loading, setLoading] = useState(true)
@@ -68,13 +132,28 @@ export default function Users() {
 
   async function load() {
     setLoading(true); setError('')
-    const result = await request(withQuery(API.adminUsers, { role: roleFilter || undefined }))
-    if (result.ok) setUsers(result.data)
-    else setError('We could not load the user list.')
+    const result = await request(withQuery(API.adminUsers, {
+      role: roleFilter || undefined,
+      includeRemoved: showRemoved ? 'true' : undefined
+    }))
+    if (result.ok) {
+      // Older servers ignore includeRemoved and return everyone; filtering
+      // here as well keeps the screen honest either way.
+      setUsers(showRemoved ? result.data : result.data.filter(u => !u.removed))
+    } else {
+      setError('We could not load the user list.')
+    }
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [roleFilter])
+  useEffect(() => { load() }, [roleFilter, showRemoved])
+
+  // The supervisor picker needs every officer, whatever the role filter shows.
+  useEffect(() => {
+    request(withQuery(API.adminUsers, { role: 'OFFICER' })).then(result => {
+      if (result.ok) setOfficers(result.data)
+    })
+  }, [])
 
   useEffect(() => {
     request(API.departments).then(result => {
@@ -97,6 +176,19 @@ export default function Users() {
     setBusy(null)
   }
 
+  async function removeAccount(user) {
+    setBusy('remove-' + user.id); setNotice(null)
+    const result = await request(API.adminUser(user.id), { method: 'DELETE' })
+    if (result.ok || result.status === 204) {
+      if (showRemoved) await load()
+      else setUsers(current => current.filter(u => u.id !== user.id))
+      setNotice({ kind: 'info', text: user.label + "'s account has been removed. They can no longer sign in." })
+    } else {
+      setNotice({ kind: 'error', text: errorMessage(result, 'We could not remove that account.') })
+    }
+    setBusy(null)
+  }
+
   async function saveDepartments() {
     setBusy('departments-' + editing.id); setNotice(null)
     const result = await request(API.adminOfficerDepartments(editing.id),
@@ -113,7 +205,18 @@ export default function Users() {
 
   async function provisionOfficer(event) {
     event.preventDefault()
-    setOfficerErrors({}); setNotice(null); setBusy('officer')
+    setOfficerErrors({}); setNotice(null)
+    // Each empty box is marked and jumped to; the server answers a blank form
+    // with one long combined sentence instead.
+    const missing = {}
+    if (!officerForm.fullName.trim()) missing.fullName = 'Enter the officer\'s full name.'
+    if (!officerForm.email.trim()) missing.email = 'Enter their email.'
+    if (!officerForm.staffNumber.trim()) missing.staffNumber = 'Enter their staff number.'
+    if (!officerForm.jobTitle.trim()) missing.jobTitle = 'Enter their job title.'
+    const officerPassword = passwordProblem(officerForm.password)
+    if (officerPassword) missing.password = officerPassword
+    if (Object.keys(missing).length) { setOfficerErrors(missing); return }
+    setBusy('officer')
 
     const result = await request(API.adminOfficers, { method: 'POST', body: officerForm })
     if (result.ok) {
@@ -130,7 +233,14 @@ export default function Users() {
 
   async function provisionAdmin(event) {
     event.preventDefault()
-    setAdminErrors({}); setNotice(null); setBusy('admin')
+    setAdminErrors({}); setNotice(null)
+    const missing = {}
+    if (!adminForm.displayName.trim()) missing.displayName = 'Enter a display name.'
+    if (!adminForm.email.trim()) missing.email = 'Enter their email.'
+    const adminPassword = passwordProblem(adminForm.password)
+    if (adminPassword) missing.password = adminPassword
+    if (Object.keys(missing).length) { setAdminErrors(missing); return }
+    setBusy('admin')
 
     const result = await request(API.adminAdministrators, { method: 'POST', body: adminForm })
     if (result.ok) {
@@ -216,8 +326,16 @@ export default function Users() {
 
           <section className="section">
             <h2>All accounts</h2>
-            <SelectField id="roleFilter" label="Filter by role" options={ROLE_FILTERS}
-                         value={roleFilter} onChange={e => setRoleFilter(e.target.value)} />
+            <div className="row-between" style={{ alignItems: 'end' }}>
+              <div style={{ flex: '1 1 240px' }}>
+                <SelectField id="roleFilter" label="Filter by role" options={ROLE_FILTERS}
+                             value={roleFilter} onChange={e => setRoleFilter(e.target.value)} />
+              </div>
+              <label className="check" style={{ paddingBottom: 18 }}>
+                <input type="checkbox" checked={showRemoved} onChange={e => setShowRemoved(e.target.checked)} />
+                Show removed accounts
+              </label>
+            </div>
 
             {error && <Notice kind="error" style={{ marginTop: 16 }}>{error}</Notice>}
             {!error && loading && <p className="empty">Loading…</p>}
@@ -235,7 +353,7 @@ export default function Users() {
                     {user.provisionedBy && <span>Provisioned by {user.provisionedBy}</span>}
                   </div>
                   <div className="row-side">
-                    <StatusPill value={user.active ? 'ACTIVE' : 'INACTIVE'}
+                    <StatusPill value={user.active && !user.removed ? 'ACTIVE' : 'INACTIVE'}
                                 label={user.removed ? 'Removed' : user.active ? 'Active' : 'Suspended'} />
                     {/* No department editor for a removed officer: they have left,
                         and the backend refuses the change anyway (PR #56 review). */}
@@ -245,10 +363,21 @@ export default function Users() {
                         {editing?.id === user.id ? 'Close' : 'Departments'}
                       </button>
                     )}
-                    <button type="button" className="btn btn--ghost" disabled={busy === 'user-' + user.id}
-                            onClick={() => toggleActive(user)}>
-                      {user.active ? 'Suspend' : 'Reactivate'}
-                    </button>
+                    {/* A removed account is final (F6 #48): no reactivate, no
+                        second remove. Nobody suspends or removes themselves. */}
+                    {!user.removed && me?.id !== user.id && (
+                      <button type="button" className="btn btn--ghost" disabled={busy === 'user-' + user.id}
+                              onClick={() => toggleActive(user)}>
+                        {user.active ? 'Suspend' : 'Reactivate'}
+                      </button>
+                    )}
+                    {!user.removed && me?.id !== user.id && (
+                      <ConfirmButton label="Remove" confirmLabel="Yes, remove"
+                                     question={'Remove ' + user.label + '? This is final.'}
+                                     busy={busy === 'remove-' + user.id}
+                                     onConfirm={() => removeAccount(user)} />
+                    )}
+                    {me?.id === user.id && <span className="tag">You</span>}
                   </div>
                 </div>
 
@@ -262,6 +391,11 @@ export default function Users() {
                               disabled={busy === 'departments-' + user.id} onClick={saveDepartments}>
                         {busy === 'departments-' + user.id ? 'Saving…' : 'Save departments'}
                       </button>
+                    </div>
+                    <div style={{ marginTop: 18 }}>
+                      <SupervisorPicker officer={user} officers={officers}
+                                        onSaved={text => setNotice({ kind: 'info', text })}
+                                        onError={text => setNotice({ kind: 'error', text })} />
                     </div>
                   </div>
                 )}

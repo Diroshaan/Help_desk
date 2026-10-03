@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API, errorMessage, fieldErrors, request } from '../../api.js'
-import { Field, Notice, SelectField } from '../../components/Bits.jsx'
+import { Field, Notice, SelectField, TextAreaField } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 const PRIORITIES = [
@@ -34,8 +34,17 @@ export default function TicketNew() {
 
   async function handleSubmit(event) {
     event.preventDefault()
-    setErrors({}); setNotice(null); setBusy(true)
+    setErrors({}); setNotice(null)
 
+    // The server answers a blank form with one combined sentence ("Description
+    // is required; Subject is required") and no per-field keys, so the boxes
+    // were never marked. Checking here marks each one and jumps to the first.
+    const missing = {}
+    if (!form.subject.trim()) missing.subject = 'Give the ticket a short subject.'
+    if (!form.description.trim()) missing.description = 'Describe the problem.'
+    if (Object.keys(missing).length) { setErrors(missing); return }
+
+    setBusy(true)
     try {
       const result = await request(API.tickets, { method: 'POST', body: form })
 
@@ -65,7 +74,8 @@ export default function TicketNew() {
 
           <section className="section">
             <form className="form" onSubmit={handleSubmit} noValidate>
-              <Field id="subject" label="Subject" type="text"
+              <Field id="subject" label="Subject" type="text" maxLength={150}
+                     placeholder="e.g. Can't log in to the LMS after the password reset"
                      value={form.subject} onChange={set('subject')} error={errors.subject} />
 
               <div className="field-row">
@@ -76,12 +86,10 @@ export default function TicketNew() {
                              value={form.priority} onChange={set('priority')} error={errors.priority} />
               </div>
 
-              <div className="field">
-                <label htmlFor="description">Description</label>
-                <textarea id="description" name="description" rows={6}
-                          value={form.description} onChange={set('description')} />
-                <p className="field-error">{errors.description || ''}</p>
-              </div>
+              <TextAreaField id="description" label="Description" rows={6} maxLength={2000}
+                             placeholder="What happened, what you expected, and anything you already tried."
+                             hint="You can attach screenshots or documents on the next page."
+                             value={form.description} onChange={set('description')} error={errors.description} />
 
               <div className="btn-row">
                 <button type="submit" className="btn btn--primary" disabled={busy}>

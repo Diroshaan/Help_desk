@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { API, errorMessage, formatDateTime, request, requestForm } from '../../api.js'
-import { Notice, StatusPill } from '../../components/Bits.jsx'
+import { API, UPLOAD_ACCEPT, errorMessage, formatBytes, formatDateTime, request, requestForm, uploadProblem } from '../../api.js'
+import { ConfirmButton, Notice, StatusPill, StatusTimeline, humanize } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 import { useSession } from '../../hooks/useSession.jsx'
 
@@ -16,10 +16,17 @@ export default function QueueDetail() {
   const [noteText, setNoteText] = useState('')
   const [responseText, setResponseText] = useState('')
   const [attachment, setAttachment] = useState(null)
+  const [fileKey, setFileKey] = useState(0)        // bumping it empties the file input
   const [notice, setNotice] = useState(null)
   const [busy, setBusy] = useState(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+
+  // The student's files (F4 #40) and the status timeline (F4, from F2's
+  // history). null means the endpoint did not answer - shown as a short note
+  // rather than as "no files", which would be a different, false statement.
+  const [files, setFiles] = useState(undefined)     // undefined = still loading
+  const [history, setHistory] = useState(undefined)
 
   async function load() {
     setLoading(true)
@@ -36,6 +43,19 @@ export default function QueueDetail() {
     setResponseText(detailResult.data.resolution?.responseText || '')
     if (deptResult.ok) setDepartments(deptResult.data)
     setLoading(false)
+    loadExtras()
+  }
+
+  async function loadExtras() {
+    const [fileResult, historyResult] = await Promise.all([
+      request(API.queueAttachments(id)),
+      request(API.queueHistory(id))
+    ])
+    // 400/404/405 = the endpoint is not on the server yet (F4 not merged):
+    // say "not available yet" rather than reporting a failure.
+    const pick = r => r.ok && Array.isArray(r.data) ? r.data : ([400, 404, 405].includes(r.status) ? 'off' : null)
+    setFiles(pick(fileResult))
+    setHistory(pick(historyResult))
   }
 
   useEffect(() => { load() }, [id])
@@ -43,8 +63,14 @@ export default function QueueDetail() {
   async function startWorking() {
     setBusy('status'); setNotice(null)
     const result = await request(API.queueStatus(id), { method: 'PUT', body: { status: 'IN_PROGRESS' } })
-    if (result.ok) setDetail(current => ({ ...current, ticket: result.data }))
-    else setNotice({ kind: 'error', text: errorMessage(result, 'We could not update the status.') })
+    if (result.ok) {
+      setDetail(current => ({ ...current, ticket: result.data }))
+      setAssignOfficerId(result.data.assignedOfficerId || '')
+      setNotice({ kind: 'info', text: 'You picked this ticket up. The student has been told it is being worked on.' })
+      loadExtras()
+    } else {
+      setNotice({ kind: 'error', text: errorMessage(result, 'We could not update the status.') })
+    }
     setBusy(null)
   }
 
@@ -108,10 +134,13 @@ export default function QueueDetail() {
     if (result.ok) {
       setDetail(current => ({ ...current, resolution: result.data }))
       setAttachment(null)
+      setFileKey(k => k + 1)
+      setNotice({ kind: 'info', text: editing ? 'Your answer has been updated.' : 'Your answer has been posted and the ticket is resolved.' })
       // Resolving posts the resolution; the ticket status itself moves to
       // RESOLVED server-side, so refresh the ticket half of the view too.
       const ticketResult = await request(API.queueTicket(id))
       if (ticketResult.ok) setDetail(ticketResult.data)
+      loadExtras()
     } else {
       setNotice({ kind: 'error', text: errorMessage(result, 'We could not save the resolution.') })
     }
@@ -124,8 +153,10 @@ export default function QueueDetail() {
     if (result.ok || result.status === 204) {
       setDetail(current => ({ ...current, resolution: null }))
       setResponseText('')
+      setNotice({ kind: 'info', text: 'The answer was revoked and the ticket is back in progress.' })
       const ticketResult = await request(API.queueTicket(id))
       if (ticketResult.ok) setDetail(ticketResult.data)
+      loadExtras()
     } else {
       setNotice({ kind: 'error', text: errorMessage(result, 'We could not revoke the resolution.') })
     }
@@ -142,6 +173,9 @@ export default function QueueDetail() {
     return <div className="shell"><Sidebar /><main className="content">
       <div className="content-col">
         <div className="page-head"><h1>Ticket not found</h1></div>
+        {/* Officers only see tickets routed to departments they serve, so a
+            ticket re-routed elsewhere disappears from here - say so. */}
+        <p className="lede">It may not exist, or it was routed to a department you do not serve.</p>
         <div className="btn-row" style={{ marginTop: 20 }}>
           <Link className="btn btn--ghost" to="/queue">Back to the queue</Link>
         </div>
@@ -150,6 +184,25 @@ export default function QueueDetail() {
   }
 
   const { ticket, resolution, notes } = detail
+  // Nothing is re-routed or answered once a ticket is finished (F4 rule).
+  const closed = ticket.status === 'RESOLVED' || ticket.status === 'WITHDRAWN'
+  const mine = user && ticket.assignedOfficerId === user.id
+  // The server only accepts an answer while the ticket is IN_PROGRESS (an OPEN
+  // one comes back 400 "can only be resolved while it is in progress"), so
+  // the form stays locked until the ticket is picked up.
+  const answerLocked = ticket.status === 'OPEN' && !resolution
+
+  function chooseFile(event) {
+    const file = event.target.files?.[0] || null
+    const problem = uploadProblem(file)
+    if (problem) {
+      event.target.value = ''
+      setAttachment(null)
+      setNotice({ kind: 'error', text: problem })
+      return
+    }
+    setAttachment(file)
+  }
 
   return (
     <div className="shell">
@@ -169,7 +222,13 @@ export default function QueueDetail() {
             <div className="detail-list">
               <div><dt>Student</dt><dd className="mono">#{ticket.studentId}</dd></div>
               <div><dt>Category</dt><dd>{ticket.category}</dd></div>
-              <div><dt>Priority</dt><dd>{ticket.priority}</dd></div>
+              <div><dt>Priority</dt><dd>{humanize(ticket.priority)}</dd></div>
+              <div><dt>Assigned to</dt><dd>
+                {ticket.assignedOfficerId
+                  ? (mine ? <span className="tag">You</span> : 'Officer #' + ticket.assignedOfficerId)
+                  : 'Nobody yet'}
+                {ticket.assignedDepartmentId ? ' · ' + (departments.find(d => d.code === ticket.assignedDepartmentId)?.name || ticket.assignedDepartmentId) : ' · Not routed'}
+              </dd></div>
               <div><dt>Submitted</dt><dd>{formatDateTime(ticket.createdAt)}</dd></div>
               <div><dt>Description</dt><dd style={{ whiteSpace: 'pre-wrap' }}>{ticket.description}</dd></div>
             </div>
@@ -177,14 +236,45 @@ export default function QueueDetail() {
             {ticket.status === 'OPEN' && (
               <div className="btn-row" style={{ marginTop: 20 }}>
                 <button type="button" className="btn btn--primary" disabled={busy === 'status'} onClick={startWorking}>
-                  {busy === 'status' ? 'Updating…' : 'Start working on this ticket'}
+                  {busy === 'status' ? 'Updating…' : 'Pick up and start working'}
                 </button>
               </div>
             )}
           </section>
 
+          {/* F4 #40: officers can now open what the student attached. */}
+          <section className="section">
+            <h2>Student's files</h2>
+            {files === null && <p className="empty">The student's files could not be loaded.</p>}
+            {files === 'off' && <p className="empty">Officers cannot open the student's files yet.</p>}
+            {Array.isArray(files) && files.length === 0 && <p className="empty">The student did not attach any files.</p>}
+            {Array.isArray(files) && files.map(file => (
+              <div className="pref" key={file.id}>
+                <div className="pref__text">
+                  <strong>{file.fileName}</strong>
+                  <span>{formatBytes(file.fileSize || 0)} · {formatDateTime(file.uploadedAt)}</span>
+                </div>
+                <div className="row-side">
+                  <a className="text-link" href={API.queueAttachment(id, file.id)} target="_blank" rel="noreferrer">Open</a>
+                </div>
+              </div>
+            ))}
+          </section>
+
+          <section className="section">
+            <h2>Status timeline</h2>
+            {history === null && <p className="empty">The timeline could not be loaded.</p>}
+            {history === 'off' && <p className="empty">The timeline is not available yet.</p>}
+            {Array.isArray(history) && <StatusTimeline entries={history} />}
+          </section>
+
           <section className="section">
             <h2>Assignment</h2>
+            {closed ? (
+              <p className="section-note" style={{ marginTop: 0 }}>
+                This ticket is {humanize(ticket.status).toLowerCase()}, so it can no longer be re-routed.
+              </p>
+            ) : (
             <form className="form" style={{ marginTop: 0 }} onSubmit={saveAssignment}>
               <div className="field-row">
                 <div className="field">
@@ -204,7 +294,7 @@ export default function QueueDetail() {
                 <button type="submit" className="btn btn--primary" disabled={busy === 'assign'}>
                   {busy === 'assign' ? 'Saving…' : 'Save assignment'}
                 </button>
-                {user && (
+                {user && !mine && (
                   <button type="button" className="btn btn--ghost"
                           onClick={() => setAssignOfficerId(String(user.id))}>
                     Assign to me
@@ -212,36 +302,52 @@ export default function QueueDetail() {
                 )}
               </div>
             </form>
+            )}
           </section>
 
+          {ticket.status === 'WITHDRAWN' ? (
+            <section className="section">
+              <h2>Resolution</h2>
+              <p className="section-note" style={{ marginTop: 0 }}>The student withdrew this ticket, so it does not need an answer.</p>
+            </section>
+          ) : (
           <section className="section">
             <h2>Resolution</h2>
+            {ticket.status === 'OPEN' && !resolution && (
+              <p className="section-note" style={{ marginTop: 0 }}>Pick the ticket up first, then post your answer here.</p>
+            )}
 
             <form className="form" style={{ marginTop: 0 }} onSubmit={saveResolution}>
               <div className="field">
                 <label htmlFor="responseText">Response to the student</label>
-                <textarea id="responseText" rows={5} value={responseText}
+                <textarea id="responseText" rows={5} value={responseText} maxLength={4000} disabled={answerLocked}
+                          placeholder="What you did, and what the student needs to do next."
                           onChange={e => setResponseText(e.target.value)} />
               </div>
               <div className="field">
                 <label htmlFor="resolutionFile">Attachment (optional)</label>
-                <input id="resolutionFile" type="file" onChange={e => setAttachment(e.target.files?.[0] || null)} />
+                <input id="resolutionFile" key={fileKey} type="file" accept={UPLOAD_ACCEPT} onChange={chooseFile} disabled={answerLocked} />
+                <p className="hint">PDF or image, up to 5 MB. The student can download it with your answer.</p>
               </div>
               {resolution?.attachmentFileName && (
-                <p className="hint">Current attachment: {resolution.attachmentFileName}</p>
+                <a className="file-link" href={API.queueResolutionFile(id)} target="_blank" rel="noreferrer">
+                  {resolution.attachmentFileName}
+                  {resolution.attachmentFileSize ? <span>{formatBytes(resolution.attachmentFileSize)}</span> : null}
+                </a>
               )}
               <div className="btn-row">
-                <button type="submit" className="btn btn--primary" disabled={busy === 'resolution'}>
-                  {busy === 'resolution' ? 'Saving…' : resolution ? 'Update resolution' : 'Post resolution'}
+                <button type="submit" className="btn btn--primary" disabled={answerLocked || busy === 'resolution' || !responseText.trim()}>
+                  {busy === 'resolution' ? 'Saving…' : resolution ? 'Update answer' : 'Post answer and resolve'}
                 </button>
                 {resolution && (
-                  <button type="button" className="btn btn--danger" disabled={busy === 'revoke'} onClick={revokeResolution}>
-                    Revoke resolution
-                  </button>
+                  <ConfirmButton label="Revoke answer" confirmLabel="Yes, revoke"
+                                 question="Revoke this answer? The ticket goes back to in progress."
+                                 busy={busy === 'revoke'} onConfirm={revokeResolution} />
                 )}
               </div>
             </form>
           </section>
+          )}
 
           <section className="section">
             <h2>Internal notes</h2>
@@ -253,7 +359,7 @@ export default function QueueDetail() {
               <div className="pref" key={note.id}>
                 <div className="pref__text">
                   <strong>{note.note}</strong>
-                  <span>Officer #{note.officerId} · {formatDateTime(note.createdAt)}</span>
+                  <span>{user && note.officerId === user.id ? 'You' : 'Officer #' + note.officerId} · {formatDateTime(note.createdAt)}</span>
                 </div>
                 <button type="button" className="btn btn--ghost" disabled={busy === 'note-' + note.id}
                         onClick={() => deleteNote(note.id)}>Remove</button>
@@ -261,7 +367,7 @@ export default function QueueDetail() {
             ))}
 
             <form className="btn-row" style={{ marginTop: 18 }} onSubmit={addNote}>
-              <input type="text" placeholder="Add an internal note" value={noteText}
+              <input type="text" placeholder="Add an internal note" value={noteText} maxLength={2000}
                      onChange={e => setNoteText(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
               <button type="submit" className="btn btn--ghost" disabled={busy === 'note'}>Add note</button>
             </form>

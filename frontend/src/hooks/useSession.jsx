@@ -95,7 +95,7 @@ export function SessionProvider({ children }) {
       // background request happened to fail.
       const path = window.location.hash.replace(/^#/, '')
       if (path && path !== '/' && !path.startsWith('/login') && !path.startsWith('/register')) {
-        window.location.hash = '#/login?expired=1'
+        window.location.hash = '#/login?expired=1&next=' + encodeURIComponent(path)
       }
     })
   }, [])
