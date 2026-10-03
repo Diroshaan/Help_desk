@@ -7,9 +7,11 @@ import com.helpdesk.ticket.entity.TicketStatus;
 import com.helpdesk.ticket.repository.TicketRepository;
 import com.helpdesk.ticketportal.dto.FeedbackSummaryResponse;
 import com.helpdesk.ticketportal.entity.Feedback;
+import com.helpdesk.ticketportal.event.FeedbackSubmittedEvent;
 import com.helpdesk.ticketportal.repository.FeedbackRepository;
 import jakarta.validation.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
@@ -25,10 +27,17 @@ public class FeedbackService {
     private final FeedbackRepository feedbackRepository;
     private final TicketRepository ticketRepository;
 
+    // OBSERVER PATTERN: this service is the subject. It only announces
+    // "feedback was submitted" through Spring's event publisher; it holds no
+    // reference to notifications or to whoever listens.
+    private final ApplicationEventPublisher eventPublisher;
+
     @Autowired
-    public FeedbackService(FeedbackRepository feedbackRepository, TicketRepository ticketRepository) {
+    public FeedbackService(FeedbackRepository feedbackRepository, TicketRepository ticketRepository,
+                           ApplicationEventPublisher eventPublisher) {
         this.feedbackRepository = feedbackRepository;
         this.ticketRepository = ticketRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     // Submitting requires: the ticket exists and belongs to this student,
@@ -55,11 +64,19 @@ public class FeedbackService {
         // at once can both pass it. The uq_feedback_ticket constraint rejects
         // the second insert; saveAndFlush makes that happen inside this try,
         // and it becomes the same 409 the check would have given.
+        Feedback saved;
         try {
-            return feedbackRepository.saveAndFlush(feedback);
+            saved = feedbackRepository.saveAndFlush(feedback);
         } catch (DataIntegrityViolationException e) {
             throw new DuplicateResourceException("Feedback has already been submitted for this ticket");
         }
+
+        // Observer: announce it, only once the save has succeeded and only
+        // for NEW feedback (updateFeedback deliberately doesn't publish, so
+        // correcting a rating never alerts the officer twice). Who reacts,
+        // and how, is FeedbackReceivedNotifier's business, not this service's.
+        eventPublisher.publishEvent(new FeedbackSubmittedEvent(ticketId, ticket.getSubject(), rating));
+        return saved;
     }
 
     // Updating only requires ownership - unlike submission, the ticket's
