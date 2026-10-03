@@ -36,6 +36,10 @@ export const API = {
   ticketSearch:     '/api/tickets/search',
   ticketAttachments:(id) => '/api/tickets/' + id + '/attachments',
   ticketAttachment: (id, attachmentId) => '/api/tickets/' + id + '/attachments/' + attachmentId,
+  ticketHistory:    (id) => '/api/tickets/' + id + '/history',              // F2 (#45)
+  ticketResolution: (id) => '/api/tickets/' + id + '/resolution',           // F3 (#39)
+  ticketResolutionFile: (id) => '/api/tickets/' + id + '/resolution/attachment',
+  ticketsArchived:  '/api/tickets/archived',                                // F3 (#41)
 
   // Officer queue
   queue:           '/api/queue',
@@ -45,6 +49,10 @@ export const API = {
   queueResolution: (id) => '/api/queue/' + id + '/resolution',
   queueNotes:      (id) => '/api/queue/' + id + '/notes',
   queueNote:       (id, noteId) => '/api/queue/' + id + '/notes/' + noteId,
+  queueHistory:    (id) => '/api/queue/' + id + '/history',                 // F4 (C3)
+  queueAttachments:(id) => '/api/queue/' + id + '/attachments',             // F4 (#40)
+  queueAttachment: (id, attachmentId) => '/api/queue/' + id + '/attachments/' + attachmentId,
+  queueResolutionFile: (id) => '/api/queue/' + id + '/resolution/attachment',
 
   // Bookmarks & folders (tickets)
   bookmarks:       '/api/bookmarks',
@@ -80,6 +88,7 @@ export const API = {
   adminOfficers:      '/api/admin/officers',
   adminAdministrators:'/api/admin/administrators',
   adminOfficerDepartments: (id) => '/api/admin/officers/' + id + '/departments',
+  adminOfficerSupervisor: (id) => '/api/admin/officers/' + id + '/supervisor',   // F4 (#46)
 
   // Reference data
   departments:           '/api/departments',
@@ -295,6 +304,37 @@ export function fieldErrors(result, knownFields) {
     if (typeof body[key] === 'string' && body[key]) errors[key] = body[key]
   })
   return errors
+}
+
+/* ---------------------------------------------------------------------------
+   UPLOADS — the same rule the server enforces (FileTypeDetector + the 5 MB
+   multipart limit), checked first so a wrong file is refused instantly with a
+   clear sentence instead of after a slow upload. The server still decides: it
+   reads the file's real bytes, so renaming a file does not get past it.
+--------------------------------------------------------------------------- */
+export const UPLOAD_ACCEPT = '.pdf,.png,.jpg,.jpeg,.gif,.webp,application/pdf,image/png,image/jpeg,image/gif,image/webp'
+export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024
+const UPLOAD_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp']
+
+/** null when the file may be sent, otherwise the sentence to show. */
+export function uploadProblem(file) {
+  if (!file) return null
+  const extension = (file.name.split('.').pop() || '').toLowerCase()
+  if (!UPLOAD_EXTENSIONS.includes(extension)) {
+    return 'Only PDF and image files (PNG, JPEG, GIF, WEBP) can be attached.'
+  }
+  if (file.size > UPLOAD_MAX_BYTES) {
+    return 'That file is ' + formatBytes(file.size) + '. Files can be at most 5 MB.'
+  }
+  return null
+}
+
+/** 81234 -> "79 KB", 2400000 -> "2.3 MB". */
+export function formatBytes(bytes) {
+  if (bytes === null || bytes === undefined) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
 /** "Diroshaan Sivakaran" -> "DS", for the avatar circle. */

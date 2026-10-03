@@ -101,9 +101,47 @@ export const ROUTES = [
 
 /** Where to send someone the instant we know their role — after login, and
  *  whenever a page they may not view sends them away instead of showing a
- *  403. */
+ *  403. A student's home is their tickets: that is what they came to the help
+ *  desk for, and the profile is one click away in the sidebar. */
 export function homeFor(role) {
   if (role === 'OFFICER') return '/queue'
   if (role === 'ADMIN') return '/admin/dashboard'
-  return '/profile'
+  return '/tickets'
+}
+
+/**
+ * The page a guest was trying to reach, carried through the login form as
+ * ?next=/tickets/new. Only an in-app path is accepted: "//evil.example" or a
+ * full URL would turn the login page into an open redirect.
+ */
+export function nextFrom(search) {
+  const next = new URLSearchParams(search || '').get('next')
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return null
+  if (next.startsWith('/login') || next.startsWith('/register')) return null
+  return next
+}
+
+/** Where to go once signed in: the page they asked for, if their role may see
+ *  it, otherwise their own home. */
+export function afterLogin(role, search) {
+  const next = nextFrom(search)
+  if (next) {
+    const path = next.split('?')[0]
+    const route = ROUTES.find(r => matches(r.path, path))
+    if (route && (route.access === 'public' || (Array.isArray(route.access) && route.access.includes(role)))) {
+      return next
+    }
+  }
+  return homeFor(role)
+}
+
+/** The login page, remembering where the visitor wanted to go. */
+export function loginFor(path) {
+  return path && path !== '/' ? '/login?next=' + encodeURIComponent(path) : '/login'
+}
+
+/* '/tickets/:id' matches '/tickets/12'. */
+function matches(pattern, path) {
+  const a = pattern.split('/'), b = path.split('/')
+  return a.length === b.length && a.every((part, i) => part.startsWith(':') || part === b[i])
 }

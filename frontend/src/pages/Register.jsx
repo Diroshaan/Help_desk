@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { API, errorMessage, fieldErrors, request } from '../api.js'
 import { BrandPanel, Field, Notice, PhoneList, SelectField } from '../components/Bits.jsx'
+import { nextFrom } from '../routes.jsx'
 
 const POINTS = [
   { lead: 'One account, every desk.', body: ' IT, Finance, the Registrar and Hostel services — no separate logins to remember.' },
@@ -36,6 +37,8 @@ function scorePassword(value) {
 
 export default function Register() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const next = nextFrom(location.search)
 
   const [form, setForm] = useState({
     givenName: '', surname: '', studentId: '', email: '', department: '',
@@ -65,6 +68,21 @@ export default function Register() {
     event.preventDefault()
     setErrors({})
     setNotice(null)
+
+    // Empty boxes are caught here first, so pressing "Create account" on a
+    // blank form marks every missing field and jumps to the first one, instead
+    // of only showing the policy message at the bottom.
+    const missing = {}
+    if (!form.givenName.trim()) missing.givenName = 'Enter your given name(s).'
+    if (!form.surname.trim()) missing.surname = 'Enter your surname.'
+    if (!form.studentId.trim()) missing.studentId = 'Enter your Student ID.'
+    if (!form.email.trim()) missing.email = 'Enter your university email.'
+    if (!form.department) missing.department = 'Choose your faculty or department.'
+    if (!form.password) missing.password = 'Choose a password.'
+    if (Object.keys(missing).length) {
+      setErrors(missing)
+      return
+    }
 
     // The two-password check has no server equivalent — the server only ever
     // receives one — so it has to happen here.
@@ -124,7 +142,7 @@ export default function Register() {
 
         // replace, not push: the back button should not return to a filled-in
         // form for an account that now exists.
-        navigate('/login', { replace: true })
+        navigate(next ? '/login?next=' + encodeURIComponent(next) : '/login', { replace: true })
         return
       }
 
@@ -209,7 +227,7 @@ export default function Register() {
 
           <hr className="rule" />
 
-          <p className="foot-note">Already registered? <Link to="/login">Log in</Link></p>
+          <p className="foot-note">Already registered? <Link to={next ? '/login?next=' + encodeURIComponent(next) : '/login'}>Log in</Link></p>
         </div>
       </main>
     </div>

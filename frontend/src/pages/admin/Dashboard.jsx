@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { API, formatDateTime, request, withQuery } from '../../api.js'
-import { Notice, SelectField } from '../../components/Bits.jsx'
+import { BarList, Notice, SelectField, StatTile, humanize } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 /* The five ratings, highest first.
@@ -20,6 +20,7 @@ export default function Dashboard() {
   // Feedback analytics (#47). Kept in its own state rather than folded into
   // the dashboard payload: it answers a question about ONE category the
   // administrator picks, so it cannot be part of a single system-wide summary.
+  const [departments, setDepartments] = useState([])
   const [categories, setCategories] = useState([])
   const [category, setCategory] = useState('')
   const [summary, setSummary] = useState(null)
@@ -32,6 +33,10 @@ export default function Dashboard() {
       else setError('We could not load the dashboard.')
       setLoading(false)
     }).catch(() => { setError('Could not reach the server.'); setLoading(false) })
+  }, [])
+
+  useEffect(() => {
+    request(API.departments).then(r => { if (r.ok) setDepartments(r.data || []) }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -54,6 +59,22 @@ export default function Dashboard() {
   // it. Scaling to the largest count rather than to the total is what keeps a
   // breakdown readable when one rating dominates: against the total, four of
   // the five bars would be slivers.
+  // Codes are what the API returns; names are what an administrator reads.
+  function departmentName(code) {
+    if (!code || code === 'UNASSIGNED' || code === 'null') return 'Not routed'
+    return departments.find(d => d.code === code)?.name || code
+  }
+  // Hours under one read better as minutes ("12 min", not "0.2 h").
+  const hours = data?.averageResolutionHours
+  const averageTime = typeof hours !== 'number' ? null
+    : hours < 1 ? { value: Math.max(1, Math.round(hours * 60)), unit: 'min' }
+    : { value: Math.round(hours * 10) / 10, unit: 'h' }
+
+  // Every ticket still waiting on the help desk, routed or not.
+  const openBacklog = data
+    ? (data.ticketsByStatus?.OPEN || 0) + (data.ticketsByStatus?.IN_PROGRESS || 0)
+    : null
+
   const breakdown = summary?.ratingBreakdown || {}
   const peak = Math.max(1, ...RATINGS.map(r => breakdown[r] || 0))
   const responses = summary?.totalCount || 0
@@ -72,46 +93,41 @@ export default function Dashboard() {
             <>
               <section className="section">
                 <h2>Overview</h2>
-                <div className="detail-list">
-                  <div><dt>Total tickets</dt><dd>{data.totalTickets}</dd></div>
-                  <div><dt>SLA breaches</dt><dd>{data.slaBreaches}</dd></div>
-                  <div><dt>Total users</dt><dd>{data.totalUsers}</dd></div>
-                  <div><dt>Active users</dt><dd>{data.activeUsers}</dd></div>
-                  <div><dt>Generated</dt><dd>{formatDateTime(data.generatedAt)}</dd></div>
+                <div className="stats">
+                  <StatTile label="Total tickets" value={data.totalTickets} />
+                  <StatTile label="Open backlog" value={openBacklog} note="Open or in progress" />
+                  <StatTile label="Average resolution time"
+                            value={averageTime ? averageTime.value : null}
+                            suffix={averageTime ? averageTime.unit : null}
+                            note={averageTime ? 'From submitted to resolved' : 'No resolved tickets yet'} />
+                  <StatTile label="SLA breaches" value={data.slaBreaches} note="Past their priority's deadline" />
+                  <StatTile label="Active users" value={data.activeUsers} note={'of ' + data.totalUsers + ' accounts'} />
                 </div>
+                <p className="hint" style={{ marginTop: 12 }}>Updated {formatDateTime(data.generatedAt)}</p>
               </section>
 
               <section className="section">
                 <h2>Tickets by status</h2>
-                {Object.entries(data.ticketsByStatus || {}).map(([status, count]) => (
-                  <div className="pref" key={status}>
-                    <div className="pref__text"><strong>{status}</strong></div>
-                    <div className="row-side"><span className="mono">{count}</span></div>
-                  </div>
-                ))}
+                <BarList items={Object.entries(data.ticketsByStatus || {})
+                  .map(([status, count]) => ({ key: status, label: humanize(status), value: count }))
+                  .sort((a, b) => b.value - a.value)}
+                  empty="No tickets yet." />
               </section>
 
               <section className="section">
                 <h2>Tickets by department</h2>
-                {Object.entries(data.ticketsByDepartment || {}).map(([code, count]) => (
-                  <div className="pref" key={code}>
-                    <div className="pref__text"><strong>{code}</strong></div>
-                    <div className="row-side"><span className="mono">{count}</span></div>
-                  </div>
-                ))}
+                <BarList items={Object.entries(data.ticketsByDepartment || {})
+                  .map(([code, count]) => ({ key: code, label: departmentName(code), value: count }))
+                  .sort((a, b) => b.value - a.value)}
+                  empty="No tickets have been routed to a department yet." />
               </section>
 
               <section className="section">
                 <h2>Open backlog by department</h2>
-                {Object.entries(data.openBacklogByDepartment || {}).length === 0 && (
-                  <p className="empty">No open backlog right now.</p>
-                )}
-                {Object.entries(data.openBacklogByDepartment || {}).map(([code, count]) => (
-                  <div className="pref" key={code}>
-                    <div className="pref__text"><strong>{code}</strong></div>
-                    <div className="row-side"><span className="mono">{count}</span></div>
-                  </div>
-                ))}
+                <BarList items={Object.entries(data.openBacklogByDepartment || {})
+                  .map(([code, count]) => ({ key: code, label: departmentName(code), value: count }))
+                  .sort((a, b) => b.value - a.value)}
+                  empty="No open backlog right now." />
               </section>
             </>
           )}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { API, errorMessage, fieldErrors, formatDateTime, request, requestForm } from '../../api.js'
-import { Field, Notice, Rating, SelectField, StatusPill } from '../../components/Bits.jsx'
+import { API, UPLOAD_ACCEPT, errorMessage, fieldErrors, formatBytes, formatDateTime, request, requestForm, uploadProblem } from '../../api.js'
+import { ConfirmButton, Field, Notice, Rating, SelectField, StatusPill, StatusTimeline, humanize } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 const PRIORITIES = [
@@ -30,16 +30,15 @@ export default function TicketDetail() {
   const [feedback, setFeedback] = useState(null)
   const [feedbackForm, setFeedbackForm] = useState({ rating: 0, comment: '' })
 
-  // Whether this ticket has been archived IN THIS BROWSER SESSION.
-  //
-  // Honest limitation, worth knowing rather than hiding: the backend has
-  // POST and DELETE for the archive but no GET, so there is no way to ask
-  // "is this ticket archived?" on load. The flag therefore starts false on
-  // every page load, and the button says "Archive" again even for a ticket
-  // that is already archived - pressing it returns a clear "already archived"
-  // message rather than doing damage. Adding GET /api/tickets/{id}/archive
-  // would fix it properly; that is a backend change and is out of scope here.
+  // Whether this ticket is archived. Read on load from F3's
+  // GET /api/tickets/archived, so the button always says the right thing.
   const [archived, setArchived] = useState(false)
+
+  // The status timeline (F2 #45) and the help desk's answer (F3 #39).
+  // `answer` stays null until an officer has resolved the ticket; a 404 from
+  // the resolution endpoint is the normal "no answer yet" case.
+  const [history, setHistory] = useState(null)
+  const [answer, setAnswer] = useState(null)
 
   const [errors, setErrors] = useState({})
   const [notice, setNotice] = useState(null)
@@ -49,11 +48,13 @@ export default function TicketDetail() {
 
   async function load() {
     setLoading(true)
-    const [ticketResult, attachmentResult, bookmarkResult, categoryResult] = await Promise.all([
+    const [ticketResult, attachmentResult, bookmarkResult, categoryResult, historyResult, archivedResult] = await Promise.all([
       request(API.ticket(id)),
       request(API.ticketAttachments(id)),
       request(API.bookmarks),
-      request(API.ticketCategories)
+      request(API.ticketCategories),
+      request(API.ticketHistory(id)),
+      request(API.ticketsArchived)
     ])
 
     if (!ticketResult.ok) {
@@ -71,6 +72,10 @@ export default function TicketDetail() {
     })
     setAttachments(attachmentResult.ok ? attachmentResult.data : [])
     setCategories(categoryResult.ok ? categoryResult.data : [])
+    setHistory(historyResult.ok ? historyResult.data : null)
+    setArchived(archivedResult.ok && Array.isArray(archivedResult.data)
+      ? archivedResult.data.some(t => t.id === Number(id))
+      : false)
 
     if (bookmarkResult.ok) {
       const existing = (bookmarkResult.data || []).find(b => b.ticketId === Number(id))
@@ -86,6 +91,9 @@ export default function TicketDetail() {
     // this student has not rated it yet", which is exactly the state the form
     // below exists to fill. Only a 200 sets the saved record.
     if (ticketResult.data.status === 'RESOLVED') {
+      const answerResult = await request(API.ticketResolution(id))
+      setAnswer(answerResult.ok ? answerResult.data : null)
+
       const feedbackResult = await request(API.ticketFeedback(id))
       if (feedbackResult.ok && feedbackResult.data) {
         setFeedback(feedbackResult.data)
@@ -114,6 +122,11 @@ export default function TicketDetail() {
       if (result.ok) {
         setTicket(result.data)
         setNotice({ kind: 'info', text: 'Your ticket has been updated.' })
+      } else if (result.status === 409) {
+        // Someone (an officer) changed this ticket after it was opened here.
+        // Show the latest version instead of overwriting their change.
+        await load()
+        setNotice({ kind: 'error', text: 'An officer updated this ticket while you were editing it. The latest version is shown below; make your change again.' })
       } else {
         const fields = fieldErrors(result, ['subject', 'description', 'category', 'priority'])
         if (Object.keys(fields).length) setErrors(fields)
@@ -132,6 +145,8 @@ export default function TicketDetail() {
       const result = await request(API.ticketWithdraw(id), { method: 'POST' })
       if (result.ok) {
         setTicket(result.data)
+        const historyResult = await request(API.ticketHistory(id))
+        if (historyResult.ok) setHistory(historyResult.data)
         setNotice({ kind: 'info', text: 'This ticket has been withdrawn.' })
       } else {
         setNotice({ kind: 'error', text: errorMessage(result, 'We could not withdraw this ticket.') })
@@ -147,6 +162,9 @@ export default function TicketDetail() {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
+
+    const problem = uploadProblem(file)
+    if (problem) { setNotice({ kind: 'error', text: problem }); return }
 
     setNotice(null); setBusy('upload')
     try {
@@ -245,6 +263,11 @@ export default function TicketDetail() {
           kind: 'info',
           text: archived ? 'This ticket is back in your active list.' : 'This ticket has been archived.'
         })
+      } else if (result.status === 409 && !archived) {
+        // Already archived (e.g. archived earlier, before the archive list
+        // could tell this page): show the true state instead of an error.
+        setArchived(true)
+        setNotice({ kind: 'info', text: 'This ticket is already archived.' })
       } else {
         setNotice({ kind: 'error', text: errorMessage(result, 'We could not archive this ticket.') })
       }
@@ -258,12 +281,15 @@ export default function TicketDetail() {
   async function toggleBookmark() {
     setBusy('bookmark')
     try {
+      setNotice(null)
       if (bookmark) {
         const result = await request(API.bookmark(bookmark.id), { method: 'DELETE' })
         if (result.ok || result.status === 204) setBookmark(null)
+        else setNotice({ kind: 'error', text: errorMessage(result, 'We could not remove the bookmark.') })
       } else {
         const result = await request(API.bookmarks, { method: 'POST', body: { ticketId: Number(id) } })
         if (result.ok) setBookmark(result.data)
+        else setNotice({ kind: 'error', text: errorMessage(result, 'We could not bookmark this ticket.') })
       }
     } catch {
       setNotice({ kind: 'error', text: 'Could not reach the server.' })
@@ -294,6 +320,8 @@ export default function TicketDetail() {
 
   const editable = ticket.status === 'OPEN'
   const withdrawable = ticket.status === 'OPEN' || ticket.status === 'IN_PROGRESS'
+  // A finished ticket - answered or withdrawn - can leave the active list (F3 #41).
+  const archivable = ticket.status === 'RESOLVED' || ticket.status === 'WITHDRAWN'
 
   return (
     <div className="shell">
@@ -309,10 +337,34 @@ export default function TicketDetail() {
 
           {notice && <Notice kind={notice.kind} style={{ margin: '18px 0 0' }}>{notice.text}</Notice>}
 
+          {/* F3 #39: the student finally sees what the help desk said. Placed
+              first, because once a ticket is resolved this is what they came
+              back for. */}
+          {answer && (
+            <section className="section">
+              <h2>The help desk's answer</h2>
+              <div className="answer">
+                <p className="answer__head">
+                  <strong>{answer.officerName || 'Help desk officer'}</strong>
+                  {' · '}{formatDateTime(answer.publishedAt || answer.createdAt)}
+                  {answer.updatedAt && answer.publishedAt && answer.updatedAt !== answer.publishedAt
+                    ? ' · edited ' + formatDateTime(answer.updatedAt) : ''}
+                </p>
+                <p className="answer__text">{answer.responseText}</p>
+                {answer.attachmentFileName && (
+                  <a className="file-link" href={API.ticketResolutionFile(id)} target="_blank" rel="noreferrer">
+                    {answer.attachmentFileName}
+                    {answer.attachmentFileSize ? <span>{formatBytes(answer.attachmentFileSize)}</span> : null}
+                  </a>
+                )}
+              </div>
+            </section>
+          )}
+
           <section className="section">
             <div className="detail-list">
               <div><dt>Category</dt><dd>{ticket.category}</dd></div>
-              <div><dt>Priority</dt><dd>{ticket.priority}</dd></div>
+              <div><dt>Priority</dt><dd>{humanize(ticket.priority)}</dd></div>
               <div><dt>Submitted</dt><dd>{formatDateTime(ticket.createdAt)}</dd></div>
               <div><dt>Last updated</dt><dd>{formatDateTime(ticket.updatedAt)}</dd></div>
             </div>
@@ -321,19 +373,17 @@ export default function TicketDetail() {
               <button type="button" className="btn btn--ghost" onClick={toggleBookmark} disabled={busy === 'bookmark'}>
                 {bookmark ? 'Remove bookmark' : 'Bookmark this ticket'}
               </button>
-              {/* Archiving is offered only on a RESOLVED ticket because
-                  TicketArchiveService rejects anything else. Showing a button
-                  that is guaranteed to fail would be worse than not showing
-                  one. */}
-              {ticket.status === 'RESOLVED' && (
+              {/* Only a finished ticket can be archived; TicketArchiveService
+                  refuses anything else, so the button is not offered. */}
+              {archivable && (
                 <button type="button" className="btn btn--ghost" onClick={toggleArchive} disabled={busy === 'archive'}>
                   {archived ? 'Move back to active' : 'Archive this ticket'}
                 </button>
               )}
               {withdrawable && (
-                <button type="button" className="btn btn--danger" onClick={withdraw} disabled={busy === 'withdraw'}>
-                  {busy === 'withdraw' ? 'Withdrawing…' : 'Withdraw ticket'}
-                </button>
+                <ConfirmButton label="Withdraw ticket" confirmLabel="Yes, withdraw"
+                               question="Withdraw this ticket? This cannot be undone."
+                               busy={busy === 'withdraw'} onConfirm={withdraw} />
               )}
             </div>
           </section>
@@ -343,7 +393,7 @@ export default function TicketDetail() {
 
             {editable ? (
               <form className="form" style={{ marginTop: 0 }} onSubmit={saveChanges} noValidate>
-                <Field id="subject" label="Subject" type="text"
+                <Field id="subject" label="Subject" type="text" maxLength={150}
                        value={form.subject} onChange={set('subject')} error={errors.subject} />
 
                 <div className="field-row">
@@ -356,7 +406,7 @@ export default function TicketDetail() {
 
                 <div className="field">
                   <label htmlFor="description">Description</label>
-                  <textarea id="description" name="description" rows={6}
+                  <textarea id="description" name="description" rows={6} maxLength={2000}
                             value={form.description} onChange={set('description')} />
                   <p className="field-error">{errors.description || ''}</p>
                 </div>
@@ -370,6 +420,14 @@ export default function TicketDetail() {
             ) : (
               <p className="section-note" style={{ marginTop: 0, whiteSpace: 'pre-wrap' }}>{ticket.description}</p>
             )}
+          </section>
+
+          {/* F2 #45: every status change, who made it and when. */}
+          <section className="section">
+            <h2>Status timeline</h2>
+            {history === null
+              ? <p className="empty">The timeline is not available right now.</p>
+              : <StatusTimeline entries={history} />}
           </section>
 
           {/* F3, US-12 - rate the service once the ticket is RESOLVED.
@@ -432,28 +490,38 @@ export default function TicketDetail() {
           <section className="section">
             <h2>Attachments</h2>
 
-            {attachments.length === 0 && <p className="empty">No files attached yet.</p>}
+            {attachments.length === 0 && <p className="empty">No files attached.</p>}
 
             {attachments.map(att => (
               <div className="pref" key={att.id}>
                 <div className="pref__text">
                   <strong>{att.fileName}</strong>
-                  <span>{Math.round((att.fileSize || 0) / 1024)} KB · {formatDateTime(att.uploadedAt)}</span>
+                  <span>{formatBytes(att.fileSize || 0)} · {formatDateTime(att.uploadedAt)}</span>
                 </div>
                 <div className="row-side">
                   <a className="text-link" href={API.ticketAttachment(id, att.id)} target="_blank" rel="noreferrer">Download</a>
-                  <button type="button" className="btn btn--ghost" disabled={busy === 'attachment-' + att.id}
-                          onClick={() => deleteAttachment(att.id)}>Remove</button>
+                  {/* Files can only be added or removed while the ticket is
+                      still OPEN (AttachmentService); after that they are part of
+                      the record the officer is working from. */}
+                  {editable && (
+                    <button type="button" className="btn btn--ghost" disabled={busy === 'attachment-' + att.id}
+                            onClick={() => deleteAttachment(att.id)}>Remove</button>
+                  )}
                 </div>
               </div>
             ))}
 
-            <div className="btn-row" style={{ marginTop: 18 }}>
-              <label className="btn btn--ghost">
-                {busy === 'upload' ? 'Uploading…' : 'Attach a file'}
-                <input type="file" hidden onChange={uploadFile} disabled={busy === 'upload'} />
-              </label>
-            </div>
+            {editable ? (
+              <div className="btn-row" style={{ marginTop: 18 }}>
+                <label className="btn btn--ghost">
+                  {busy === 'upload' ? 'Uploading…' : 'Attach a file'}
+                  <input type="file" hidden accept={UPLOAD_ACCEPT} onChange={uploadFile} disabled={busy === 'upload'} />
+                </label>
+                <span className="hint">PDF or image, up to 5 MB.</span>
+              </div>
+            ) : (
+              <p className="hint" style={{ marginTop: 12 }}>Files can be added only while the ticket is open.</p>
+            )}
           </section>
         </div>
       </main>

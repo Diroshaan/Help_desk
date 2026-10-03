@@ -32,8 +32,11 @@ export function Sidebar() {
   })
 
   async function handleSignOut() {
-    await signOut()
+    // Leave the protected page FIRST. Signing out first made this page's
+    // guard see a guest and send them to "Log in ?next=this page" before the
+    // jump home could happen, so "Log out" landed on the login form.
     navigate('/')
+    await signOut()
   }
 
   const displayName = student?.fullName || user?.displayName || ''

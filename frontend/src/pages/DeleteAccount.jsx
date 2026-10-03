@@ -37,8 +37,11 @@ export default function DeleteAccount() {
     // Five seconds, because closing an account is worth acknowledging rather
     // than snapping away from.
     const timer = setTimeout(() => navigate('/', { replace: true }), 5000)
-    return () => clearTimeout(timer)
-  }, [done, navigate])
+    // The browser's signed-in state is cleared only as this page goes away
+    // (timer or the button). Clearing it straight after the delete made the
+    // page guard see a guest and swap this confirmation for the login form.
+    return () => { clearTimeout(timer); signOut() }
+  }, [done, navigate, signOut])
 
   if (done) {
     return (
@@ -98,9 +101,10 @@ export default function DeleteAccount() {
       const result = await request(API.student(student.id), { method: 'DELETE' })
 
       if (result.ok || result.status === 204) {
+        // The session belongs to an account that no longer exists: end it on
+        // the server now. The browser side is cleared when this page closes.
+        await request(API.logout, { method: 'POST' }).catch(() => {})
         setDone(true)
-        // The session belongs to an account that no longer exists, so end it.
-        await signOut()
         return
       }
 
