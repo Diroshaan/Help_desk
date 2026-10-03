@@ -55,10 +55,6 @@ public record ArticleSummaryResponse(
                 excerpt,
                 article.getTags(),
                 categoryNames,
-                // Depends on Officer.getFullName(), which Diroshaan is adding
-                // in his own shared-file PR to common/user (not on develop
-                // yet as of this branch) - see F5_Implementation_Notes.md
-                // "Sequencing". This line doesn't compile until that lands.
                 article.getAuthor().getFullName(),
                 article.getUpdatedAt()
         );
