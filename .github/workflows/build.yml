@@ -1,30 +1,5 @@
-# Continuous integration — runs on every pull request into develop.
-#
-# WHY THIS EXISTS
-# ---------------
-# Two pull requests have reached review in a state that could not compile:
-#
-#   #32  imported two classes that had been written but never `git add`ed,
-#        so develop would not have built if it had merged.
-#   #34  was opened containing four deleted .gitkeep files and no Java at all —
-#        the code was on the author's disk the whole time.
-#
-# Both were caught by a person reading the diff. Neither should have needed a
-# person. A build on every PR catches the whole class of "it works on my
-# machine" automatically, before a reviewer spends time on it.
-#
-# WHY IT NOW RUNS THE TESTS
-# -------------------------
-# It used to compile only, because src/test did not exist and `mvn verify`
-# would have passed trivially - a green tick that proved nothing. The first
-# tests have landed (F1 and the shared access rules: 37 of them, including a
-# full-application test that student A cannot read or edit student B), so
-# the backend job now runs `mvn -B verify`. From here a pull request that
-# breaks the ownership guard, the password rules or the session revocation
-# fails its check before anyone reviews it.
-#
-# The tests use the in-memory H2 database and the "test" profile, so CI needs
-# no database, no secrets and no network beyond Maven Central.
+# CI: on every pull request and push to develop, build and test the backend
+# (H2 and the "test" profile, so no database or secrets) and build the frontend.
 
 name: Build
 
@@ -44,16 +19,12 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          # 17 matches <java.version> in pom.xml. Not 24: the local JDK being
-          # newer is fine, but CI should build against the version the project
-          # actually declares, or CI is testing something we do not ship.
+          # matches <java.version> in pom.xml
           java-version: '17'
           distribution: 'temurin'
           cache: maven
 
-      # -B is batch mode: no ANSI colours and no interactive prompts, so the
-      # log stays readable in the Actions output. verify compiles AND runs every
-      # test under src/test; a single failing test fails the check.
+      # verify compiles and runs every test; -B keeps the log plain
       - name: Compile and test
         run: mvn -B verify
 
@@ -69,10 +40,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # `npm ci` rather than `npm install`: it installs exactly what
-      # package-lock.json pins and fails if the lock file and package.json
-      # disagree, so CI can never quietly build against different versions
-      # from the ones a developer has.
+      # npm ci installs exactly what package-lock.json pins
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
@@ -81,12 +49,8 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      # The built bundle is committed (Spring serves it from
-      # src/main/resources/static). If a PR changes frontend source but forgets
-      # to rebuild, the committed bundle is stale and the running app shows
-      # yesterday's code — which looks like "my change did nothing" and has
-      # already cost time on this project. This makes that state a failing
-      # check rather than a mystery.
+      # The built bundle is committed (Spring serves it from src/main/resources/static),
+      # so fail if someone changed the frontend source without rebuilding it.
       - name: Fail if the committed bundle is out of date
         run: |
           if [ -n "$(git status --porcelain src/main/resources/static)" ]; then

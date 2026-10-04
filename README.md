@@ -1,107 +1,135 @@
-# 🎓 Web-Based Help Desk System
+# UNIHELP - Web-Based Help Desk System
 
-A centralised support ticket platform for university students, built to replace scattered emails, phone calls, and office visits with one structured, trackable web portal.
+A help desk web app for university students. Students raise support tickets and follow
+them to an answer, help desk officers work through department queues, and
+administrators manage accounts and watch how the service is doing. A knowledge base
+lets students find answers to common questions before they open a ticket.
 
-**SE2030 — Software Engineering** · Sri Lanka Institute of Information Technology · Group MLBB8G204
+SE2030 Software Engineering, SLIIT - group 2026-Y2-S1-MLB-B8G2-04.
 
----
+## Functions and owners
 
-## 📋 What This System Does
-
-Students submit categorised support tickets with file attachments and track them through to resolution. Help Desk Officers work from organised departmental queues instead of an inbox. Administrators oversee accounts, permissions, and system-wide performance through live dashboards. A searchable knowledge base lets students self-resolve common issues before ever filing a ticket.
-
-## ✨ Core Features
-
-| # | Feature | Description |
-|---|---|---|
-| F1 | Student Profile & Preferences | Registration, profile management, notification preferences, account deactivation |
-| F2 | Advanced Ticket Request Engine | Ticket submission with categories, priorities, and file attachments |
-| F3 | Ticket Lifecycle & Feedback | Status tracking, bookmarking, feedback and ratings |
-| F4 | Ticket Resolution & Queue Engine | Departmental queues, status transitions, official responses, internal notes |
-| F5 | Knowledge Base & FAQ Publishing | Searchable self-service articles, staff publishing tools |
-| F6 | Analytics, Provisioning & Announcements | Account provisioning, executive dashboards, system-wide notices |
-
-Plus shared infrastructure: authentication & session handling, input validation, file upload safety checks, and responsive navigation — used across every feature above rather than owned by one person.
-
-## 🛠️ Tech Stack
-
-![Java](https://img.shields.io/badge/Java-17-orange)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-brightgreen)
-![Maven](https://img.shields.io/badge/Build-Maven-blue)
-![H2](https://img.shields.io/badge/Database-H2%20(dev)-lightgrey)
-
-Java 17 · Spring Boot 3.2 · Spring Data JPA · Spring Security (session-based) · H2 (development database) · Maven
-
-## 👥 Team
-
-| Member | Student ID | Owns | Role |
+| | Function | Owner | What it covers |
 |---|---|---|---|
-| Diroshaan S | IT25101580 | F1 — Student Profile & Preferences | Product Owner, Repo maintainer |
-| Chamikara A. K | IT25102416 | F2 — Advanced Ticket Request Engine | Developer |
-| Amarasinghe S. D | IT25103424 | F3 — Ticket Lifecycle & Feedback | Scrum Master |
-| Weerabaddana V. P | IT25101250 | F4 — Ticket Resolution & Queue Engine | Developer |
-| Tharmithan P | IT25100375 | F5 — Knowledge Base & FAQ Publishing | Developer |
-| Perera L. S. N | IT25103172 | F6 — Analytics, Provisioning & Announcements | Developer |
+| F1 | Accounts, profile and notifications | Diroshaan S (IT25101580) | Registration, login, profile and avatar, contact numbers, password change, account deletion, officer profile, notifications inbox. Also the React frontend and the shared user model. |
+| F2 | Ticket submission | Chamikara A. K (IT25102416) | Submitting, editing and withdrawing tickets, file attachments, ticket search, status timeline. |
+| F3 | Ticket lifecycle portal | Amarasinghe S. D - Dakshin (IT25103424) | Viewing the officer's answer, feedback and ratings, bookmarks and bookmark folders, archiving closed tickets. |
+| F4 | Officer queue and resolutions | Weerabaddana V. P - Vimansa (IT25101250) | Department queues, routing by category, assigning and progressing tickets, writing resolutions, staff notes, officer supervisors. |
+| F5 | Knowledge base | Tharmithan P (IT25100375) | Writing, publishing and archiving articles, tags and categories, related articles, search, saved articles. |
+| F6 | Admin dashboard | Perera L. S. N - Sanuthmi (IT25103172) | Dashboard statistics, provisioning officer and admin accounts, suspending and removing users, announcements. |
 
-## 🚀 Getting Started
+## Tech stack
+
+- Java 17, Spring Boot 3.2.5 (Web, Data JPA, Security, Validation), Maven
+- H2 in-memory database for development, MySQL 8 for the shared/demo database
+- React 18 + Vite frontend (in `frontend/`), built into `src/main/resources/static`
+- JUnit 5, Mockito and Spring Security Test for tests
+- GitHub Actions builds and tests every pull request into `develop`
+
+## Running it
+
+You need JDK 17 or newer and Maven (IntelliJ IDEA's bundled Maven is fine).
+
+### On H2 (default, no setup)
 
 ```bash
 git clone https://github.com/Diroshaan/Help_desk.git
 cd Help_desk
-git checkout develop
+mvn spring-boot:run
 ```
 
-Open the folder in **IntelliJ IDEA** — it auto-detects the Maven project and downloads dependencies on first load. Then run `HelpdeskApplication.java`.
+Or open the folder in IntelliJ and run `HelpdeskApplication`. Then go to
+http://localhost:8080.
 
-The app starts at **http://localhost:8080**. Browse the database at **http://localhost:8080/h2-console**:
-- JDBC URL: `jdbc:h2:mem:helpdeskdb`
-- Username: `sa` · Password: *(blank)*
+- The database is in memory, so it is empty again after every restart.
+- H2 console: http://localhost:8080/h2-console (JDBC URL `jdbc:h2:mem:helpdeskdb`,
+  user `sa`, no password).
+- A demo officer is created on H2: `officer.demo@helpdesk.local` / `Officer@123`.
+- The first admin account is created on startup (`admin@helpdesk.local` by default).
+  Its password is printed once in the startup log, unless you set
+  `HELPDESK_BOOTSTRAPADMIN_PASSWORD` (and optionally `HELPDESK_BOOTSTRAPADMIN_EMAIL`,
+  `HELPDESK_BOOTSTRAPADMIN_DISPLAYNAME`).
+- Students register themselves from the sign-up page.
 
-> ⚠️ The database is in-memory — it resets every time the app restarts. This is expected during development.
+### On MySQL
 
-## 📁 Project Structure
+Turn on the `mysql` profile and give the connection details as environment variables
+(the value in brackets is used if you leave one out):
 
-Package-by-feature: each person owns one top-level package, so six people can build in parallel without conflicts.
+| Variable | Default |
+|---|---|
+| `MYSQL_HOST` | `localhost` |
+| `MYSQL_PORT` | `3306` |
+| `MYSQL_DB` | `helpdeskdb` |
+| `MYSQL_USER` | `root` |
+| `MYSQL_PASSWORD` | (empty) |
+| `MYSQL_SSL_MODE` | `REQUIRED` (use `PREFERRED` for a local server without TLS) |
+
+```bash
+MYSQL_HOST=... MYSQL_PORT=... MYSQL_DB=... MYSQL_USER=... MYSQL_PASSWORD=... \
+  mvn spring-boot:run -Dspring-boot.run.profiles=mysql
+```
+
+In IntelliJ, set "Active profiles" to `mysql` and add the variables under
+Environment variables. Never commit the password. On a local MySQL, create the
+database first with `CREATE DATABASE helpdeskdb;`. If the database was created with
+older code, run the scripts in `docs/migrations` in date order (each file says how).
+
+### Frontend
+
+The built frontend is committed, so the steps above are enough to use the app. To work
+on it:
+
+```bash
+cd frontend
+npm ci
+npm run dev     # http://localhost:5173, /api calls go to Spring on port 8080
+npm run build   # writes the bundle into src/main/resources/static - commit it
+```
+
+## Tests
+
+```bash
+mvn test        # or: mvn verify (what CI runs)
+```
+
+The tests use H2 and the `test` profile, so they need no database or network setup.
+
+## Folder layout
 
 ```
 src/main/java/com/helpdesk/
-├── HelpdeskApplication.java
-├── common/          shared code (e.g. Role enum)
-├── auth/            login/logout — shared infrastructure
-├── config/          Spring configuration (SecurityConfig)
-├── profile/         F1 — Diroshaan
-├── ticket/          F2 — Chamikara
-├── ticketportal/    F3 — Amarasinghe
-├── queue/           F4 — Weerabaddana
-├── knowledgebase/   F5 — Tharmithan
-└── admin/           F6 — Perera
+  HelpdeskApplication.java
+  auth/            login, logout, current user, password change (F1)
+  config/          SecurityConfig - URL and role rules
+  common/          shared user model, departments and categories, file checks, errors
+  profile/         F1 student and officer profiles, activity log
+  notification/    F1 notifications (Strategy + Observer)
+  ticket/          F2 tickets, attachments, status history
+  ticketportal/    F3 answer view, feedback, bookmarks, archive
+  queue/           F4 queues, routing, resolutions, staff notes, supervision
+  knowledgebase/   F5 articles
+  admin/           F6 dashboard, provisioning, announcements
+src/main/resources/
+  application.properties, application-mysql.properties
+  static/          built React app
+src/test/java/     unit and integration tests
+frontend/          React source
+docs/
+  migrations/      MySQL scripts for databases created by older code
+  demo_queries.sql read-only queries for the database demo
+  diagrams/        domain model and notification pattern diagrams
+  meeting-notes/
+  legacy-html/     the first static pages, kept for reference
 ```
 
-Each package follows the same internal shape: `controller/ → service/ → repository/ → entity/ → dto/`. See `profile/` for a fully worked example.
+Each feature package uses the same layers: `controller`, `service`, `repository`,
+`entity`, `dto`. More detail is in [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md).
 
-## 📖 Documentation
+## Branches
 
-- **[docs/TECHNICAL_GUIDE.md](docs/TECHNICAL_GUIDE.md)** — start here. Explains the authentication system in depth, the exact pattern to follow for building your own entity, API conventions, and git workflow.
-- **[docs/diagrams/](docs/diagrams/)** — use case, ER, class, and activity diagrams.
-- **[docs/meeting-notes/](docs/meeting-notes/)** — standup and sprint notes.
+- `main` - milestone releases only, through a reviewed pull request.
+- `develop` - all feature work is merged here.
+- `feat/<short-name>` - one branch per task.
 
-## 🌿 Branch Workflow
-
-- `main` — protected, requires a PR + 1 approval. Only updates at real milestones.
-- `develop` — integration branch. All feature work merges here first.
-- `feature/<short-description>` — one branch per task, deleted after merging.
-
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat: ...`, `fix: ...`, `docs: ...`, `test: ...`.
-
-## 📊 Sprint Status
-
-| Sprint | Weeks | Focus | Status |
-|---|---|---|---|
-| Sprint 1 | 4–6 | Foundation: schema, auth, provisioning, profiles | 🟡 In progress |
-| Sprint 2 | 7–9 | End-to-end ticket workflow | ⬜ Not started |
-| Sprint 3 | 10–12 | Officer tooling, knowledge base, tracking | ⬜ Not started |
-| Sprint 4 | 13–14 | Admin, reporting, feedback, integration | ⬜ Not started |
-
----
-
-*Built as part of the SE2030 Software Engineering module. Not a production system — H2 in-memory database and simplified auth are development-stage choices, documented in the project proposal's System Limitations section.*
+Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`).

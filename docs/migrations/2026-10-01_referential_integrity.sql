@@ -1,74 +1,20 @@
--- ===========================================================================
---  Referential integrity across the modules
---  Branch: feat/f1-shared-backend-completion (maintainer / shared database)
---  Supports: NFR "Data Integrity" - no ticket, attachment, staff note or
---            feedback record may reference a non-existent parent record -
---            and the DB requirements that a ticket belongs to exactly one
---            student and one category, and that attachments, notes and
---            feedback cannot exist without their ticket.
--- ===========================================================================
+-- Migration: add 21 named foreign keys to the ticket-side tables
+-- Date: 2026-10-01   Target: MySQL 8
 --
---  WHY THIS IS NEEDED
+-- These entities store parent ids as plain Long/String fields, so Hibernate makes
+-- the columns but no constraints. This adds them so the database itself rejects,
+-- for example, a ticket for a student that doesn't exist. No data or column changes.
+-- ON DELETE is the default (RESTRICT): the app never hard-deletes a parent, and a
+-- manual delete should fail rather than cascade away history.
 --
---  The user, reference-data, knowledge-base and announcement tables already
---  have foreign keys, because those entities map their relationships with
---  @ManyToOne / @ManyToMany and Hibernate generates the constraint.
+-- Each key is only added if it isn't there yet and no existing row breaks it. If a
+-- table has orphan rows that key is skipped and reported; nothing is deleted.
+-- Safe to re-run. Run order: after 2026-09-26. Every result row should say
+-- "added" or "already present". Not needed on H2.
 --
---  The ticket-side tables do not. Ticket, Attachment, Resolution, StaffNote,
---  Feedback, Bookmark, BookmarkFolder, ArchivedTicket, ArticleBookmark,
---  ActivityLog and Notification hold their parents as plain Long / String ids
---  (e.g. Ticket.studentId), so Hibernate creates the column but no
---  constraint. Checked on 30 Sep 2026 against a schema generated from develop
---  349d74e: those 11 tables had ZERO foreign keys between them. The service
---  layer checks ownership, so the application behaves, but the DATABASE would
---  accept a ticket for student 999999 or a staff note on a ticket that does
---  not exist - which is exactly what the Data Integrity NFR rules out, and
---  what an examiner looking at the schema will ask about.
---
---  WHAT IT DOES
---
---  Adds 21 named foreign keys (list below). No column changes, no data
---  changes, no entity changes: the Java code keeps using its ids exactly as
---  before. ON DELETE is the default (RESTRICT), deliberately: nothing in the
---  application hard-deletes a parent row that has children - tickets are
---  withdrawn, not deleted; accounts are suspended or removed (deleted_at), not
---  deleted; a bookmark folder's bookmarks are unfiled before the folder goes.
---  A CASCADE here would quietly delete history if someone ever did delete a
---  row by hand; RESTRICT makes that mistake fail loudly instead.
---
---  SAFE BY CONSTRUCTION
---
---  Every constraint is added only if
---    1. a foreign key with that name is not already there (re-runnable), and
---    2. no existing row would violate it ("orphans").
---  If a table HAS orphans, that one constraint is skipped and the result row
---  says how many. Nothing is deleted to make a constraint fit: an orphan is
---  evidence of an old bug, and deleting it silently would destroy the evidence
---  and possibly real data. Section 3 lists the orphans; decide what to do with
---  them, then run this script again - it adds only what is still missing.
---
---  ORDER (Team guide 5.3)
---
---    1. Merge the pull request.
---    2. Tell the group to stop running against Aiven.
---    3. Run this whole script in DBeaver (Alt+X) on defaultdb.
---    4. Read the result rows: every line should say "added" or "already present".
---    5. Start the app once on the mysql profile and click through; tell the
---       group to pull develop.
---
---  H2 (local runs and the tests) is not affected: H2 is rebuilt from the
---  entities on every start and never runs this script.
--- ===========================================================================
-
-
--- ---------------------------------------------------------------------------
--- 1. ADD THE FOREIGN KEYS
---    Each block: skip if present, skip (and report) if orphans exist,
---    otherwise ALTER TABLE ... ADD CONSTRAINT.
--- ---------------------------------------------------------------------------
-
+-- 1. Add the foreign keys.
 -- 1.1 fk_tickets_student: tickets.student_id -> students.id
---      every ticket belongs to exactly one student (DB req: a ticket cannot exist without one)
+
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'tickets'
                   AND constraint_name = 'fk_tickets_student' AND constraint_type = 'FOREIGN KEY');
@@ -84,8 +30,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_tickets_student: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.2 fk_tickets_assigned_officer: tickets.assigned_officer_id -> officers.id
---      the officer who owns the ticket must be a real officer (nullable: unassigned while OPEN)
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'tickets'
                   AND constraint_name = 'fk_tickets_assigned_officer' AND constraint_type = 'FOREIGN KEY');
@@ -101,8 +47,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_tickets_assigned_officer: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.3 fk_tickets_assigned_department: tickets.assigned_department_id -> departments.code
---      a ticket can only be routed to a department that exists
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'tickets'
                   AND constraint_name = 'fk_tickets_assigned_department' AND constraint_type = 'FOREIGN KEY');
@@ -118,8 +64,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_tickets_assigned_department: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.4 fk_tickets_category: tickets.category -> categories.name
---      every ticket has exactly one real category (Ticket stores the category NAME; categories.name is UNIQUE)
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'tickets'
                   AND constraint_name = 'fk_tickets_category' AND constraint_type = 'FOREIGN KEY');
@@ -135,8 +81,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_tickets_category: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.5 fk_attachments_ticket: attachments.ticket_id -> tickets.id
---      an attachment cannot exist without its ticket
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'attachments'
                   AND constraint_name = 'fk_attachments_ticket' AND constraint_type = 'FOREIGN KEY');
@@ -152,8 +98,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_attachments_ticket: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.6 fk_resolutions_ticket: resolutions.ticket_id -> tickets.id
---      the official response belongs to a real ticket
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'resolutions'
                   AND constraint_name = 'fk_resolutions_ticket' AND constraint_type = 'FOREIGN KEY');
@@ -169,8 +115,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_resolutions_ticket: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.7 fk_resolutions_officer: resolutions.officer_id -> officers.id
---      the authoring officer is a real officer
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'resolutions'
                   AND constraint_name = 'fk_resolutions_officer' AND constraint_type = 'FOREIGN KEY');
@@ -186,8 +132,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_resolutions_officer: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.8 fk_staff_notes_ticket: staff_notes.ticket_id -> tickets.id
---      a staff note cannot exist without its ticket
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'staff_notes'
                   AND constraint_name = 'fk_staff_notes_ticket' AND constraint_type = 'FOREIGN KEY');
@@ -203,8 +149,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_staff_notes_ticket: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.9 fk_staff_notes_officer: staff_notes.officer_id -> officers.id
---      the note's author is a real officer
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'staff_notes'
                   AND constraint_name = 'fk_staff_notes_officer' AND constraint_type = 'FOREIGN KEY');
@@ -220,8 +166,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_staff_notes_officer: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.10 fk_feedback_ticket: feedback.ticket_id -> tickets.id
---      feedback cannot exist without the ticket it evaluates
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'feedback'
                   AND constraint_name = 'fk_feedback_ticket' AND constraint_type = 'FOREIGN KEY');
@@ -237,8 +183,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_feedback_ticket: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.11 fk_feedback_student: feedback.student_id -> students.id
---      feedback is given by a real student
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'feedback'
                   AND constraint_name = 'fk_feedback_student' AND constraint_type = 'FOREIGN KEY');
@@ -254,8 +200,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_feedback_student: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.12 fk_bookmarks_ticket: bookmarks.ticket_id -> tickets.id
---      a bookmark points at a real ticket
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'bookmarks'
                   AND constraint_name = 'fk_bookmarks_ticket' AND constraint_type = 'FOREIGN KEY');
@@ -271,8 +217,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_bookmarks_ticket: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.13 fk_bookmarks_student: bookmarks.student_id -> students.id
---      a bookmark is owned by a real student
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'bookmarks'
                   AND constraint_name = 'fk_bookmarks_student' AND constraint_type = 'FOREIGN KEY');
@@ -288,8 +234,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_bookmarks_student: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.14 fk_bookmarks_folder: bookmarks.folder_id -> bookmark_folders.id
---      a bookmark is filed under at most one real folder (nullable)
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'bookmarks'
                   AND constraint_name = 'fk_bookmarks_folder' AND constraint_type = 'FOREIGN KEY');
@@ -305,8 +251,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_bookmarks_folder: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.15 fk_bookmark_folders_student: bookmark_folders.student_id -> students.id
---      a folder is owned by a single real student
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'bookmark_folders'
                   AND constraint_name = 'fk_bookmark_folders_student' AND constraint_type = 'FOREIGN KEY');
@@ -322,8 +268,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_bookmark_folders_student: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.16 fk_archived_tickets_ticket: archived_tickets.ticket_id -> tickets.id
---      an archive entry points at a real ticket
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'archived_tickets'
                   AND constraint_name = 'fk_archived_tickets_ticket' AND constraint_type = 'FOREIGN KEY');
@@ -339,8 +285,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_archived_tickets_ticket: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.17 fk_archived_tickets_student: archived_tickets.student_id -> students.id
---      an archive entry is owned by a real student
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'archived_tickets'
                   AND constraint_name = 'fk_archived_tickets_student' AND constraint_type = 'FOREIGN KEY');
@@ -356,8 +302,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_archived_tickets_student: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.18 fk_article_bookmarks_article: article_bookmarks.article_id -> articles.id
---      a saved article is a real article
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'article_bookmarks'
                   AND constraint_name = 'fk_article_bookmarks_article' AND constraint_type = 'FOREIGN KEY');
@@ -373,8 +319,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_article_bookmarks_article: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.19 fk_article_bookmarks_student: article_bookmarks.student_id -> students.id
---      a saved article belongs to a real student
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'article_bookmarks'
                   AND constraint_name = 'fk_article_bookmarks_student' AND constraint_type = 'FOREIGN KEY');
@@ -390,8 +336,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_article_bookmarks_student: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.20 fk_activity_log_student: activity_log.student_id -> students.id
---      an activity entry belongs to a real student
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'activity_log'
                   AND constraint_name = 'fk_activity_log_student' AND constraint_type = 'FOREIGN KEY');
@@ -407,8 +353,8 @@ PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_activity_log_student: added'' AS result', 'DO 0');
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
+
 -- 1.21 fk_notifications_recipient: notifications.recipient_user_id -> users.id
---      a notification is addressed to a real user
 SET @has_fk := (SELECT COUNT(*) FROM information_schema.table_constraints
                 WHERE constraint_schema = DATABASE() AND table_name = 'notifications'
                   AND constraint_name = 'fk_notifications_recipient' AND constraint_type = 'FOREIGN KEY');
@@ -425,12 +371,8 @@ SET @sql := IF(@has_fk = 0 AND @orphans = 0, 'SELECT ''fk_notifications_recipien
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
 
--- ---------------------------------------------------------------------------
--- 2. VERIFICATION - run and read
--- ---------------------------------------------------------------------------
-
--- 2a. The 21 constraints this script owns. Expect 21 rows once every orphan
---     is dealt with. Fewer rows = look at section 3.
+-- 2. Verify.
+-- 2a. Expect 21 rows. Fewer means some were skipped - see section 3.
 SELECT tc.table_name, tc.constraint_name, kcu.column_name,
        kcu.referenced_table_name, kcu.referenced_column_name
   FROM information_schema.table_constraints tc
@@ -463,19 +405,16 @@ SELECT tc.table_name, tc.constraint_name, kcu.column_name,
         'fk_notifications_recipient')
  ORDER BY tc.table_name, tc.constraint_name;
 
--- 2b. Every foreign key in the schema, for the report / viva screenshot.
+
+-- 2b. Every foreign key in the schema.
 SELECT table_name, constraint_name
   FROM information_schema.table_constraints
  WHERE constraint_schema = DATABASE() AND constraint_type = 'FOREIGN KEY'
  ORDER BY table_name, constraint_name;
 
 
--- ---------------------------------------------------------------------------
--- 3. ORPHAN REPORT - rows that point at a parent that does not exist
---    Every count should be 0. A non-zero count is why a constraint above
---    was skipped. Inspect those rows before deciding anything; do not
---    delete them just to make the constraint fit.
--- ---------------------------------------------------------------------------
+-- 3. Orphan report: rows pointing at a parent that doesn't exist. Every count should
+-- be 0. Look at any non-zero rows before deciding what to do; don't just delete them.
 SELECT 'fk_tickets_student' AS constraint_name, COUNT(*) AS orphans FROM `tickets` c WHERE c.`student_id` IS NOT NULL AND NOT EXISTS (SELECT 1 FROM `students` p WHERE p.`id` = c.`student_id`)
 UNION ALL
 SELECT 'fk_tickets_assigned_officer' AS constraint_name, COUNT(*) AS orphans FROM `tickets` c WHERE c.`assigned_officer_id` IS NOT NULL AND NOT EXISTS (SELECT 1 FROM `officers` p WHERE p.`id` = c.`assigned_officer_id`)

@@ -1,45 +1,25 @@
--- ===========================================================================
---  UNIHELP - Database demonstration
---  Read-only. Every statement is a SELECT or a DESCRIBE, so nothing here can
---  change or damage the database. Safe to run in front of anyone, any number
---  of times.
+-- UNIHELP - database demo queries (MySQL)
+-- Read-only: only SELECT and DESCRIBE, so it is safe to run any number of times,
+-- in any order, after the migrations. Run one query at a time (click inside it,
+-- then Ctrl+Enter) rather than the whole file.
 --
---  HOW TO RUN ONE QUERY: click anywhere inside it, then Ctrl+Enter.
---  Do NOT press Alt+X - that runs all of them at once and you lose the story.
--- ===========================================================================
+-- 1. How many tables the system has (read from the server, not the IDE cache).
 
-
--- ---------------------------------------------------------------------------
--- 1. "How many tables does the system have?"
---     Expect 22. Reads from the server, so no IDE cache can mislead you.
--- ---------------------------------------------------------------------------
 SELECT COUNT(*) AS total_tables
 FROM information_schema.tables
 WHERE table_schema = DATABASE();
 
 
--- ---------------------------------------------------------------------------
--- 2. "Show me them."
--- ---------------------------------------------------------------------------
+-- 2. List them.
 SELECT table_name
 FROM information_schema.tables
 WHERE table_schema = DATABASE()
 ORDER BY table_name;
 
 
--- ---------------------------------------------------------------------------
--- 3. THE USER HIERARCHY - the most important query in this script.
---
---    Say while it runs: "The requirement asks for a single user record for
---    every actor, with role-specific data held only against the relevant type.
---    That is an EER specialisation, and we implemented it with JOINED
---    inheritance. Shared columns live once in `users`; each subtype has its
---    own table keyed by the same id."
---
---    Then point at the `role` column: "There is no role column anywhere in
---    the database. The role is derived from which table the row appears in,
---    so it cannot disagree with reality."
--- ---------------------------------------------------------------------------
+-- 3. The user hierarchy (JOINED inheritance). Shared columns are in users, each
+-- subtype has its own table with the same id. There is no stored role column -
+-- the role comes from which subtype table the row is in.
 SELECT u.id,
        u.email,
        u.active,
@@ -56,24 +36,14 @@ LEFT JOIN administrators a ON a.id = u.id
 ORDER BY role, u.id;
 
 
--- ---------------------------------------------------------------------------
--- 4. Proof that a subtype row cannot exist without its user row.
---    Every officer id must also be a users id - the foreign key guarantees it.
---    Expect 0 rows. An empty result is the correct answer here.
--- ---------------------------------------------------------------------------
+-- 4. A subtype row can't exist without its users row. Expect 0 rows.
 SELECT o.id AS orphaned_officer
 FROM officers o
 LEFT JOIN users u ON u.id = o.id
 WHERE u.id IS NULL;
 
 
--- ---------------------------------------------------------------------------
--- 5. Every foreign key in the schema, by name.
---
---    Say: "We named every constraint rather than letting Hibernate generate
---    something like FKq7x2m1k4d8s, so the schema is readable in the ER
---    diagram and an error message says what actually went wrong."
--- ---------------------------------------------------------------------------
+-- 5. Every foreign key, by name.
 SELECT constraint_name, table_name, column_name, referenced_table_name
 FROM information_schema.key_column_usage
 WHERE constraint_schema = DATABASE()
@@ -81,15 +51,8 @@ WHERE constraint_schema = DATABASE()
 ORDER BY table_name, constraint_name;
 
 
--- ---------------------------------------------------------------------------
--- 6. Every UNIQUE constraint - where the database, not the application,
---    enforces a business rule.
---
---    Point at `resolutions.ticket_id`: "The requirement says at most one
---    official resolution per ticket. That is a unique constraint, not a
---    check in Java, because two simultaneous requests can both pass a Java
---    check and only one can win against a database constraint."
--- ---------------------------------------------------------------------------
+-- 6. Every UNIQUE constraint, where the database enforces a rule (for example one
+-- resolution per ticket), which still holds if two requests arrive at once.
 SELECT t.constraint_name, t.table_name,
        GROUP_CONCAT(k.column_name ORDER BY k.ordinal_position) AS columns
 FROM information_schema.table_constraints t
@@ -102,18 +65,14 @@ GROUP BY t.constraint_name, t.table_name
 ORDER BY t.table_name;
 
 
--- ---------------------------------------------------------------------------
--- 7. The one fully enforced relationship chain: category -> department.
--- ---------------------------------------------------------------------------
+-- 7. Categories and the department each one belongs to.
 SELECT d.code AS dept_code, d.name AS department, c.id AS category_id, c.name AS category
 FROM categories c
 JOIN departments d ON d.code = c.department_code
 ORDER BY d.name, c.name;
 
 
--- ---------------------------------------------------------------------------
--- 8. Tickets with the student who raised them.
--- ---------------------------------------------------------------------------
+-- 8. Latest tickets with the student who raised them.
 SELECT t.id, t.subject, t.category, t.priority, t.status,
        s.full_name AS raised_by, t.created_at
 FROM tickets t
@@ -122,15 +81,7 @@ ORDER BY t.created_at DESC
 LIMIT 20;
 
 
--- ---------------------------------------------------------------------------
--- 9. DERIVED, NOT STORED - requirement 3.2, Resolution & Queue Data:
---    "must derive each ticket's resolution time from its submission and
---     resolution timestamps rather than storing it directly."
---
---    Say: "There is no resolution_time column. It is computed from two
---    timestamps we already record. Storing it would be the same fact twice,
---    in two places that can disagree."
--- ---------------------------------------------------------------------------
+-- 9. Resolution time is derived from two timestamps, not stored as its own column.
 SELECT t.id, t.subject, t.created_at, t.resolved_at,
        TIMESTAMPDIFF(HOUR, t.created_at, t.resolved_at) AS resolution_hours
 FROM tickets t
@@ -138,14 +89,8 @@ WHERE t.resolved_at IS NOT NULL
 ORDER BY t.resolved_at DESC;
 
 
--- ---------------------------------------------------------------------------
--- 10. THE KNOWLEDGE BASE - four different relationship patterns in one query.
---
---     Say: "F5 exercises the widest range of relationship types in the
---     project: a multivalued attribute for tags, a many-to-many to
---     categories, a self-referencing many-to-many for related articles, and
---     a many-to-many with an attribute for student bookmarks."
--- ---------------------------------------------------------------------------
+-- 10. Knowledge base: tags (multivalued attribute), categories (many-to-many),
+-- related articles (self-referencing many-to-many) and student bookmarks.
 SELECT a.id, a.title, a.status,
        o.full_name AS author,
        (SELECT COUNT(*) FROM article_tags       WHERE article_id = a.id) AS tags,
@@ -157,19 +102,14 @@ JOIN officers o ON o.id = a.author_officer_id
 ORDER BY a.updated_at DESC;
 
 
--- ---------------------------------------------------------------------------
--- 11. The self-referencing relationship, shown as actual pairs.
---     Both sides of this join are the same table.
--- ---------------------------------------------------------------------------
+-- 11. Related-article pairs. Both sides of the join are the articles table.
 SELECT src.title AS article, tgt.title AS points_to
 FROM article_related r
 JOIN articles src ON src.id = r.article_id
 JOIN articles tgt ON tgt.id = r.related_article_id;
 
 
--- ---------------------------------------------------------------------------
--- 12. Student feedback (F3, US-12), joined to the ticket it evaluates.
--- ---------------------------------------------------------------------------
+-- 12. Student feedback with the ticket it is about.
 SELECT f.id, t.subject, s.full_name AS student,
        f.rating, f.comment, f.created_at
 FROM feedback f
@@ -178,10 +118,7 @@ JOIN students s ON s.id = f.student_id
 ORDER BY f.created_at DESC;
 
 
--- ---------------------------------------------------------------------------
--- 13. Bookmarks filed into folders (F3) - a nullable folder_id, because a
---     bookmark that has not been filed anywhere is a legitimate state.
--- ---------------------------------------------------------------------------
+-- 13. Bookmarks and their folders. folder_id can be null (not filed yet).
 SELECT s.full_name AS student,
        COALESCE(bf.name, '(not filed)') AS folder,
        t.subject AS bookmarked_ticket,
@@ -193,9 +130,7 @@ LEFT JOIN bookmark_folders bf ON bf.id = b.folder_id
 ORDER BY s.full_name, folder;
 
 
--- ---------------------------------------------------------------------------
--- 14. Row counts across the whole system - a one-screen summary to close on.
--- ---------------------------------------------------------------------------
+-- 14. Row counts across the system.
 SELECT 'users' AS table_name, COUNT(*) AS rows_stored FROM users
 UNION ALL SELECT 'students',          COUNT(*) FROM students
 UNION ALL SELECT 'officers',          COUNT(*) FROM officers

@@ -41,27 +41,7 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!--
-            MySQL driver, for the "mysql" Spring profile (see
-            application-mysql.properties). The proposal names MySQL as the
-            production database; H2 above stays for the default profile so
-            nobody on the team is forced to install a database server just to
-            run the app.
-
-            Both drivers on the classpath is not ambiguous: Spring Boot picks
-            the driver from spring.datasource.url, and only one profile's URL
-            is ever active.
-
-            No <version> here on purpose - spring-boot-starter-parent manages
-            it, so the driver version is guaranteed to be one tested against
-            Spring Boot 3.2.5. Pinning our own would be how you end up with a
-            driver/Hibernate mismatch that only shows up at runtime.
-
-            "runtime" scope because no code in this project imports a MySQL
-            class - it is loaded by name via JDBC. Compile scope would let
-            somebody import com.mysql.* by accident and tie our Java code to
-            one database engine.
-        -->
+        <!-- MySQL driver for the "mysql" profile; version managed by Spring Boot -->
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
@@ -100,28 +80,8 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
 
-            <!--
-              Test runner settings.
-
-              WHY THE BYTE BUDDY FLAG
-              Mockito creates its fake objects ("mocks") with a library called
-              Byte Buddy, which rewrites Java classes while the tests run. The
-              Byte Buddy version that Spring Boot 3.2.5 ships (1.14) only knows
-              class files up to Java 22. This project COMPILES for Java 17, but
-              Maven on a developer machine may RUN on a newer JDK - IntelliJ here
-              uses JDK 24 - and then every Mockito test fails before it starts
-              with "Java 24 (68) is not supported by the current version of
-              Byte Buddy". The code under test is fine; the tool cannot read the
-              newer JDK's own classes.
-
-              net.bytebuddy.experimental=true tells Byte Buddy to attempt class
-              files newer than it officially supports. It is the fix Byte Buddy's
-              own error message recommends, it only affects the test run (never
-              the application), and it is harmless on JDK 17, which is what CI
-              uses. The alternative - overriding byte-buddy.version - would also
-              change the version Hibernate uses at runtime, a far bigger change
-              made for a test-only problem.
-            -->
+            <!-- Lets Mockito (Byte Buddy) run when Maven uses a JDK newer than 22.
+                 Only affects tests; harmless on JDK 17. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
