@@ -1,13 +1,11 @@
 package com.helpdesk.ticketportal.controller;
 
-import com.helpdesk.common.exception.ResourceNotFoundException;
-import com.helpdesk.profile.entity.Student;
-import com.helpdesk.profile.service.StudentService;
 import com.helpdesk.ticketportal.dto.FeedbackRequest;
 import com.helpdesk.ticketportal.dto.FeedbackResponse;
 import com.helpdesk.ticketportal.dto.FeedbackSummaryResponse;
 import com.helpdesk.ticketportal.entity.Feedback;
 import com.helpdesk.ticketportal.service.FeedbackService;
+import com.helpdesk.ticketportal.support.CurrentStudentResolver;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -20,12 +18,12 @@ import org.springframework.web.bind.annotation.*;
 public class FeedbackController {
 
     private final FeedbackService feedbackService;
-    private final StudentService studentService;
+    private final CurrentStudentResolver currentStudent;
 
     @Autowired
-    public FeedbackController(FeedbackService feedbackService, StudentService studentService) {
+    public FeedbackController(FeedbackService feedbackService, CurrentStudentResolver currentStudent) {
         this.feedbackService = feedbackService;
-        this.studentService = studentService;
+        this.currentStudent = currentStudent;
     }
 
     @PostMapping("/api/tickets/{ticketId}/feedback")
@@ -33,7 +31,7 @@ public class FeedbackController {
                                                      @Valid @RequestBody FeedbackRequest request,
                                                      Authentication authentication) {
         Feedback feedback = feedbackService.submitFeedback(
-                currentStudentId(authentication), ticketId, request.getRating(), request.getComment());
+                currentStudent.currentStudentId(authentication), ticketId, request.getRating(), request.getComment());
         return ResponseEntity.status(HttpStatus.CREATED).body(FeedbackResponse.from(feedback));
     }
 
@@ -42,13 +40,13 @@ public class FeedbackController {
                                                      @Valid @RequestBody FeedbackRequest request,
                                                      Authentication authentication) {
         Feedback feedback = feedbackService.updateFeedback(
-                ticketId, currentStudentId(authentication), request.getRating(), request.getComment());
+                ticketId, currentStudent.currentStudentId(authentication), request.getRating(), request.getComment());
         return ResponseEntity.ok(FeedbackResponse.from(feedback));
     }
 
     @GetMapping("/api/tickets/{ticketId}/feedback")
     public FeedbackResponse getByTicket(@PathVariable Long ticketId, Authentication authentication) {
-        Feedback feedback = feedbackService.getByTicketId(ticketId, currentStudentId(authentication));
+        Feedback feedback = feedbackService.getByTicketId(ticketId, currentStudent.currentStudentId(authentication));
         return FeedbackResponse.from(feedback);
     }
 
@@ -56,11 +54,5 @@ public class FeedbackController {
     @GetMapping("/api/feedback/summary")
     public FeedbackSummaryResponse summary(@RequestParam String category) {
         return feedbackService.summaryByCategory(category);
-    }
-
-    private Long currentStudentId(Authentication authentication) {
-        return studentService.findByEmail(authentication.getName())
-                .map(Student::getId)
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in student not found"));
     }
 }

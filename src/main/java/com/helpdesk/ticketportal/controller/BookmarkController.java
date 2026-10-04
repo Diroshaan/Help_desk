@@ -1,13 +1,11 @@
 package com.helpdesk.ticketportal.controller;
 
-import com.helpdesk.common.exception.ResourceNotFoundException;
-import com.helpdesk.profile.entity.Student;
-import com.helpdesk.profile.service.StudentService;
 import com.helpdesk.ticketportal.dto.BookmarkMoveRequest;
 import com.helpdesk.ticketportal.dto.BookmarkRequest;
 import com.helpdesk.ticketportal.dto.BookmarkResponse;
 import com.helpdesk.ticketportal.entity.Bookmark;
 import com.helpdesk.ticketportal.service.BookmarkService;
+import com.helpdesk.ticketportal.support.CurrentStudentResolver;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -23,26 +21,26 @@ import java.util.List;
 public class BookmarkController {
 
     private final BookmarkService bookmarkService;
-    private final StudentService studentService;
+    private final CurrentStudentResolver currentStudent;
 
     @Autowired
-    public BookmarkController(BookmarkService bookmarkService, StudentService studentService) {
+    public BookmarkController(BookmarkService bookmarkService, CurrentStudentResolver currentStudent) {
         this.bookmarkService = bookmarkService;
-        this.studentService = studentService;
+        this.currentStudent = currentStudent;
     }
 
     @PostMapping
     public ResponseEntity<BookmarkResponse> create(@Valid @RequestBody BookmarkRequest request,
                                                      Authentication authentication) {
         Bookmark bookmark = bookmarkService.createBookmark(
-                currentStudentId(authentication), request.getTicketId(), request.getFolderId());
+                currentStudent.currentStudentId(authentication), request.getTicketId(), request.getFolderId());
         return ResponseEntity.status(HttpStatus.CREATED).body(BookmarkResponse.from(bookmark));
     }
 
     @GetMapping
     public List<BookmarkResponse> findAll(@RequestParam(required = false) Long folderId,
                                            Authentication authentication) {
-        Long studentId = currentStudentId(authentication);
+        Long studentId = currentStudent.currentStudentId(authentication);
         List<Bookmark> bookmarks = (folderId != null)
                 ? bookmarkService.findByStudentIdAndFolderId(studentId, folderId)
                 : bookmarkService.findByStudentId(studentId);
@@ -54,19 +52,13 @@ public class BookmarkController {
                                                            @RequestBody BookmarkMoveRequest request,
                                                            Authentication authentication) {
         Bookmark bookmark = bookmarkService.moveToFolder(
-                id, currentStudentId(authentication), request.getFolderId());
+                id, currentStudent.currentStudentId(authentication), request.getFolderId());
         return ResponseEntity.ok(BookmarkResponse.from(bookmark));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id, Authentication authentication) {
-        bookmarkService.deleteBookmark(id, currentStudentId(authentication));
+        bookmarkService.deleteBookmark(id, currentStudent.currentStudentId(authentication));
         return ResponseEntity.noContent().build();
-    }
-
-    private Long currentStudentId(Authentication authentication) {
-        return studentService.findByEmail(authentication.getName())
-                .map(Student::getId)
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in student not found"));
     }
 }
