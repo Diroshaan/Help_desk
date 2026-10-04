@@ -12,10 +12,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The request-body rules that turn bad input into a 400 (via @Valid) before
- * it reaches a service: folder colour (F3-N3) and feedback comment length.
- */
+/** Request validation that gives a 400 before the service: folder colour and feedback comment length. */
 class TicketPortalRequestValidationTest {
 
     private static ValidatorFactory factory;

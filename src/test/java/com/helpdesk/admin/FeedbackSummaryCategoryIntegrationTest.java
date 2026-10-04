@@ -14,12 +14,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * GET /api/feedback/summary over real HTTP (#47). The summary endpoint is read
- * by administrators on the analytics screen, so it is tested from the admin
- * side: an unknown category must be a 400 that names the problem, not a
- * "0 ratings" answer that looks like a real, quiet category.
- */
+/** GET /api/feedback/summary: an unknown category is a 400, not a misleading "0 ratings". */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -49,8 +44,7 @@ class FeedbackSummaryCategoryIntegrationTest {
     @Test
     @DisplayName("A real category with no ratings is still a 200 with zero ratings")
     void realCategoryIsAccepted() throws Exception {
-        // Seeded by ReferenceDataSeeder. Zero is a true answer here, which is
-        // exactly what an unknown category must no longer be confused with.
+        // Seeded category with no ratings, so zero is a real answer here.
         mvc.perform(get("/api/feedback/summary").param("category", "Library loans & fines")
                         .with(user(ADMIN).roles("ADMIN")))
                 .andExpect(status().isOk());

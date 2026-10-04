@@ -28,14 +28,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * Password change, for any account type.
- *
- * A real BCrypt encoder (lowest strength, for speed) rather than a mock: the
- * rules here are about hashes - "does this match the stored hash", "is the new
- * value stored hashed" - and a mocked encoder would let a test pass while the
- * real comparison failed.
- */
+/** Password change for any account type, with a real BCrypt encoder so the hash checks are real. */
 @ExtendWith(MockitoExtension.class)
 class PasswordServiceTest {
 

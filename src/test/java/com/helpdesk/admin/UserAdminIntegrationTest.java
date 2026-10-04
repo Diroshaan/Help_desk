@@ -28,31 +28,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The account endpoints over real HTTP, real security and the real H2 database
- * (F6-N2, F6-N3).
- *
- * The unit tests prove the service's decisions with mocks. This class proves
- * the parts a mock cannot: that @Valid on the controller really turns a missing
- * departmentCodes into a 400 before the service runs, that the departments the
- * seeder created are really found by code, that the JSON the frontend receives
- * has the fields it reads, and that SecurityConfig really keeps a student out.
- *
- * Every test makes its own officer with a unique email and staff number. The
- * Spring context - and so the in-memory database - is shared with every other
- * integration test in the build, so a test that assumed an empty users table,
- * or reused a fixed address, would pass alone and fail in the suite.
- *
- * The caller is the bootstrap administrator, admin@helpdesk.local, which
- * AdminBootstrapSeeder creates when the test context starts (the test profile
- * fixes its password). F6-N2 resolves the caller's email to a real
- * Administrator row, so a made-up admin email would be refused - correctly.
- */
+/** Admin account endpoints over real HTTP, real security and the H2 database. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class UserAdminIntegrationTest {
 
+    // Created by AdminBootstrapSeeder; the caller must be a real Administrator row.
     private static final String ADMIN = "admin@helpdesk.local";
     private static final AtomicInteger SEQ = new AtomicInteger(7000);
 
@@ -86,8 +68,6 @@ class UserAdminIntegrationTest {
                 .andExpect(jsonPath("$.provisionedBy").value("System Administrator"));
     }
 
-    // The bug: before F6-N3 this request succeeded, and produced an officer who
-    // served nothing. Now it is refused before anything is saved.
     @Test
     @DisplayName("Provisioning an officer with no departments is a 400")
     void provisionOfficerWithoutDepartmentsIsRefused() throws Exception {
@@ -151,8 +131,6 @@ class UserAdminIntegrationTest {
                         .content("{\"departmentCodes\":[\"IT\"]}"))
                 .andExpect(status().isForbidden());
     }
-
-    // ---- #48 / F6-N6 part 2 ----
 
     private long createOfficer(int n) throws Exception {
         MvcResult created = mvc.perform(post("/api/admin/officers").with(user(ADMIN).roles("ADMIN"))

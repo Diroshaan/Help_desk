@@ -10,15 +10,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * SessionRevoker against the REAL SessionRegistryImpl, not a mock.
- *
- * A mocked registry would only prove that SessionRevoker calls the methods I
- * expected it to call. The bug this class exists to prevent is subtler - a
- * suspended user whose session quietly survives - so the test checks the
- * outcome that matters: after revocation, is that session marked expired, and
- * is everybody else's left alone?
- */
+/** SessionRevoker against the real SessionRegistryImpl: that user's sessions expire, everyone else's stay. */
 class SessionRevokerTest {
 
     private SessionRegistryImpl registry;
@@ -46,8 +38,7 @@ class SessionRevokerTest {
         assertThat(expired("bob-laptop")).isFalse();
     }
 
-    // Emails are case-insensitive in practice; a revocation that missed
-    // "Alice@..." would leave a suspended user signed in.
+    // Otherwise "Alice@..." would leave a suspended user signed in.
     @Test
     @DisplayName("Matching the account ignores letter case in the email")
     void matchingIsCaseInsensitive() {

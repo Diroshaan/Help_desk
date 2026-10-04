@@ -23,12 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * #42: the database itself refuses a second bookmark of the same ticket by
- * the same student, and a second feedback on the same ticket. These go
- * straight to the repositories - past the services' existsBy... checks - to
- * show the constraint holds even when that check is raced.
- */
+/** The unique constraints on bookmarks and feedback hold at the database, past the services' own checks. */
 @SpringBootTest
 @ActiveProfiles("test")
 class TicketPortalUniqueConstraintsIntegrationTest {

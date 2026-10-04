@@ -12,14 +12,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * DB requirement: every article needs at least one category (F5 gap, fixed
- * by @NotEmpty on ArticleRequest.categoryIds). Validates the DTO directly
- * with a plain jakarta.validation Validator rather than through MockMvc -
- * this confirms the annotation fires; it does not confirm
- * GlobalExceptionHandler's exact 400 response shape, which is a controller-
- * level concern this test isn't making a claim about either way.
- */
+/** ArticleRequest validation: an article needs between one and five categories. */
 class ArticleRequestTest {
 
     private static ValidatorFactory factory;
@@ -53,11 +46,7 @@ class ArticleRequestTest {
 
         Set<ConstraintViolation<ArticleRequest>> violations = validator.validate(request);
 
-        // Without the record's compact constructor turning a null
-        // categoryIds into Set.of(), @NotEmpty alone would treat null as
-        // valid (Bean Validation's usual null-is-valid rule) and only an
-        // explicit [] in the request body would be rejected - a missing
-        // field would slip through.
+        // Without the compact constructor, @NotEmpty would accept null and a missing field would slip through.
         assertThat(violations)
                 .extracting(v -> v.getPropertyPath().toString())
                 .contains("categoryIds");

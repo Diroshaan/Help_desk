@@ -35,11 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * F3 as an Observer-pattern publisher: when a student rates the answer to
- * their ticket, FeedbackService publishes FeedbackSubmittedEvent and
- * FeedbackReceivedNotifier tells the officer who wrote that answer.
- */
+/** Observer: rating an answer publishes FeedbackSubmittedEvent and the answering officer is told. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

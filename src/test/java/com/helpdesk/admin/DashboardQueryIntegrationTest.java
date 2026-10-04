@@ -15,14 +15,7 @@ import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The dashboard queries against the real H2 database and the categories the
- * seeder creates (F6-N1, F6-N4).
- *
- * The Spring context and its database are shared with every other integration
- * test, so these tests compare the dashboard before and after adding their own
- * tickets instead of assuming an empty tickets table.
- */
+/** Dashboard queries on real H2; the database is shared, so tests compare before and after adding tickets. */
 @SpringBootTest
 @ActiveProfiles("test")
 class DashboardQueryIntegrationTest {
@@ -49,7 +42,7 @@ class DashboardQueryIntegrationTest {
     void ticketsAreCountedUnderTheirCategorysDepartment() {
         DashboardResponse before = dashboardService.buildDashboard();
 
-        // Two different categories of IT, one of REG (see ReferenceDataSeeder).
+        // Two categories in IT, one in REG (see ReferenceDataSeeder).
         ticket("Password & account access", TicketStatus.OPEN);
         ticket("Network & Wi-Fi (eduroam)", TicketStatus.RESOLVED);
         ticket("Module registration", TicketStatus.OPEN);
@@ -73,8 +66,7 @@ class DashboardQueryIntegrationTest {
         t.setResolvedAt(LocalDateTime.now());
         tickets.save(t);
 
-        // Other tests may have resolved tickets too, so only assert that the
-        // average now exists; the exact arithmetic is covered in DashboardServiceTest.
+        // Other tests resolve tickets too, so we only check that an average exists.
         assertThat(dashboardService.buildDashboard().averageResolutionHours()).isNotNull();
     }
 }

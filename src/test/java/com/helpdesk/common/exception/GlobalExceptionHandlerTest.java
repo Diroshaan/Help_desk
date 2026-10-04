@@ -9,11 +9,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Plain unit tests for the shared exception handler: no Spring context, the
- * handler is just a class with methods. Each test pins one mapping, so a
- * change to a status code has to be made on purpose.
- */
+/** Plain unit tests for GlobalExceptionHandler, one per status mapping. */
 class GlobalExceptionHandlerTest {
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
@@ -28,8 +24,7 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).containsEntry("status", 409);
-        // The message tells the user what to do, and does not leak the entity
-        // class name or id that the exception itself carries.
+        // Says what to do without leaking the entity class or id.
         assertThat((String) response.getBody().get("message"))
                 .contains("Reload")
                 .doesNotContain("com.helpdesk")

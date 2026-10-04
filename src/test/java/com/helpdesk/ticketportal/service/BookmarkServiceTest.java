@@ -25,9 +25,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * F3-N1: a student can only bookmark their own ticket, and only into their own folder.
- */
+/** BookmarkService: a student can only bookmark their own ticket, into their own folder. */
 @ExtendWith(MockitoExtension.class)
 class BookmarkServiceTest {
 
@@ -99,8 +97,7 @@ class BookmarkServiceTest {
     @DisplayName("Losing the race to the unique constraint is still a duplicate (409), not a 500")
     void raceLostAtTheDatabaseIsDuplicate() {
         when(ticketService.getOwnedTicket(TICKET_ID, STUDENT_A)).thenReturn(new Ticket());
-        // The existsBy... check passed (default false) - the other request's
-        // insert landed in between, so the database refuses this one.
+        // The exists check passed, but another request inserted first, so the database refuses.
         when(bookmarkRepository.saveAndFlush(any(Bookmark.class)))
                 .thenThrow(new DataIntegrityViolationException("uq_bookmark_student_ticket"));
 

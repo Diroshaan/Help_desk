@@ -7,11 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The event carries who made a status change, for F2's history (#45). The
- * original five-value form must keep working, and must say "unknown", never
- * a made-up officer.
- */
+/** TicketStatusChangedEvent carries the officer; the older five-argument form means "unknown officer". */
 class TicketStatusChangedEventTest {
 
     @Test

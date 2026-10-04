@@ -13,16 +13,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The administrator row lock against the real H2 database (F6-N5).
- *
- * A true race needs two simultaneous transactions, which is slow and flaky in a
- * unit-test run, so this proves the part a mock cannot: that the
- * SELECT ... FOR UPDATE query is valid for the joined Administrator mapping,
- * runs inside a transaction, and returns the active administrators. The
- * behaviour built on top of it (refuse when nobody else is in the list) is
- * covered in UserProvisioningServiceTest.
- */
+/** The SELECT ... FOR UPDATE lock on active administrators, run on real H2 (the race itself is not tested). */
 @SpringBootTest
 @ActiveProfiles("test")
 class AdministratorLockIntegrationTest {

@@ -24,7 +24,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-/** F5-N2. */
+/** ArticleBookmarkService: only published articles can be bookmarked or listed. */
 @ExtendWith(MockitoExtension.class)
 class ArticleBookmarkServiceTest {
 
@@ -48,10 +48,7 @@ class ArticleBookmarkServiceTest {
         assertThatThrownBy(() -> service.bookmark(10L, /* studentId */ 1L))
                 .isInstanceOf(ResourceNotFoundException.class);
 
-        // The fix is precisely that a draft never reaches the save/duplicate
-        // check at all - confirming bookmarkRepository was never touched is
-        // what actually proves the status check ran before anything else,
-        // not just that an exception happened to come out somewhere.
+        // The status check runs before any save or duplicate check.
         verifyNoInteractions(bookmarkRepository);
     }
 
@@ -77,10 +74,7 @@ class ArticleBookmarkServiceTest {
 
         var result = service.listBookmarked(1L);
 
-        // Only the published one is returned - and the test doesn't touch
-        // the bookmark row at all, which is the point: the row survives
-        // archiving, only the read is filtered. See bookmarkRepository
-        // never being asked to delete anything in this test.
+        // The bookmark row is kept; archived articles are only filtered out on read.
         assertThat(result).extracting(ArticleSummaryResponse::id).containsExactly(100L);
     }
 

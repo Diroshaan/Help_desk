@@ -15,15 +15,7 @@ import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Unit tests for the Strategy part: does NotificationService pick the right
- * channels from a user's preferences?
- *
- * The channels here are small fakes written in the test, not the real
- * portal/email classes. That's deliberate. If the context works with
- * channels it has never seen, it clearly isn't depending on any particular
- * implementation, which is the whole claim the Strategy pattern makes.
- */
+/** Strategy: NotificationService picks channels from preferences; fake channels show it needs no real one. */
 class NotificationServiceTest {
 
     /** A channel that records what it was asked to send. */

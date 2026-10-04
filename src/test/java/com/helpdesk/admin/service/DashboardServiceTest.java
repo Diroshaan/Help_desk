@@ -19,12 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-/**
- * DashboardService with the repository mocked: the Java-side arithmetic for the
- * average resolution time (F6-N4) and the unpacking of the per-department rows
- * (F6-N1). The query itself is proved against a real database in
- * DashboardQueryIntegrationTest.
- */
+/** DashboardService with the repository mocked: average resolution time and per-department counts. */
 @ExtendWith(MockitoExtension.class)
 class DashboardServiceTest {
 

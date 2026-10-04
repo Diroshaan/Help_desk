@@ -32,14 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * F2 attachments over HTTP, against the whole running application.
- *
- * The full application rather than a mock because the metadata listing is a
- * JPQL constructor expression: whether it matches AttachmentResponse's
- * constructor, and whether the JSON a browser receives has the fields the
- * frontend reads, can only be proved with a real query on a real database.
- */
+/** Ticket attachments over HTTP on real H2: the metadata query, JSON fields and download headers. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -130,10 +123,7 @@ class TicketAttachmentIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
-    // ---- Download header (F2-N4) ----
-
-    // Why this test exists: the header was built as "inline; filename=\"" +
-    // name + "\"", so a quote in the name ended the value early.
+    // A quote in the file name must not end the header value early.
     @Test
     @DisplayName("Downloading quote\"d.pdf gives a safely encoded attachment header")
     void quotedNameIsEncoded() throws Exception {

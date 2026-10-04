@@ -28,16 +28,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * F2-N2 (lost updates), #43 (column bounds) and F2-N5 (page overflow),
- * against the whole running application.
- *
- * Full application rather than a mock: the 2001-character description has to
- * be refused by real bean validation on the real DTO, the 409 has to come
- * from a real Hibernate version check, and the page cap has to survive real
- * Spring Data Pageable math - a mocked TicketService would hide bugs in all
- * three.
- */
+/** Ticket edits on the full app: length limits, optimistic locking (409) and the page number cap. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -81,8 +72,6 @@ class TicketLifecycleIntegrationTest {
                 + "\",\"category\":\"" + category + "\",\"priority\":\"MEDIUM\"}";
     }
 
-    // ---- #43: column bounds (item 4) ----
-
     @Test
     @DisplayName("A description over 2000 characters is rejected with a message naming the field")
     void overLongDescriptionIsRejected() throws Exception {
@@ -109,8 +98,6 @@ class TicketLifecycleIntegrationTest {
                 .andExpect(status().isCreated());
     }
 
-    // ---- F2-N2: optimistic locking (item 5) ----
-
     @Test
     @DisplayName("Withdrawing a ticket that is not OPEN is refused")
     void withdrawingNonOpenTicketIsRefused() throws Exception {
@@ -123,17 +110,13 @@ class TicketLifecycleIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
-    // Why this test exists: updateTicket used to load, check OPEN, and save
-    // with no @Version, so an officer's status change made in between was
-    // silently overwritten by the student's save. @Version makes the second
-    // save fail loudly (409) instead of succeeding quietly.
+    // @Version makes the second save fail with 409 instead of silently overwriting the first.
     @Test
     @DisplayName("Two concurrent edits of the same ticket: the second save gets 409")
     void concurrentEditsConflict() {
         Ticket ticket = openTicket();
 
-        // Two independent copies of the same row, as two browser tabs would
-        // each hold their own in-memory copy after separate GETs.
+        // Two separate copies of the row, like two browser tabs.
         Ticket firstCopy = ticketRepository.findById(ticket.getId()).orElseThrow();
         Ticket secondCopy = ticketRepository.findById(ticket.getId()).orElseThrow();
 
@@ -148,11 +131,8 @@ class TicketLifecycleIntegrationTest {
         }).isInstanceOf(org.springframework.orm.ObjectOptimisticLockingFailureException.class);
     }
 
-    // ---- F2-N5: page cap (item 6) ----
-
-    // size=100 as well as the huge page number: at the default size=20 this
-    // page number does not overflow int, so the test would pass even without
-    // the fix. Overflow needs page * size, in int arithmetic, past Integer.MAX_VALUE.
+    // size=100 too: at the default size of 20 this page number does not overflow int,
+    // so the test would pass even without the cap.
     @Test
     @DisplayName("An enormous page number returns an empty page instead of a 500")
     void hugePageNumberIsClamped() throws Exception {

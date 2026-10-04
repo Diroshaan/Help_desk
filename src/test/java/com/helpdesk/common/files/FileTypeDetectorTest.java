@@ -7,10 +7,7 @@ import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * The shared magic-byte check. Each case is a real file signature, so these
- * tests are also the documentation of what the system accepts.
- */
+/** The magic-byte file type check, using real file signatures. */
 class FileTypeDetectorTest {
 
     private static byte[] bytes(int... values) {
