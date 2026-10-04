@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/** Folders a student uses to group their ticket bookmarks. */
 @Service
 public class BookmarkFolderService {
 
@@ -48,9 +49,6 @@ public class BookmarkFolderService {
         return bookmarkFolderRepository.findByStudentId(studentId);
     }
 
-    // Builds the { id, name, colour, bookmarkCount } shape the frontend
-    // needs, using ONE grouped query for every folder's count rather than a
-    // countByStudentIdAndFolderId call per folder (N+1).
     public List<BookmarkFolderResponse> findResponsesByStudentId(Long studentId) {
         List<BookmarkFolder> folders = bookmarkFolderRepository.findByStudentId(studentId);
 
@@ -69,6 +67,7 @@ public class BookmarkFolderService {
         return BookmarkFolderResponse.from(folder, bookmarkCount);
     }
 
+    // another student's folder is a 404, not a 403
     public BookmarkFolder findByIdAndStudentId(Long id, Long studentId) {
         BookmarkFolder folder = bookmarkFolderRepository.findById(id)
 
@@ -80,16 +79,11 @@ public class BookmarkFolderService {
         return folder;
     }
 
-    // Update (rename folder / change its colour)
     public BookmarkFolder updateFolder(Long id, Long studentId, String newName, String colour) {
         BookmarkFolder folder = findByIdAndStudentId(id, studentId);
         String cleanName = validateName(newName);
 
-        // CHANGED: the previous check compared names with equals() and then
-        // searched by name. Renaming "it issues" to "IT Issues" made equals()
-        // false, so the search ran and found the folder being renamed — the
-        // student was told their own folder was a duplicate and could not fix
-        // their own capitalisation. Excluding by id resolves that.
+        // excludes this folder, so changing only the capitalisation isn't a duplicate
         if (bookmarkFolderRepository
                 .existsByStudentIdAndNameIgnoreCaseAndIdNot(studentId, cleanName, id)) {
             throw new DuplicateResourceException("A folder with this name already exists");
@@ -97,40 +91,26 @@ public class BookmarkFolderService {
 
         folder.setName(cleanName);
 
-        // A null colour means the client omitted the field, not that they
-        // want the colour cleared. Renaming a folder used to null its colour,
-        // because the rename dialog only sends a name — the same class of
-        // problem as mass assignment, where request data reaches state the
-        // user never asked to change. If clearing a colour is ever needed it
-        // should arrive as an explicit empty string, not an absent field.
+        // null means the field was left out (the rename dialog only sends a name), so keep the colour
         if (colour != null) {
             folder.setColour(colour);
         }
         return saveOrTranslateDuplicate(folder);
     }
 
-    // CHANGED: added @Transactional. This performs several writes — unassign
-    // every bookmark in the folder, then delete the folder. Without a
-    // transaction, a failure part-way through leaves some bookmarks unfiled
-    // and the folder still present.
+    // One transaction, so a failure can't leave half the bookmarks unfiled.
     @Transactional
     public void deleteFolder(Long id, Long studentId) {
         BookmarkFolder folder = findByIdAndStudentId(id, studentId);
 
-        // Bookmarks survive; only the grouping is removed. This is what the
-        // confirmation dialog on the bookmarks page promises the student.
-        // Inside a transaction these entities are managed, so JPA dirty
-        // checking flushes the change — the explicit save() per row that was
-        // here before was redundant.
+        // bookmarks are kept, just unfiled (dirty checking saves the change)
         bookmarkRepository.findByStudentIdAndFolderId(studentId, id)
                 .forEach(bookmark -> bookmark.setFolderId(null));
 
         bookmarkFolderRepository.delete(folder);
     }
 
-    // The entity's @NotBlank and @Size(max = 60) only fire when Bean
-    // Validation runs over the whole object. A raw String parameter bypasses
-    // that entirely, so the same rules are enforced here.
+    // same rules as the entity, since a plain String parameter skips bean validation
     private String validateName(String name) {
         if (name == null || name.isBlank()) {
             throw new ValidationException("Folder name is required");
@@ -142,12 +122,8 @@ public class BookmarkFolderService {
         return trimmed;
     }
 
-    // existsBy... followed by save() is check-then-act: two concurrent
-    // requests can both pass the check before either one saves. The unique
-    // constraint on (student_id, name) is the real guarantee; this catches
-    // the resulting database error and turns it into the same 409 the
-    // pre-check would have produced. The pre-check is kept because it gives
-    // the common case a clean message without relying on an exception.
+    // Two requests can both pass the exists check; the unique (student_id, name)
+    // constraint catches the second and we turn it into the same 409.
     private BookmarkFolder saveOrTranslateDuplicate(BookmarkFolder folder) {
         try {
             return bookmarkFolderRepository.save(folder);

@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/** Student endpoints for bookmark folders. */
 @RestController
 @RequestMapping("/api/bookmark-folders")
 public class BookmarkFolderController {
@@ -42,10 +43,7 @@ public class BookmarkFolderController {
         return bookmarkFolderService.findResponsesByStudentId(currentStudentId(authentication));
     }
 
-    // PATCH rather than PUT: PUT means "replace the whole resource", so
-    // nulling fields the request omitted would be correct PUT behaviour.
-    // This endpoint changes individual fields, so PATCH is the honest verb
-    // and removes the ambiguity that caused the colour to be lost.
+    // PATCH, not PUT: fields left out of the request are kept, not cleared
     @PatchMapping("/{id}")
     public ResponseEntity<BookmarkFolderResponse> update(@PathVariable Long id,
                                                           @Valid @RequestBody BookmarkFolderRequest request,

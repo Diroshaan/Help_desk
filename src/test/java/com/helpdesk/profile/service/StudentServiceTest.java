@@ -26,17 +26,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * StudentService with its collaborators mocked.
- *
- * Mockito rather than a running application because these rules are the
- * service's own decisions - what it saves, what it refuses, who it signs out -
- * and a mock lets each test state exactly one situation (an email that is
- * already taken, a file whose bytes are text) without building it in a database.
- * The real BCrypt encoder is used, at the lowest strength so the suite stays
- * fast, because "the stored password is a hash, not the plain text" is only
- * provable with a real encoder.
- */
+/** StudentService with mocks and a real BCrypt encoder: registration, profile update, deactivation, avatars. */
 @ExtendWith(MockitoExtension.class)
 class StudentServiceTest {
 
@@ -63,12 +53,7 @@ class StudentServiceTest {
         return r;
     }
 
-    // ---- Registration ----
-
-    // Why this test exists: the original endpoint bound a client-supplied id,
-    // so save() called merge() and overwrote someone else's account. The DTO
-    // has no id field now, and register() still forces id=null as a backstop.
-    // This locks the backstop in.
+    // register() forces id = null, so a save can never overwrite an existing account.
     @Test
     @DisplayName("Registration always inserts a new row, never updates an existing one")
     void registerForcesANewRow() {
@@ -110,8 +95,7 @@ class StudentServiceTest {
         verify(studentRepository, never()).save(any());
     }
 
-    // A closed account still holds its Student ID. The message must say it was
-    // closed, not "log in instead" - that login would fail.
+    // A closed account still holds its Student ID, so "log in instead" would be wrong.
     @Test
     @DisplayName("A Student ID belonging to a closed account gets a message that says so")
     void deactivatedAccountGetsItsOwnMessage() {
@@ -137,10 +121,7 @@ class StudentServiceTest {
                 .hasMessageNotContaining("restored");
     }
 
-    // ---- Profile update ----
-
-    // Why this test exists: "Save preferences" sends only the two booleans.
-    // Before the null checks, that request wiped the name and phone.
+    // "Save preferences" sends only the two booleans; that must not wipe the name or phone.
     @Test
     @DisplayName("A partial update leaves every field it did not mention untouched")
     void partialUpdateLeavesOtherFieldsAlone() {
@@ -176,8 +157,6 @@ class StudentServiceTest {
         assertThat(saved.getFullName()).isEqualTo("Diro Sivakumar");
     }
 
-    // ---- Deactivation ----
-
     @Test
     @DisplayName("Closing an account soft-deletes it and ends its live sessions")
     void deactivateSoftDeletesAndRevokes() {
@@ -198,11 +177,7 @@ class StudentServiceTest {
         verify(sessionRevoker).revokeAllSessionsFor("diro@my.sliit.lk");
     }
 
-    // ---- Avatar ----
-
-    // Why this test exists: the file's NAME and declared type are chosen by the
-    // uploader. Only the bytes are evidence. A text file called .png, declared
-    // as image/png, must still be refused.
+    // The name and declared type come from the uploader; only the bytes count.
     @Test
     @DisplayName("A text file renamed to .png is rejected by its content, not its name")
     void avatarRejectsTextDisguisedAsPng() {

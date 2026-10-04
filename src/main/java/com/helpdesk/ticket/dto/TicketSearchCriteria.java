@@ -4,10 +4,8 @@ import com.helpdesk.ticket.entity.TicketPriority;
 import com.helpdesk.ticket.entity.TicketStatus;
 
 /**
- * Optional filters for a student's ticket search (F2/F4). Every field left
- * null/blank is simply skipped by StudentTicketQueryService, so an empty
- * criteria (the defaults below) returns every ticket the student owns,
- * newest first.
+ * Optional filters for a student's ticket search. Blank fields are skipped, so
+ * the defaults return all of the student's tickets, newest first.
  */
 public class TicketSearchCriteria {
 

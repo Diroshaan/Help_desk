@@ -12,11 +12,7 @@ export default function ArticleDetail() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
-  // F5 - a student's saved articles. `saved` is derived by asking for the
-  // student's bookmarked list and checking whether this article is in it,
-  // rather than by a per-article "is it saved" endpoint, because
-  // GET /api/articles/bookmarked is the only read the backend offers. One
-  // request answers the question for this page and costs nothing extra.
+  // There is no "is this saved" endpoint, so we check the student's saved list.
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState(null)
@@ -30,10 +26,7 @@ export default function ArticleDetail() {
     })
   }, [id])
 
-  // Only a student can bookmark an article - the backend resolves the owner
-  // from the session through StudentRepository, so an officer calling it gets
-  // "No student account for ...". Asking at all would be a guaranteed error,
-  // so the request is not made and the button is not rendered.
+  // only students can save articles, so others don't get the button
   useEffect(() => {
     if (role !== 'STUDENT') return
     request(API.articlesBookmarked).then(r => {
@@ -42,13 +35,8 @@ export default function ArticleDetail() {
   }, [id, role])
 
   /**
-   * Save or unsave this article (F5).
-   *
-   * The state is flipped only after the server confirms, never optimistically.
-   * An optimistic flip here would be a lie in the one case that matters: the
-   * unique constraint uq_article_bookmark_student_article rejects a duplicate
-   * save, and the button would already be showing "Saved" while nothing had
-   * been stored.
+   * Save or unsave. The button only changes after the server confirms, since a
+   * duplicate save can be rejected by the unique constraint.
    */
   async function toggleSaved() {
     setBusy(true); setNotice(null)

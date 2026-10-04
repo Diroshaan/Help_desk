@@ -19,24 +19,15 @@ export default function TicketDetail() {
   const [categories, setCategories] = useState([])
   const [form, setForm] = useState(null)
   const [attachments, setAttachments] = useState([])
-  const [bookmark, setBookmark] = useState(null)   // BookmarkResponse or null
+  const [bookmark, setBookmark] = useState(null)
 
-  // F3, US-12 - "submit a review and feedback once my ticket is marked
-  // RESOLVED". `feedback` is the saved FeedbackResponse, or null when this
-  // ticket has none yet; `feedbackForm` is what the student is currently
-  // editing. They are kept apart so a half-typed comment never looks like it
-  // has been saved - the form only becomes the saved record when the server
-  // says so.
+  // `feedback` is what the server has saved; `feedbackForm` is the draft being typed.
   const [feedback, setFeedback] = useState(null)
   const [feedbackForm, setFeedbackForm] = useState({ rating: 0, comment: '' })
 
-  // Whether this ticket is archived. Read on load from F3's
-  // GET /api/tickets/archived, so the button always says the right thing.
   const [archived, setArchived] = useState(false)
 
-  // The status timeline (F2 #45) and the help desk's answer (F3 #39).
-  // `answer` stays null until an officer has resolved the ticket; a 404 from
-  // the resolution endpoint is the normal "no answer yet" case.
+  // `answer` stays null until the ticket is resolved (404 = no answer yet)
   const [history, setHistory] = useState(null)
   const [answer, setAnswer] = useState(null)
 
@@ -82,14 +73,8 @@ export default function TicketDetail() {
       setBookmark(existing || null)
     }
 
-    // Feedback is only fetched for a RESOLVED ticket, and only then because
-    // FeedbackService rejects submission on anything else - asking for
-    // feedback on an OPEN ticket would be a guaranteed 404 on every load of
-    // every open ticket, which is noise in the log and a wasted round trip.
-    //
-    // A 404 here is the NORMAL case, not an error: it means "resolved, but
-    // this student has not rated it yet", which is exactly the state the form
-    // below exists to fill. Only a 200 sets the saved record.
+    // Answer and feedback only exist for RESOLVED tickets. A 404 on feedback
+    // just means the student hasn't rated it yet.
     if (ticketResult.data.status === 'RESOLVED') {
       const answerResult = await request(API.ticketResolution(id))
       setAnswer(answerResult.ok ? answerResult.data : null)
@@ -123,8 +108,7 @@ export default function TicketDetail() {
         setTicket(result.data)
         setNotice({ kind: 'info', text: 'Your ticket has been updated.' })
       } else if (result.status === 409) {
-        // Someone (an officer) changed this ticket after it was opened here.
-        // Show the latest version instead of overwriting their change.
+        // 409: an officer changed the ticket meanwhile, so reload instead of overwriting
         await load()
         setNotice({ kind: 'error', text: 'An officer updated this ticket while you were editing it. The latest version is shown below; make your change again.' })
       } else {
@@ -200,18 +184,8 @@ export default function TicketDetail() {
   }
 
   /**
-   * Submit a new rating, or update the one already given (F3, US-12).
-   *
-   * One handler rather than two, because the difference between "submit" and
-   * "update" is a single verb - POST when there is no saved feedback yet, PUT
-   * when there is - and the backend takes the identical body either way. Two
-   * near-identical functions would be two places to fix the next time the
-   * payload changes.
-   *
-   * The rating is required client-side because FeedbackRequest declares it
-   * @NotNull with a 1-5 range: catching an unset rating here gives an
-   * immediate message under the stars, where the server's 400 would arrive
-   * after a round trip with nothing pointing at the control at fault.
+   * Submits feedback (POST) or updates it (PUT); the body is the same. The
+   * rating is checked here so the error shows under the stars.
    */
   async function saveFeedback(event) {
     event.preventDefault()
@@ -245,13 +219,8 @@ export default function TicketDetail() {
   }
 
   /**
-   * Move a resolved ticket out of the active history, or bring it back (F3).
-   *
-   * Archiving is not deleting: the ticket and everything on it stay exactly
-   * where they are, and an archived_tickets row simply records that this
-   * student no longer wants it in their working list. That is why the button
-   * is a plain ghost button and not styled as a destructive action - nothing
-   * is destroyed and the next line of code can undo it.
+   * Archive or unarchive a finished ticket. Archiving only hides it from the
+   * student's active list; nothing is deleted.
    */
   async function toggleArchive() {
     setNotice(null); setBusy('archive')
@@ -264,8 +233,7 @@ export default function TicketDetail() {
           text: archived ? 'This ticket is back in your active list.' : 'This ticket has been archived.'
         })
       } else if (result.status === 409 && !archived) {
-        // Already archived (e.g. archived earlier, before the archive list
-        // could tell this page): show the true state instead of an error.
+        // already archived, so just show that
         setArchived(true)
         setNotice({ kind: 'info', text: 'This ticket is already archived.' })
       } else {
@@ -320,7 +288,7 @@ export default function TicketDetail() {
 
   const editable = ticket.status === 'OPEN'
   const withdrawable = ticket.status === 'OPEN' || ticket.status === 'IN_PROGRESS'
-  // A finished ticket - answered or withdrawn - can leave the active list (F3 #41).
+  // only finished tickets can be archived
   const archivable = ticket.status === 'RESOLVED' || ticket.status === 'WITHDRAWN'
 
   return (
@@ -337,9 +305,7 @@ export default function TicketDetail() {
 
           {notice && <Notice kind={notice.kind} style={{ margin: '18px 0 0' }}>{notice.text}</Notice>}
 
-          {/* F3 #39: the student finally sees what the help desk said. Placed
-              first, because once a ticket is resolved this is what they came
-              back for. */}
+          {/* the answer goes first once the ticket is resolved */}
           {answer && (
             <section className="section">
               <h2>The help desk's answer</h2>
@@ -373,8 +339,7 @@ export default function TicketDetail() {
               <button type="button" className="btn btn--ghost" onClick={toggleBookmark} disabled={busy === 'bookmark'}>
                 {bookmark ? 'Remove bookmark' : 'Bookmark this ticket'}
               </button>
-              {/* Only a finished ticket can be archived; TicketArchiveService
-                  refuses anything else, so the button is not offered. */}
+              {/* only resolved or withdrawn tickets can be archived */}
               {archivable && (
                 <button type="button" className="btn btn--ghost" onClick={toggleArchive} disabled={busy === 'archive'}>
                   {archived ? 'Move back to active' : 'Archive this ticket'}
@@ -422,7 +387,7 @@ export default function TicketDetail() {
             )}
           </section>
 
-          {/* F2 #45: every status change, who made it and when. */}
+          {/* every status change, who made it and when */}
           <section className="section">
             <h2>Status timeline</h2>
             {history === null
@@ -430,11 +395,7 @@ export default function TicketDetail() {
               : <StatusTimeline entries={history} />}
           </section>
 
-          {/* F3, US-12 - rate the service once the ticket is RESOLVED.
-              Hidden entirely on an OPEN or IN_PROGRESS ticket rather than
-              shown disabled: a student has nothing to rate until the desk has
-              actually answered, so an inert form would just be a question
-              they cannot yet answer. */}
+          {/* rating only appears once the ticket is resolved */}
           {ticket.status === 'RESOLVED' && (
             <section className="section">
               <h2>{feedback ? 'Your feedback' : 'Rate this service'}</h2>
@@ -461,11 +422,7 @@ export default function TicketDetail() {
                             placeholder="What went well, or what could have been better?"
                             value={feedbackForm.comment}
                             onChange={e => setFeedbackForm(current => ({ ...current, comment: e.target.value }))} />
-                  {/* maxLength matches @Column(length = 1000) on Feedback.comment.
-                      The entity has no matching @Size, so an over-length comment
-                      would reach MySQL and come back as a confusing "already in
-                      use" error - stopping it in the textarea avoids that
-                      entirely without touching the backend. */}
+                  {/* same 1000-character limit as the server */}
                   <p className="field-error">{errors.comment || ''}</p>
                 </div>
 
@@ -500,9 +457,7 @@ export default function TicketDetail() {
                 </div>
                 <div className="row-side">
                   <a className="text-link" href={API.ticketAttachment(id, att.id)} target="_blank" rel="noreferrer">Download</a>
-                  {/* Files can only be added or removed while the ticket is
-                      still OPEN (AttachmentService); after that they are part of
-                      the record the officer is working from. */}
+                  {/* files can only be changed while the ticket is still open */}
                   {editable && (
                     <button type="button" className="btn btn--ghost" disabled={busy === 'attachment-' + att.id}
                             onClick={() => deleteAttachment(att.id)}>Remove</button>

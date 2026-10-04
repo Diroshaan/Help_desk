@@ -58,8 +58,7 @@ export default function Announcements() {
     event.preventDefault()
     setErrors({}); setNotice(null)
 
-    // Checked here so each empty box is marked and jumped to; the server only
-    // sends one combined sentence for the two of them.
+    // check here so each empty field gets its own message
     const missing = {}
     if (!form.title.trim()) missing.title = 'Give the announcement a title.'
     if (!form.body.trim()) missing.body = 'Write the announcement.'
@@ -172,8 +171,6 @@ export default function Announcements() {
                 <div className="row-side">
                   {a.expired && <StatusPill value="EXPIRED" label="Expired" />}
                   <button type="button" className="btn btn--ghost" onClick={() => startEdit(a)}>Edit</button>
-                  {/* Deleting takes the notice off every user's feed at once,
-                      so it asks first (it used to delete on the first click). */}
                   <ConfirmButton label="Delete" confirmLabel="Yes, delete"
                                  question={'Delete "' + a.title + '"?'}
                                  busy={busy === 'delete-' + a.id} onConfirm={() => remove(a.id)} />

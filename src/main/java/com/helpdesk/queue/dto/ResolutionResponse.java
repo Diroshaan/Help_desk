@@ -4,13 +4,7 @@ import com.helpdesk.queue.entity.Resolution;
 
 import java.time.LocalDateTime;
 
-/**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- *
- * Attachment binary data is deliberately excluded here, same reasoning as
- * ticket.dto.AttachmentResponse - the file itself is downloaded separately,
- * not embedded in this JSON payload.
- */
+/** A resolution without the file bytes; the file is downloaded separately. */
 public class ResolutionResponse {
 
     private final Long id;

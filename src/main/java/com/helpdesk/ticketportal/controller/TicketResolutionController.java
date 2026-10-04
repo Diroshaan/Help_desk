@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
 
+/** Lets a student read the answer to their own ticket and download its attachment. */
 @RestController
 @RequestMapping("/api/tickets/{ticketId}/resolution")
 public class TicketResolutionController {
@@ -40,9 +41,8 @@ public class TicketResolutionController {
         Resolution resolution = ticketResolutionService.getForStudentWithFile(
                 ticketId, currentStudentId(authentication));
 
-        // Same download rules as F2's ticket attachments: the stored type, a
-        // header built by ContentDisposition (safe for quotes, line breaks and
-        // non-English names), attachment rather than inline, and nosniff.
+        // Download as an attachment (not inline) with nosniff; ContentDisposition
+        // handles quotes and non-English file names safely.
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(resolution.getAttachmentFileType()))
                 .header(HttpHeaders.CONTENT_DISPOSITION,

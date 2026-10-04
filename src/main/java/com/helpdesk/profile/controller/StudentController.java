@@ -24,32 +24,9 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * REST endpoints for F1 - Student Profile & Preferences Management.
- * Keep controllers thin: validate the request shape, call the service, return a response.
- * All the actual logic lives in StudentService.
- *
- * A note on security: SecurityConfig only checks that a request is "authenticated"
- * (or, for a few specific paths, that the user has a given role) - it does NOT
- * check WHICH student is making the request vs. WHICH student's data they're
- * touching. That means logging in as Student A and calling
- * GET/PUT/DELETE /api/students/{B's id} would succeed unless we stop it
- * ourselves. That's what the "self-access check" in findById/updateProfile/
- * deactivate below does - see the comment on isOwnProfile() for the full
- * explanation. (findAll is different: it's restricted by ROLE, not by
- * ownership - see the comment on that method instead.)
- *
- * A note on what these methods RETURN: every endpoint that returns a student
- * returns a StudentResponse, never the Student entity. See that class for the
- * full reasoning; the short version is that returning the entity made its field
- * list the public API, left the password hash guarded only by a single
- * annotation, and would break outright now that the activity log exists. The
- * mapping happens here, in the web layer, so StudentService can keep returning
- * domain objects.
- *
- * A note on the activity log: only the three endpoints that show ONE student
- * their OWN profile include it. Registration returns an account with no history
- * yet, and the staff listing deliberately leaves it empty - see withActivity()
- * at the bottom.
+ * Student profile endpoints: register, view, edit, deactivate and avatar.
+ * SecurityConfig only checks that someone is signed in, so the {id} endpoints check
+ * ownership themselves with isOwnProfile(). Always returns StudentResponse, never the entity.
  */
 @RestController
 @RequestMapping("/api/students")
@@ -65,68 +42,21 @@ public class StudentController {
         this.activityLogService = activityLogService;
     }
 
-    // POST /api/students -> register a brand new student account (US-03).
-    // Public endpoint (see SecurityConfig) - you can't log in before your account exists.
-    //
-    // Takes a RegistrationRequest rather than the Student entity directly (which
-    // this endpoint originally did) - see the comment on RegistrationRequest for
-    // why: the password complexity rule can only be checked against the raw,
-    // not-yet-hashed password, and RegistrationRequest is the only place that
-    // value exists before StudentService hashes it.
-    //
-    // Note the symmetry now: a purpose-built type in, a purpose-built type out.
-    // Neither direction exposes the entity.
-    //
-    // Uses from(), not withActivity(): a brand new account has exactly one log
-    // entry (its own creation) and nothing is going to render it - the frontend
-    // navigates straight to the login page after a successful registration.
+    // Public, since you can't sign in before the account exists.
     @PostMapping
     public ResponseEntity<StudentResponse> register(@Valid @RequestBody RegistrationRequest request) {
         Student saved = studentService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(StudentResponse.from(saved));
     }
 
-    // GET /api/students -> list every student in one response, with no filtering.
-    //
-    // Access rule: restricted to Officers/Admins only, but NOT by any code in this
-    // class - it's enforced by SecurityConfig's
-    //   .requestMatchers(HttpMethod.GET, "/api/students").hasAnyRole("OFFICER", "ADMIN")
-    // rule, which rejects a plain Student's request with 403 Forbidden before it
-    // ever reaches this method. It has to be a role check here (not an ownership
-    // check like isOwnProfile()) because this endpoint isn't about any single
-    // student's own data - it dumps everyone's, which only staff should see.
-    //
-    // This is the endpoint the response DTO matters most for: it returns every
-    // account in the system at once, so a field accidentally added to Student
-    // would be published for every student on the first request after the deploy.
-    // It is also why the activity log is left empty here - see withActivity().
+    // Officers and admins only (role rule in SecurityConfig, not here).
     @GetMapping
     public List<StudentResponse> findAll() {
         return StudentResponse.fromAll(studentService.findAll());
     }
 
-    // GET /api/students/me -> fetch the CURRENTLY LOGGED-IN student's own profile.
-    //
-    // Why this exists: the frontend knows who's logged in only via the session
-    // cookie - it has no way to know that student's numeric id up front, and
-    // guessing/enumerating ids is exactly what isOwnProfile() below exists to
-    // prevent. This reuses that same pattern - authentication.getName() is the
-    // email the student logged in with (see StudentUserDetailsService), so
-    // looking them up by email is the direct equivalent of isOwnProfile()'s email
-    // comparison, just without needing an {id} in the URL first. Any
-    // authenticated user can call this for themselves; there's no cross-student
-    // access risk since the lookup is always tied to whoever the session belongs
-    // to, not to caller input.
-    //
-    // 403, not 404, when no student matches: this only happens when a session
-    // authenticated successfully but the row behind it has since disappeared
-    // (e.g. the account was deleted after the session was issued). That's the
-    // same "doesn't exist" -> "forbidden" choice isOwnProfile() makes below,
-    // for the same reason - treating it as a plain 404 here would read like
-    // "this endpoint doesn't exist" rather than "your session no longer
-    // corresponds to a real account", and would throw if callers ever started
-    // assuming a 404 body always means "resource not found" rather than
-    // "identity gone".
+    // The signed-in student, looked up by session email, so the frontend needs no id.
+    // 403 if the session has no matching student row any more.
     @GetMapping("/me")
     public ResponseEntity<StudentResponse> getCurrentStudent(Authentication authentication) {
         return studentService.findByEmail(authentication.getName())
@@ -135,16 +65,7 @@ public class StudentController {
                 .orElse(ResponseEntity.status(HttpStatus.FORBIDDEN).build());
     }
 
-    // GET /api/students/{id} -> fetch one student's profile, e.g. for a dashboard view.
-    // Returns 404 if no student exists with that id.
-    //
-    // Access rule: same privacy gap as GET /api/students (see SecurityConfig's
-    // comment on that rule) - without a check here, any logged-in Student could
-    // view any OTHER student's profile just by changing the {id} in the URL, even
-    // though SecurityConfig only guarantees "someone" is logged in. Officers and
-    // Admins are allowed to look up any student (that's their job), so only plain
-    // Students are restricted to their own profile via isOwnProfile(), the same
-    // helper already used to gate updateProfile/deactivate below.
+    // Staff can view any student; a student only their own profile.
     @GetMapping("/{id}")
     public ResponseEntity<StudentResponse> findById(@PathVariable Long id, Authentication authentication) {
         if (!isOfficerOrAdmin(authentication) && !isOwnProfile(id, authentication)) {
@@ -156,24 +77,7 @@ public class StudentController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // PUT /api/students/{id} -> edit your own profile details (US-01).
-    // "authentication" is filled in automatically by Spring Security with whoever
-    // is logged in for the current request (from the session set up at login).
-    //
-    // Takes a ProfileUpdateRequest, not the Student entity itself - see the
-    // comment on ProfileUpdateRequest for the full reasoning. Briefly: reusing
-    // Student here (as this endpoint originally did) meant its @NotBlank
-    // password field applied to profile edits too, even though this endpoint
-    // never changes the password and GET responses never return one to send
-    // back. It also meant email/studentId/role could be included in the request
-    // body and would just be silently dropped by the service, which is a
-    // confusing API shape. A dedicated request type only exposes the fields this
-    // endpoint actually edits.
-    //
-    // The response carries the refreshed activity log on purpose: the frontend
-    // replaces its stored student with whatever this returns, so the entry the
-    // save just created appears on the page immediately, without a second
-    // request or a manual refresh.
+    // Owner only. Returns the refreshed activity log so the new entry shows straight away.
     @PutMapping("/{id}")
     public ResponseEntity<StudentResponse> updateProfile(@PathVariable Long id,
                                                          @Valid @RequestBody ProfileUpdateRequest updatedDetails,
@@ -184,11 +88,7 @@ public class StudentController {
         return ResponseEntity.ok(withActivity(studentService.updateProfile(id, updatedDetails)));
     }
 
-    // DELETE /api/students/{id} -> self-service deactivation (US-02).
-    // Soft-delete only: see StudentService.deactivate, which flips an "active" flag
-    // instead of removing the row from the database.
-    //
-    // Returns 204 No Content, so there is no body and nothing to map.
+    // Owner only. Soft delete: the row stays, only the active flag changes.
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deactivate(@PathVariable Long id, Authentication authentication,
                                             HttpServletRequest request) {
@@ -197,19 +97,7 @@ public class StudentController {
         }
         studentService.deactivate(id);
 
-        // Flipping the "active" flag in the database only blocks FUTURE login
-        // attempts (StudentUserDetailsService checks it via .disabled(...),
-        // enforced by DaoAuthenticationProvider) - it does nothing to a
-        // session that was already authenticated before this call. Spring
-        // Security doesn't re-run the UserDetailsService check on every
-        // request by default; it trusts whatever Authentication object is
-        // already sitting in the session. Without explicitly ending the
-        // session here, a student who deactivates their own account while
-        // logged in could keep using that same session/cookie normally until
-        // it naturally expires, even though they're now "deactivated". This
-        // mirrors AuthController.logout()'s invalidate-session-and-clear-
-        // context pattern, run immediately as part of deactivation instead of
-        // waiting for an explicit logout call.
+        // The flag only blocks future logins, so end the current session too.
         HttpSession session = request.getSession(false);
         if (session != null) {
             session.invalidate();
@@ -219,22 +107,7 @@ public class StudentController {
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Builds a response for one student WITH their recent activity attached.
-     *
-     * Used only by the three endpoints where a student is looking at their own
-     * profile. Registration and the staff listing use StudentResponse.from()
-     * instead, which leaves the log empty - not because the data is secret, but
-     * because loading twenty history rows per student to render a page that
-     * ignores them is a query nobody notices until the table is large. The
-     * listing returns every account in the system at once, so that would be one
-     * extra query per student, every time a staff member opens it.
-     *
-     * This is the payoff for ActivityLog holding a plain studentId rather than a
-     * JPA relationship: the log is fetched here, explicitly, only when it is
-     * wanted. With a @OneToMany the decision would belong to the mapping, not to
-     * the endpoint.
-     */
+    /** Adds recent activity; only used where a single profile is shown. */
     private StudentResponse withActivity(Student student) {
         return StudentResponse.withActivity(
                 student,
@@ -243,31 +116,8 @@ public class StudentController {
     }
 
     /**
-     * Self-access check: is the logged-in user the SAME student as the one
-     * identified by {@code id}?
-     *
-     * Why this is needed: Spring Security's login (see AuthController) proves WHO
-     * you are and stores that in your session, but SecurityConfig's rule for these
-     * endpoints is just ".anyRequest().authenticated()" - it only checks that
-     * *someone* is logged in, not that they're logged in as the student whose
-     * data they're trying to change. Without this check, any logged-in student
-     * could edit or deactivate any other student's profile just by changing the
-     * {id} in the URL (this class of bug is called "IDOR" - Insecure Direct
-     * Object Reference).
-     *
-     * How it works: we look up which student owns the account currently logged
-     * in (authentication.getName() is the email they logged in with, since
-     * StudentUserDetailsService uses email as the username) and compare it to
-     * the email of the student stored under {@code id}. They must match.
-     *
-     * If {@code id} doesn't belong to any student, we deliberately return false
-     * (forbidden) rather than treating it differently to a "not your profile"
-     * case - this avoids leaking whether a given id exists to someone probing
-     * the API.
-     *
-     * Note this reads the Student entity, not a StudentResponse. That is
-     * correct: this is an internal authorisation decision, not something being
-     * returned to a caller, so it belongs on the domain object.
+     * Stops IDOR: the student at {id} must have the session's email.
+     * An unknown id also gives false (403), so ids can't be probed.
      */
     private boolean isOwnProfile(Long id, Authentication authentication) {
         return studentService.findById(id)
@@ -275,45 +125,13 @@ public class StudentController {
                 .orElse(false);
     }
 
-    /**
-     * Is the logged-in user an Officer or Admin (as opposed to a plain Student)?
-     *
-     * Used to let staff bypass the self-access check in findById: Officers and
-     * Admins legitimately need to look up any student's profile, so they aren't
-     * restricted to "their own" the way a Student is. This reads the same
-     * "ROLE_x" authorities that StudentUserDetailsService set up at login (and
-     * that SecurityConfig's hasRole(...) rules already rely on elsewhere), so a
-     * Student's account - even if they guess/enumerate other ids - can never
-     * satisfy this check.
-     */
     private boolean isOfficerOrAdmin(Authentication authentication) {
         return authentication.getAuthorities().stream()
                 .anyMatch(authority -> authority.getAuthority().equals("ROLE_OFFICER")
                         || authority.getAuthority().equals("ROLE_ADMIN"));
     }
 
-    // ------------------------------------------------------------------
-    // Avatar (F1 Update: "upload/update dynamic profile avatars")
-    // ------------------------------------------------------------------
-
-    /**
-     * Upload or replace this student's profile picture.
-     *
-     * Behind the same ownership rule as every other write on this controller:
-     * isOwnProfile() covers it, so one student cannot replace another's picture
-     * by changing the {id} in the URL. That check is the only thing standing
-     * between this system and an IDOR, and it applies here exactly as it does
-     * to updateProfile.
-     *
-     * multipart/form-data rather than a base64 string in JSON: base64 inflates
-     * the payload by a third and puts a large blob through the JSON parser for
-     * no benefit. Spring Boot's multipart limits in application.properties
-     * already cap the request size before it reaches this method.
-     *
-     * Returns the updated StudentResponse rather than 204, so the page can
-     * re-render from the response instead of firing a second request to find out
-     * what changed.
-     */
+    /** Owner only. Multipart upload; size is capped by the multipart limits in application.properties. */
     @PostMapping("/{id}/avatar")
     public ResponseEntity<StudentResponse> uploadAvatar(@PathVariable Long id,
                                                           @RequestParam("file") MultipartFile file,
@@ -326,21 +144,8 @@ public class StudentController {
     }
 
     /**
-     * Serve the stored image.
-     *
-     * NOT ownership-guarded, deliberately, and worth being able to defend: a
-     * profile picture is shown next to its owner's name wherever they appear -
-     * the top bar, the admin user listing, and in due course beside a ticket in
-     * an officer's queue. Restricting it to the owner would mean every one of
-     * those places showing a broken image. It is the same category of data as a
-     * display name, which this application already shows to any signed-in user.
-     *
-     * The catch-all rule in SecurityConfig still applies, so a signed-out
-     * visitor cannot fetch it.
-     *
-     * 404 when there is no picture, rather than a placeholder: the frontend
-     * already falls back to the student's initials, and sending a stand-in image
-     * would stop it from knowing to do that.
+     * Any signed-in user can fetch it (it's shown next to the name, like a display name).
+     * 404 when there's no picture so the frontend falls back to initials.
      */
     @GetMapping("/{id}/avatar")
     public ResponseEntity<byte[]> avatar(@PathVariable Long id) {
@@ -356,22 +161,7 @@ public class StudentController {
                         student.getProfilePictureType() == null
                                 ? MediaType.IMAGE_JPEG_VALUE
                                 : student.getProfilePictureType()))
-                // Cached briefly, and PRIVATELY.
-                //
-                // Long enough that a page showing the same avatar in three
-                // places fetches it once. cachePrivate() is the important half:
-                // without it the response is cacheable by any shared cache
-                // between here and the browser, and this endpoint is behind
-                // authentication - a shared proxy could in principle hand one
-                // student's photograph to the next person who asked for that
-                // URL. "private" tells every cache except the user's own browser
-                // to keep out.
-                //
-                // Freshness after an upload is NOT handled here. It is handled
-                // by the ?v= timestamp that updateAvatar writes into
-                // profilePictureUrl, which changes the URL and so the cache key.
-                // Relying on a short max-age instead would mean a student who
-                // changed their picture watching the old one for five minutes.
+                // private so shared proxies don't cache it; a new upload changes the ?v= in the URL
                 .cacheControl(CacheControl.maxAge(Duration.ofMinutes(5)).cachePrivate())
                 .body(image);
     }

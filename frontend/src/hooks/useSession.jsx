@@ -2,41 +2,18 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { API, onSessionLost, request } from '../api.js'
 
 /**
- * Who is logged in, held once for the whole app.
- *
- * Every page needs this and none of them should ask separately — five pages
- * each calling the session endpoint would be five requests for one answer,
- * and they could disagree with each other. The provider asks once when the
- * app mounts and hands the result down.
- *
- * `status` is deliberately three-valued rather than a boolean:
- *
- *   'loading' — the answer has not come back yet
- *   'guest'   — nobody is logged in
- *   'signedIn'— `user` (and, for a student, `student`) holds the account
- *
- * Without the loading state a protected page would decide the visitor is a
- * guest during the first render and redirect them away before the server had
- * answered — which is the bug that made logging in look like it did nothing.
- *
- * WHY TWO ACCOUNT OBJECTS ('user' AND 'student')
- * -----------------------------------------------
- * GET /api/auth/me answers for any account type (STUDENT, OFFICER or ADMIN)
- * but only ever returns the thin CurrentUserResponse shape: id, email, role,
- * displayName. GET /api/students/me answers only for students, but returns
- * the full profile (phone, department, preferences, activity log) that
- * Profile.jsx needs. Calling the student-only endpoint for every role is what
- * used to make officers and admins look logged out the instant they signed
- * in — it 403'd, and that was read as "guest". So `user` is fetched first for
- * everyone, and `student` is fetched in addition only when user.role is
- * STUDENT.
+ * Holds the logged-in user for the whole app, fetched once on load.
+ * status is 'loading', 'guest' or 'signedIn'; the loading state stops pages
+ * redirecting before the server has answered.
+ * `user` comes from /api/auth/me (any role). Students also get `student`, the
+ * full profile from /api/students/me, which other roles can't call.
  */
 const SessionContext = createContext(null)
 
 export function SessionProvider({ children }) {
   const [status, setStatus] = useState('loading')
-  const [user, setUser] = useState(null)       // CurrentUserResponse: id, email, role, displayName
-  const [student, setStudent] = useState(null) // full StudentResponse — STUDENT accounts only
+  const [user, setUser] = useState(null)       // id, email, role, displayName
+  const [student, setStudent] = useState(null) // students only
 
   const refresh = useCallback(async () => {
     try {
@@ -56,8 +33,7 @@ export function SessionProvider({ children }) {
         return result.data
       }
     } catch {
-      /* Server unreachable. Treated as a guest so the public pages still
-         render — a landing page with no API is still worth showing. */
+      /* server unreachable - treat as guest so public pages still show */
     }
 
     setUser(null)
@@ -69,30 +45,16 @@ export function SessionProvider({ children }) {
   useEffect(() => { refresh() }, [refresh])
 
   /**
-   * What to do when api.js reports the server no longer recognises us.
-   *
-   * Registered once, for the whole application, because the alternative is
-   * every screen checking for an expired session itself — twenty-five places
-   * to get right, and each one a chance to get it wrong differently.
-   *
-   * Deliberately NOT calling signOut(): that posts to /api/auth/logout, and
-   * there is no session left to end. Posting anyway would be a pointless
-   * request that fails, and the failure would look like a second error to
-   * anyone reading the network tab.
-   *
-   * The redirect uses location.hash rather than useNavigate, because this
-   * provider sits ABOVE HashRouter in the tree (see App.jsx) and so is outside
-   * the router's context. Setting the hash directly is what a router-free
-   * component has to do, and it works identically for a HashRouter.
+   * Called by api.js when the session has expired. No signOut() here because
+   * there is no session left to log out of. We set location.hash directly since
+   * this provider sits above the router and can't use useNavigate.
    */
   useEffect(() => {
     onSessionLost(() => {
       setUser(null)
       setStudent(null)
       setStatus('guest')
-      // Only redirect from a page that needed a session. Somebody reading the
-      // public landing page should not be thrown to a login form because a
-      // background request happened to fail.
+      // don't send people on public pages to the login form
       const path = window.location.hash.replace(/^#/, '')
       if (path && path !== '/' && !path.startsWith('/login') && !path.startsWith('/register')) {
         window.location.hash = '#/login?expired=1&next=' + encodeURIComponent(path)

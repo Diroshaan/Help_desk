@@ -7,11 +7,8 @@ import com.helpdesk.notification.service.NotificationRecipient;
 import org.springframework.stereotype.Component;
 
 /**
- * STRATEGY PATTERN: concrete strategy #1, the in-app inbox.
- *
- * Saves the message as a Notification row. The user sees it next time they
- * open the portal (GET /api/notifications). This is the "Portal Alerts"
- * toggle on the profile page.
+ * Strategy: delivers a notification to the portal inbox by saving a Notification row.
+ * Controlled by the "Portal Alerts" toggle on the profile page.
  */
 @Component
 public class PortalNotificationChannel implements NotificationChannel {

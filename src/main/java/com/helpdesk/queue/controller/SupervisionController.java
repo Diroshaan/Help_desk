@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** F4 - set/read an officer's supervisor. /api/admin/** is already ADMIN-only in SecurityConfig. */
+/** Admin endpoints to view or set an officer's supervisor (/api/admin/** is admin-only). */
 @RestController
 @RequestMapping("/api/admin/officers/{officerId}/supervisor")
 public class SupervisionController {

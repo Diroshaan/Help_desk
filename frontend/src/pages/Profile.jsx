@@ -14,11 +14,8 @@ const DEPARTMENTS = [
   { value: 'Other', label: 'Other' }
 ]
 
-/* These keys must match the field names on ProfileUpdateRequest exactly.
-   Spring Boot ignores JSON properties a DTO does not declare, so a wrong name
-   here does not fail — the PUT returns 200 and silently saves nothing, which is
-   worse than an error. That is exactly what happened when this array used
-   invented names. */
+/* Keys must match ProfileUpdateRequest exactly: Spring ignores unknown JSON
+   fields, so a wrong name would save nothing without any error. */
 const PREFERENCES = [
   {
     key: 'emailNotificationsEnabled',
@@ -37,7 +34,6 @@ export default function Profile() {
   const { status, student, setStudent } = useSession()
 
   const [form, setForm] = useState(null)
-  // Built from PREFERENCES so adding a preference means editing one array.
   const [prefs, setPrefs] = useState(
     () => Object.fromEntries(PREFERENCES.map(p => [p.key, true]))
   )
@@ -45,23 +41,18 @@ export default function Profile() {
   const [notice, setNotice] = useState(null)
   const [busy, setBusy] = useState(null)          // 'profile' | 'prefs' | null
 
-  /* A guest has no profile to show. Waiting for 'guest' rather than acting on
-     a missing student is the whole point of the three-valued status — during
-     'loading' the answer is simply not known yet. */
+  /* only redirect once we know it's a guest, not while loading */
   useEffect(() => {
     if (status === 'guest') navigate('/', { replace: true })
   }, [status, navigate])
 
-  // Fill the form once the account arrives, and again whenever it changes.
   useEffect(() => {
     if (!student) return
     setForm({
       givenName: student.givenName || '',
       surname: student.surname || '',
       studentId: student.studentId || '',
-      // StudentResponse.phones is the full ordered list; `phone` is only its
-      // first entry, kept for older screens. Fall back to it for an account
-      // saved before the list existed.
+      // fall back to the single `phone` field for older accounts
       phones: Array.isArray(student.phones) && student.phones.length
         ? student.phones
         : (student.phone ? [student.phone] : ['']),
@@ -87,16 +78,9 @@ export default function Profile() {
     event.preventDefault()
     setErrors({}); setNotice(null); setBusy('profile')
 
-    /* Student ID and email are both deliberately absent from this payload.
-       The Student ID is issued by the university. The email doubles as the login
-       identity and is what the ownership check compares against, so
-       ProfileUpdateRequest excludes it by design — sending it would be ignored,
-       and showing an editable box that silently does nothing is worse than
-       showing a locked one. */
-    /* The whole phone list is sent, so removing a number is a real change:
-       ProfileUpdateRequest treats `phones` as "replace the list", while the
-       older single `phone` field could only ever edit the first entry.
-       An empty list is how a student removes every number. */
+    /* Student ID and email are not editable (the email is the login), so they
+   are left out of the payload. */
+    /* The whole phone list replaces the old one; an empty list removes them all. */
     const payload = {
       givenName: form.givenName.trim(),
       surname: form.surname.trim(),
@@ -143,23 +127,8 @@ export default function Profile() {
   }
 
   /**
-   * Upload a new profile picture (F1 Update: "upload/update dynamic profile
-   * avatars").
-   *
-   * The file input is hidden inside a <label> styled as a button, which is the
-   * standard way to get a usable control: the browser's default file input is
-   * unstyleable and looks nothing like the rest of this system. A label is still
-   * keyboard reachable and still announces itself correctly, unlike a div with
-   * an onClick.
-   *
-   * event.target.value is cleared immediately so that choosing the SAME file
-   * twice in a row still fires onChange - without it the second attempt is
-   * silently ignored, because the input's value has not changed.
-   *
-   * The server returns the updated StudentResponse, so the session is refreshed
-   * from the response rather than by firing a second request to discover what
-   * changed. profilePictureUrl now points at /api/students/{id}/avatar, which
-   * the <Avatar> below already renders without any change of its own.
+   * Uploads a new profile picture. The input value is cleared so picking the
+   * same file again still fires onChange.
    */
   async function uploadAvatar(event) {
     const file = event.target.files?.[0]
@@ -199,7 +168,7 @@ export default function Profile() {
 
           {notice && <Notice kind={notice.kind} style={{ margin: '18px 0 0' }}>{notice.text}</Notice>}
 
-          {/* ---------- Identity ---------- */}
+          {/* Identity */}
           <section className="section">
             <div className="identity">
               <Avatar marks={marks} src={student.profilePictureUrl} />
@@ -222,15 +191,13 @@ export default function Profile() {
                            onChange={uploadAvatar} disabled={busy === 'avatar'} />
                   </label>
                 </div>
-                {/* accept= filters the file picker as a convenience only. The
-                    server checks the declared type AND the file's magic bytes,
-                    because anything the browser enforces an attacker can skip. */}
+                {/* accept= is only a convenience; the server checks the real file type. */}
                 <p className="hint" style={{ marginTop: 6 }}>JPEG, PNG or WebP, up to 2MB.</p>
               </div>
             </div>
           </section>
 
-          {/* ---------- Personal details ---------- */}
+          {/* Personal details */}
           <section className="section">
             <h2>Personal details</h2>
 
@@ -270,7 +237,7 @@ export default function Profile() {
             </form>
           </section>
 
-          {/* ---------- Preferences ---------- */}
+          {/* Preferences */}
           <section className="section" id="preferences">
             <h2>Notification preferences</h2>
             <p className="section-note">
@@ -299,7 +266,7 @@ export default function Profile() {
             </div>
           </section>
 
-          {/* ---------- Activity ---------- */}
+          {/* Activity */}
           <section className="section" id="activity">
             <h2>Recent activity</h2>
 
@@ -320,7 +287,7 @@ export default function Profile() {
             )}
           </section>
 
-          {/* ---------- Security ---------- */}
+          {/* Security */}
           <section className="section" id="security">
             <h2>Password</h2>
             <p className="section-note">
@@ -331,7 +298,7 @@ export default function Profile() {
             </div>
           </section>
 
-          {/* ---------- Danger zone ---------- */}
+          {/* Danger zone */}
           <section className="danger-zone">
             <h2>Close your account</h2>
             <p className="section-note">

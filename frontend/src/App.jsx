@@ -7,13 +7,8 @@ import { ROUTES, afterLogin, homeFor, loginFor } from './routes.jsx'
 import './styles/app.css'
 
 /**
- * HashRouter rather than BrowserRouter.
- *
- * With browser routing, a refresh on /profile sends GET /profile to Spring,
- * which has no controller for it and answers 404 — fixing that needs a
- * catch-all forward added to the backend. Hash routing keeps every path after
- * the '#', so the server only ever sees a request for index.html and no Spring
- * change is needed at all. The URLs read as /#/profile.
+ * HashRouter so a page refresh only ever asks Spring for index.html
+ * (with BrowserRouter, refreshing /profile would 404 on the backend).
  */
 export default function App() {
   return (
@@ -26,12 +21,7 @@ export default function App() {
   )
 }
 
-/**
- * A single-page app keeps the scroll position when the route changes, which
- * lands you halfway down a page you have never seen. This puts it back to the
- * top — except when the URL carries an anchor, where jumping to that element
- * is the whole point.
- */
+// Scrolls to the top on every route change, or to the #anchor if the URL has one.
 function ScrollToTop() {
   const { pathname, hash } = useLocation()
   const lastPath = useRef(pathname)
@@ -40,10 +30,8 @@ function ScrollToTop() {
     const samePage = lastPath.current === pathname
     lastPath.current = pathname
     if (hash) {
-      // Coming from another page (the sidebar's "Browse FAQ"), the page
-      // transition means the target is not on screen yet when this runs, so
-      // the visitor stayed at the top. Look for it every 50 ms for up to a
-      // second, then jump; smooth only when already on the page.
+      // After a page change the target isn't rendered yet (fade transition),
+      // so poll every 50 ms for up to a second before giving up.
       let tries = 0
       const timer = setInterval(() => {
         const target = document.getElementById(hash.slice(1))
@@ -62,19 +50,9 @@ function ScrollToTop() {
 }
 
 /**
- * Gate around one route's element, driven by that route's `access` entry in
- * routes.jsx:
- *
- *   'public' — render for anyone
- *   'guest'  — render only while signed out; a signed-in visitor is sent to
- *              their own home screen instead (so a logged-in officer hitting
- *              /login lands on the queue, not the login form)
- *   [roles]  — render only for those roles; anyone else — guest or the wrong
- *              role — is sent to '/'
- *
- * Waiting for `status !== 'loading'` before deciding is what stops a
- * protected page from reading a not-yet-answered session as "guest" and
- * redirecting away before the server had a chance to say otherwise.
+ * Route guard using the `access` value from routes.jsx. We wait until the
+ * session check has finished, otherwise a signed-in user would be treated as a
+ * guest and redirected on refresh.
  */
 function Protected({ access, children }) {
   const { status, role } = useSession()
@@ -86,24 +64,20 @@ function Protected({ access, children }) {
 
   if (access === 'public') return children
 
-  // A page that is fading out (the address bar already shows the next page)
-  // must never redirect. Without this, "Log out" sent the old page's guard to
-  // "Log in ?next=old page" while the visitor was on their way home.
+  // The page fading out after logout must not redirect to the login page;
+  // the address bar already shows where the user is going.
   const showing = (window.location.hash.replace(/^#/, '').split('?')[0]) || '/'
   if (showing !== location.pathname && status !== 'signedIn') return null
 
   if (access === 'guest') {
-    // Signed in on the login page: go where they were heading (?next=), or home.
     return status === 'signedIn' ? <Navigate to={afterLogin(role, location.search)} replace /> : children
   }
 
-  // A guest asking for a signed-in page logs in first and is then brought
-  // back to it, so "Submit a ticket" on the home page ends on the ticket form.
+  // guests log in first and come back here via ?next=
   if (status !== 'signedIn') {
     return <Navigate to={loginFor(location.pathname + location.search)} replace />
   }
 
-  // Signed in, but this page belongs to another role: their own home instead.
   if (!access.includes(role)) {
     return <Navigate to={homeFor(role)} replace />
   }
@@ -111,10 +85,7 @@ function Protected({ access, children }) {
   return children
 }
 
-/**
- * Pages cross-fade instead of snapping. 180ms is short enough that it reads as
- * responsiveness rather than as an animation you are waiting for.
- */
+// Short cross-fade between pages.
 function AnimatedRoutes() {
   const location = useLocation()
 
@@ -134,8 +105,6 @@ function AnimatedRoutes() {
             } />
           ))}
 
-          {/* An address that does not exist says so, with a way back,
-              instead of silently dropping the visitor on the home page. */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </motion.div>

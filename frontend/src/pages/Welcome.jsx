@@ -6,12 +6,8 @@ import { useReveal } from '../hooks/useReveal.js'
 import { useSession } from '../hooks/useSession.jsx'
 import { homeFor } from '../routes.jsx'
 
-/* The three ways into the help desk, and the chapters of the walkthrough.
-   Kept as data so the markup below stays about layout, not content.
-
-   Each one links straight to the page it names. A guest is sent to log in
-   first and then brought back to that page (Protected in App.jsx), so
-   "Submit a ticket" always ends on the ticket form, never on the profile. */
+/* The three ways into the help desk. A guest logs in first and is then sent
+   on to the page they picked. */
 const ROUTES = [
   {
     num: '01',
@@ -59,7 +55,7 @@ const DESKS = [
   { name: 'Financial Aid', email: 'finaid@university.lk',    phone: '+94 11 000 0003' }
 ]
 
-/* A branded still for the player, drawn rather than shipped as a file. */
+/* poster image for the video, drawn as an inline SVG */
 const POSTER =
   "data:image/svg+xml;utf8," + encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
@@ -70,8 +66,7 @@ const POSTER =
              letter-spacing="3" fill="#c3ded6" text-anchor="middle">HOW IT WORKS</text>
      </svg>`)
 
-/* What the two footer buttons open. Plain statements of what this system
-   actually does - nothing it does not. */
+/* text shown by the two footer buttons */
 const FOOT_INFO = [
   {
     key: 'access',
@@ -117,8 +112,7 @@ export default function Welcome() {
       return
     }
 
-    // Straight into the knowledge base with the words already searched. A
-    // guest logs in first and lands on the same results.
+    // open the knowledge base with the search filled in
     setSearchNote('')
     navigate('/kb?q=' + encodeURIComponent(text))
   }
@@ -127,7 +121,7 @@ export default function Welcome() {
     <>
       <TopBar />
 
-      {/* ============ Hero ============ */}
+      {/* Hero */}
       <section className="hero">
         <div className="hero__inner rise rise-1">
           <p className="eyebrow">Student support · One place</p>
@@ -158,7 +152,7 @@ export default function Welcome() {
         </div>
       </section>
 
-      {/* ============ Three routes ============ */}
+      {/* Three routes */}
       <section ref={routesRef} className={'routes reveal' + (routesShown ? ' is-visible' : '')}>
         {ROUTES.map(route => (
           <article className="route" key={route.num}>
@@ -176,13 +170,13 @@ export default function Welcome() {
         ))}
       </section>
 
-      {/* ============ How it works ============ */}
+      {/* How it works */}
       <section ref={howtoRef} id="how-it-works"
                className={'howto reveal' + (howtoShown ? ' is-visible' : '')}>
         <Walkthrough />
       </section>
 
-      {/* ============ Popular topics ============ */}
+      {/* Popular topics */}
       <section ref={topicsRef} id="topics"
                className={'topics reveal' + (topicsShown ? ' is-visible' : '')}>
         <p className="topics__label">Popular help topics</p>
@@ -196,9 +190,7 @@ export default function Welcome() {
         </div>
       </section>
 
-      {/* ============ Call to action ============
-          US-06: an unregistered student is told plainly that an account is what
-          stands between them and a ticket. Someone already signed in is not. */}
+      {/* Call to action: guests are invited to register, signed-in users go back to their home page */}
       <section ref={ctaRef} className={'cta reveal' + (ctaShown ? ' is-visible' : '')}>
         <div className="cta__inner">
           {signedIn ? (
@@ -218,7 +210,7 @@ export default function Welcome() {
         </div>
       </section>
 
-      {/* ============ Footer ============ */}
+      {/* Footer */}
       <footer className="site-foot">
         <div className="site-foot__inner">
           {DESKS.map(desk => (
@@ -230,9 +222,7 @@ export default function Welcome() {
           ))}
 
           <div className="foot-links">
-            {/* These used to be dead links (href="#" that did nothing). Each
-                now opens a short statement under the footer; a second click
-                closes it. Buttons, not links: they do not go anywhere. */}
+            {/* Each button opens a short statement under the footer; clicking again closes it */}
             {FOOT_INFO.map(info => (
               <button type="button" key={info.key}
                       aria-expanded={footInfo === info.key}
@@ -262,13 +252,8 @@ function firstNameOf(student) {
   return (student?.fullName || '').split(' ')[0] || ''
 }
 
-/* --------------------------------------------------------------------------
-   The walkthrough player
-
-   Chapter buttons seek the video and mark themselves current; the video keeps
-   the list in step as it plays, so scrubbing the native controls updates the
-   chapters too.
-   -------------------------------------------------------------------------- */
+/* Walkthrough player: chapter buttons jump to a time in the video, and the
+   current chapter follows the video while it plays. */
 function Walkthrough() {
   const videoRef = useRef(null)
   const [current, setCurrent] = useState(null)
@@ -331,11 +316,7 @@ function Walkthrough() {
       </div>
 
       <div className="howto__player">
-        {/* No video on the server yet. Visitors used to see a developer note
-            with a file path here; now they get the next step instead.
-            To add the video, put the file at
-            src/main/resources/static/media/how-it-works.mp4 and the player
-            picks it up on the next load. */}
+        {/* Until static/media/how-it-works.mp4 exists, show the next steps instead of a broken player */}
         {missing ? (
           <div className="howto__missing">
             <strong>The walkthrough video is coming soon.</strong>
@@ -356,8 +337,7 @@ function Walkthrough() {
   )
 }
 
-/* The three outline icons. Inline rather than an icon font: three shapes do
-   not justify a download, and these inherit the text colour for free. */
+/* Inline SVG icons, so they pick up the text colour and need no icon font */
 function RouteIcon({ num }) {
   const props = {
     width: 26, height: 26, viewBox: '0 0 24 24', fill: 'none',

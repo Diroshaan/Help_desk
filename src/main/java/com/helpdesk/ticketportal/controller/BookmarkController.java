@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/** Student endpoints for ticket bookmarks. Only the student's own bookmarks are reachable. */
 @RestController
 @RequestMapping("/api/bookmarks")
 public class BookmarkController {
@@ -38,8 +39,6 @@ public class BookmarkController {
         return ResponseEntity.status(HttpStatus.CREATED).body(BookmarkResponse.from(bookmark));
     }
 
-    // With no folderId, returns every bookmark the student has; with one,
-    // returns only the bookmarks currently filed in that folder.
     @GetMapping
     public List<BookmarkResponse> findAll(@RequestParam(required = false) Long folderId,
                                            Authentication authentication) {
@@ -50,8 +49,6 @@ public class BookmarkController {
         return bookmarks.stream().map(BookmarkResponse::from).toList();
     }
 
-    // PATCH rather than PUT, same reasoning as BookmarkFolderController -
-    // this only ever changes which folder a bookmark is filed under.
     @PatchMapping("/{id}/folder")
     public ResponseEntity<BookmarkResponse> moveToFolder(@PathVariable Long id,
                                                            @RequestBody BookmarkMoveRequest request,

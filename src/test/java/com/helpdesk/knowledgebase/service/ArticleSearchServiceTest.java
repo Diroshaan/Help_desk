@@ -23,17 +23,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * F5-N3 and F5-N4.
- *
- * All three tests stay at the repository-mock level rather than hitting a
- * real database - they confirm this service escapes and bounds correctly
- * before a query is ever issued. They do NOT confirm that MySQL/H2 actually
- * honours ESCAPE '\\' the way SQL says it should - that half lives in
- * ArticleRepository and is a real-database question, which is exactly what
- * a Postman run against a running app (docs/f5-postman-checks.md, filled in
- * for real, not assumed) is for.
- */
+/** ArticleSearchService with the repository mocked: wildcard escaping, the term cap and page bounds. */
 @ExtendWith(MockitoExtension.class)
 class ArticleSearchServiceTest {
 
@@ -55,11 +45,7 @@ class ArticleSearchServiceTest {
         service.search("100%", null, PageRequest.of(0, 20));
 
         verify(articleRepository).searchOneTerm(termCaptor.capture());
-        // The term that reaches the repository must have % escaped to \%,
-        // which is what makes the ESCAPE '\\' clause on the LIKE in
-        // ArticleRepository.searchOneTerm treat it as a literal character
-        // rather than a wildcard. Without this, "100%" as a search term
-        // would match "1000", "100 anything", etc.
+        // Escaped so the LIKE ... ESCAPE '\\' treats % as a literal, not a wildcard.
         assertThat(termCaptor.getValue()).isEqualTo("100\\%");
     }
 
@@ -69,9 +55,7 @@ class ArticleSearchServiceTest {
 
         service.search("alpha beta gamma delta epsilon zeta eta theta", null, PageRequest.of(0, 20));
 
-        // Eight distinct words in the query; only the first five distinct
-        // terms may ever reach a repository call - this is what actually
-        // stops a pasted 2,000-word query from running 2,000 full scans.
+        // Eight words in, only five searches, so a pasted essay can't run thousands of scans.
         verify(articleRepository, times(5)).searchOneTerm(anyString());
     }
 
@@ -80,11 +64,7 @@ class ArticleSearchServiceTest {
         Article onlyMatch = publishedArticle(1L);
         when(articleRepository.searchOneTerm(anyString())).thenReturn(List.of(onlyMatch));
 
-        // One match total; requesting page 100,000 is nowhere near it. The
-        // old code cast pageable.getOffset() (a long) straight to int before
-        // checking it was in range; this asks for a page whose offset is
-        // comfortably past the single result, the simplest case that
-        // behaviour needs to get right.
+        // Only one match, so this page is far past the end.
         Page<com.helpdesk.knowledgebase.dto.ArticleSummaryResponse> page =
                 service.search("password", null, PageRequest.of(100_000, 20));
 

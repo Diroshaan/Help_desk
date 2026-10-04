@@ -1,32 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { API, request } from '../api.js'
 
-/* Every 60 seconds while the tab is visible. The count is a single COUNT(*)
-   on an indexed column, so this is cheap; the interval is about not waking a
-   backgrounded laptop, not about server load. */
+/* polled every 60 seconds, only while the tab is visible */
 const POLL_MS = 60_000
 
-/* A tiny in-page broadcast so the Notifications page can tell the sidebar
-   "I just marked things read" without a shared context provider. The sidebar
-   is re-rendered on every route anyway, so this only matters for changes made
-   while staying on one page. */
+/* Lets the Notifications page tell the sidebar badge to refresh after marking
+   things read. */
 const listeners = new Set()
 export function announceUnreadChanged() {
   listeners.forEach(fn => fn())
 }
 
 /**
- * The signed-in user's unread notification count, for the badge in the
- * sidebar (GET /api/notifications/unread-count -> { unread }).
- *
- * Polling, not WebSockets or server-sent events: the backend has no push
- * channel, and adding one for a badge would be a lot of moving parts for a
- * number that is allowed to be a minute out of date. Polling pauses while the
- * tab is hidden and refreshes the moment it comes back, which is when the
- * user would actually look at the badge.
- *
- * Failures are swallowed on purpose: a badge that cannot load shows nothing,
- * rather than an error banner on every page for a decoration.
+ * Unread notification count for the sidebar badge. Uses polling because the
+ * backend has no push channel. Errors are ignored; the badge just keeps its
+ * last value.
  */
 export function useUnreadCount(enabled) {
   const [count, setCount] = useState(0)
@@ -36,7 +24,6 @@ export function useUnreadCount(enabled) {
     try {
       const result = await request(API.notificationsUnread)
       if (result.ok && result.data) {
-        // NotificationController answers { "unread": n }.
         const value = Number(result.data.unread ?? 0)
         setCount(Number.isFinite(value) ? value : 0)
       }

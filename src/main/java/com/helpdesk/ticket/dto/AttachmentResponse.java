@@ -16,11 +16,8 @@ public class AttachmentResponse {
     private final Long uploadedByUserId;
     private final String kind;
 
-    // kind is AttachmentKind here, not String: AttachmentRepository's JPQL
-    // constructor expression (commit 2) passes a.kind, which Hibernate sees
-    // as the enum - a String parameter here would fail that @Query's
-    // constructor match at startup. It is stored as its name() so the JSON
-    // this DTO produces is still a plain string ("SUBMISSION").
+    // Takes the enum because the JPQL query in AttachmentRepository passes a.kind;
+    // stored as its name so the JSON is still a plain string.
     public AttachmentResponse(Long id, Long ticketId, String fileName, String fileType,
                               Long fileSize, LocalDateTime uploadedAt, Long uploadedByUserId,
                               AttachmentKind kind) {

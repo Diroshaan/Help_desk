@@ -7,21 +7,9 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * F6 - System Analytics, Provisioning & Announcements
- *
- * Request body for POST /api/admin/administrators.
- *
- * Same anti-mass-assignment shape as ProvisionOfficerRequest - no id, no
- * active, no provisionedBy - for the same reasons.
- *
- * The one difference is staffNumber, which is optional here and required there.
- * That mirrors the entities exactly and the mismatch is deliberate: every help
- * desk officer is support staff with a number issued to them, whereas the first
- * administrator in a new deployment is a technical bootstrap account created
- * before anybody has been issued anything. See the comment on
- * Administrator.staffNumber - it stays unique when present, because a SQL
- * unique constraint permits multiple NULLs, so "optional but unique when set"
- * needs nothing given up to express.
+ * Body for POST /api/admin/administrators. Like ProvisionOfficerRequest it has no id,
+ * active or provisionedBy fields. staffNumber is optional here because the first admin
+ * is a bootstrap account created before any staff numbers exist.
  */
 public record ProvisionAdministratorRequest(
 

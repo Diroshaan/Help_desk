@@ -37,10 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * F3, US WBHD-24: a student reads the officer's answer to their own ticket,
- * through the real F4 services that write it.
- */
+/** A student reads the officer's answer to their own ticket, written through the real queue services. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

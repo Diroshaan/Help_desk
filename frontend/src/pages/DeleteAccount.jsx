@@ -25,21 +25,15 @@ export default function DeleteAccount() {
     if (status === 'guest' && !done) navigate('/', { replace: true })
   }, [status, done, navigate])
 
-  /* Once the account is gone, signOut() has set student to null — so this
-     branch has to come BEFORE the loading guard below, which tests for exactly
-     that. With the order the other way round the page reported "Loading…"
-     forever: the delete had succeeded, the session had ended, and the guard
-     kept firing on a student that was never coming back. */
+  /* After a delete, student becomes null, so the `done` screen must be checked
+     before the loading guard below or the page shows "Loading…" forever. */
   useEffect(() => {
     if (!done) return
 
-    // A confirmation the student can actually read, then out to the help desk.
-    // Five seconds, because closing an account is worth acknowledging rather
-    // than snapping away from.
+    // show the confirmation for five seconds, then go home
     const timer = setTimeout(() => navigate('/', { replace: true }), 5000)
-    // The browser's signed-in state is cleared only as this page goes away
-    // (timer or the button). Clearing it straight after the delete made the
-    // page guard see a guest and swap this confirmation for the login form.
+    // signOut() waits until we leave this page; doing it straight away made the
+    // route guard replace the confirmation with the login form.
     return () => { clearTimeout(timer); signOut() }
   }, [done, navigate, signOut])
 
@@ -80,10 +74,7 @@ export default function DeleteAccount() {
     )
   }
 
-  /* The button stays disabled until the typed Student ID matches the one on the
-     account. A checkbox is too easy to tick by reflex for something that cannot
-     be undone, and showing whose account it is prevents deleting the wrong one
-     on a shared computer. */
+  /* Delete stays disabled until the typed Student ID matches this account. */
   const matches = typedId.trim() === student.studentId
 
   async function handleSubmit(event) {
@@ -101,8 +92,7 @@ export default function DeleteAccount() {
       const result = await request(API.student(student.id), { method: 'DELETE' })
 
       if (result.ok || result.status === 204) {
-        // The session belongs to an account that no longer exists: end it on
-        // the server now. The browser side is cleared when this page closes.
+        // end the server session now; the browser side is cleared on leaving
         await request(API.logout, { method: 'POST' }).catch(() => {})
         setDone(true)
         return
@@ -112,9 +102,6 @@ export default function DeleteAccount() {
     } catch {
       setNotice({ kind: 'error', text: 'Could not reach the server. The account was not deleted.' })
     } finally {
-      // Left true on the success path deliberately: the form is replaced by the
-      // confirmation, and re-enabling a delete button for an account that no
-      // longer exists would invite a second, meaningless request.
       if (!done) setBusy(false)
     }
   }

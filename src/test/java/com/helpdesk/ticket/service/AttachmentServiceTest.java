@@ -28,15 +28,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * AttachmentService with its collaborators mocked.
- *
- * Mockito rather than a running application because each rule here is the
- * service's own decision - what type it stores, what it refuses - and a mock
- * lets each test state exactly one situation (a PDF that claims to be a PNG,
- * a text file renamed .pdf) without a database. Ownership is TicketService's
- * decision, so it is mocked to either return the ticket or refuse.
- */
+/** AttachmentService with mocks: type from the bytes, size limit, ownership and listing rules. */
 @ExtendWith(MockitoExtension.class)
 class AttachmentServiceTest {
 
@@ -59,8 +51,7 @@ class AttachmentServiceTest {
         when(ticketService.getOwnedOpenTicket(TICKET_ID, STUDENT_ID)).thenReturn(new Ticket());
     }
 
-    // Why this test exists: the old check trusted file.getContentType(),
-    // which the client writes. The stored type must come from the bytes.
+    // The declared content type is set by the client, so it can't be trusted.
     @Test
     @DisplayName("A real PDF declared as image/png is stored as application/pdf")
     void storesTheDetectedTypeNotTheDeclaredOne() {
@@ -142,15 +133,12 @@ class AttachmentServiceTest {
         assertThat(captor.getValue().getFileName()).isEqualTo("attachment");
     }
 
-    // ---- Listing and reading (F2-N3, contract C1) ----
-
     private AttachmentResponse metadata(Long id) {
         return new AttachmentResponse(id, TICKET_ID, "receipt.pdf", "application/pdf", 42L, LocalDateTime.now(),
                 STUDENT_ID, com.helpdesk.ticket.entity.AttachmentKind.SUBMISSION);
     }
 
-    // Why this test exists: listing used findByTicketId, which loads every
-    // file's bytes just to show names. It must use the metadata-only query.
+    // Listing must use the metadata-only query, not load every file's bytes.
     @Test
     @DisplayName("Listing your own ticket's files returns metadata and never loads the bytes")
     void listOwnTicketReturnsMetadataOnly() {
@@ -174,9 +162,8 @@ class AttachmentServiceTest {
         verify(attachmentRepository, never()).findMetadataByTicketId(any());
     }
 
-    // C1: the officer-side list does no ownership check of its own - F4 has
-    // already scoped the officer - so it must not ask TicketService (which
-    // would refuse, because the officer is not the ticket's student).
+    // The queue already scopes the officer, so TicketService (which would refuse an
+    // officer) is not asked.
     @Test
     @DisplayName("listForTicket (officer side) returns metadata without a student ownership check")
     void listForTicketSkipsStudentOwnership() {
@@ -210,12 +197,8 @@ class AttachmentServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
-    // ---- Provenance (#44, contract C8) ----
-
-    // Why this test exists: the uploader must come from the session, never
-    // from the request - there is no "uploadedByUserId" field a client can
-    // set. kind is always SUBMISSION: RESOLUTION is reserved for F4's files,
-    // which live on the resolutions row, not here.
+    // The uploader comes from the session, never the request. kind is always SUBMISSION;
+    // RESOLUTION files are stored on the resolution instead.
     @Test
     @DisplayName("An upload records the caller's id as uploader, with kind SUBMISSION")
     void uploadRecordsUploaderAndKind() {

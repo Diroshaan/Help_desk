@@ -6,9 +6,9 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
+/** A student's rating (1-5) and optional comment on a resolved ticket. */
 @Entity
-// At most one feedback per ticket, enforced by the database: the existsBy...
-// check in FeedbackService can be raced by two submits at once (#42).
+// one feedback per ticket, enforced by the DB since the service check can be raced
 @Table(
     name = "feedback",
     uniqueConstraints = @UniqueConstraint(name = "uq_feedback_ticket", columnNames = {"ticket_id"})
@@ -40,15 +40,13 @@ public class Feedback {
 
     private LocalDateTime updatedAt = LocalDateTime.now();
 
-    //Constructors
-    public Feedback() {}    // Required no-argument constructor for JPA
+    public Feedback() {}
 
     @PreUpdate
     private void touchUpdatedAt() {
         this.updatedAt = LocalDateTime.now();
     }
 
-    //Getters and setters
     public Long getId() {
         return id;
     }

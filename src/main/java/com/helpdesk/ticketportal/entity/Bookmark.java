@@ -4,9 +4,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
+/** A student's bookmark on one of their tickets. */
 @Entity
-// One bookmark per (student, ticket), enforced by the database: the existsBy...
-// check in BookmarkService can be raced by two clicks at once (#42).
+// one bookmark per (student, ticket), enforced by the DB since the service check can be raced
 @Table(
     name = "bookmarks",
     uniqueConstraints = @UniqueConstraint(name = "uq_bookmark_student_ticket", columnNames = {"student_id", "ticket_id"})
@@ -25,15 +25,12 @@ public class Bookmark {
     @Column(nullable = false)
     private Long studentId;
 
-    // Null means the bookmark isn't filed under any folder yet.
     private Long folderId;
 
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    //Constructors
-    public Bookmark() {}    // Required no-argument constructor for JPA
+    public Bookmark() {}
 
-    //Getters and setters
     public Long getId() {
         return id;
     }

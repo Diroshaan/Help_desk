@@ -12,8 +12,7 @@ public interface TicketStatusChangeRepository extends JpaRepository<TicketStatus
 
     List<TicketStatusChange> findByTicketIdOrderBySequenceNoAsc(Long ticketId);
 
-    // COALESCE to 0 so a ticket with no history yet (every ticket, before
-    // its first row) gives "the next sequence number is 1" instead of null.
+    // 0 when there is no history yet, so the first row gets sequence 1.
     @Query("SELECT COALESCE(MAX(c.sequenceNo), 0) FROM TicketStatusChange c WHERE c.ticketId = :ticketId")
     int maxSequence(@Param("ticketId") Long ticketId);
 }

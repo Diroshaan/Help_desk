@@ -15,8 +15,7 @@ public interface ArchivedTicketRepository extends JpaRepository<ArchivedTicket, 
 
     boolean existsByStudentIdAndTicketId(Long studentId, Long ticketId);
 
-    // Used by StudentTicketQueryService to exclude archived tickets from the
-    // default active-view search.
+    // lets the student ticket list hide archived tickets by default
     @Query("SELECT a.ticketId FROM ArchivedTicket a WHERE a.studentId = :studentId")
     List<Long> findTicketIdsByStudentId(@Param("studentId") Long studentId);
 }

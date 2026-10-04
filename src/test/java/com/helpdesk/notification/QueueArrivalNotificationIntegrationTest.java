@@ -28,12 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * US-04, end to end on H2: a student submits a ticket through the real
- * TicketService, and the officers of that ticket's department are alerted -
- * and nobody else is. Builds its own data (Team guide 6.2) instead of relying
- * on the dev seeders.
- */
+/** A submitted ticket alerts the officers of its department, and nobody else. */
 @SpringBootTest
 @ActiveProfiles("test")
 class QueueArrivalNotificationIntegrationTest {

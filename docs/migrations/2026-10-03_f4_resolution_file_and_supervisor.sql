@@ -1,27 +1,11 @@
--- ===========================================================================
---  F4 - Ticket Resolution & Queue Engine: resolution file column, officer
---  supervisor, and routing of existing tickets (Vimansa, IT25101250)
---  Branch: feat/f4-final-backend
---  Supports: F4-N6 (MEDIUMBLOB), #46 (supervisor), F4-N5 (routing)
--- ===========================================================================
+-- Migration: resolution file column, officer supervisor, and routing of old tickets
+-- Date: 2026-10-03   Author: Vimansa (IT25101250)   Target: MySQL 8
 --
---  1. resolutions.attachment_data was a bare @Lob, which MySQL resolves to
---     TINYBLOB (255 bytes). The entity now says MEDIUMBLOB.
---  2. officers.supervisor_id (BIGINT NULL) and fk_officer_supervisor ->
---     officers(id): each officer has at most one supervisor.
---  3. Tickets that arrived before routing existed have no department. The
---     OPEN ones are routed by category now.
+-- Run order: after 2026-10-02. Start the app once on the mysql profile first, then
+-- run this whole script. Safe to re-run: each step checks information_schema first.
 --
---  State-aware (information_schema first, then PREPARE/EXECUTE) and safe to
---  run more than once, the same pattern as the earlier migrations. Run in
---  DBeaver (Alt+X) on defaultdb after starting the app once on the mysql
---  profile, as for the F2 migration.
--- ===========================================================================
+-- 1. resolutions.attachment_data -> MEDIUMBLOB (a bare @Lob is only 255 bytes on MySQL).
 
-
--- ---------------------------------------------------------------------------
--- 1. resolutions.attachment_data -> MEDIUMBLOB (only if it is not already).
--- ---------------------------------------------------------------------------
 SET @col_type := (SELECT DATA_TYPE FROM information_schema.columns
                   WHERE table_schema = DATABASE() AND table_name = 'resolutions'
                     AND column_name = 'attachment_data');
@@ -31,9 +15,7 @@ SET @sql := IF(@col_type IS NOT NULL AND @col_type <> 'mediumblob',
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
 
--- ---------------------------------------------------------------------------
--- 2. officers.supervisor_id and its foreign key.
--- ---------------------------------------------------------------------------
+-- 2. officers.supervisor_id: each officer has at most one supervisor.
 SET @has_col := (SELECT COUNT(*) FROM information_schema.columns
                  WHERE table_schema = DATABASE() AND table_name = 'officers'
                    AND column_name = 'supervisor_id');
@@ -51,10 +33,8 @@ SET @sql := IF(@has_fk = 0,
 PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 
 
--- ---------------------------------------------------------------------------
--- 3. Route existing OPEN tickets by category.
---    routed by category on 2026-10-03; closed tickets left as they were.
--- ---------------------------------------------------------------------------
+-- 3. Tickets created before routing have no department. Route the OPEN ones by
+-- category; closed tickets stay as they are.
 UPDATE tickets t
   JOIN categories c ON c.name = t.category
    SET t.assigned_department_id = c.department_code
@@ -62,9 +42,8 @@ UPDATE tickets t
    AND t.status = 'OPEN';
 
 
--- ---------------------------------------------------------------------------
--- 4. Verification.
--- ---------------------------------------------------------------------------
+-- 4. Verify: mediumblob, supervisor_id nullable, the foreign key, and no unrouted
+-- OPEN tickets.
 SELECT column_name, data_type FROM information_schema.columns
  WHERE table_schema = DATABASE() AND table_name = 'resolutions' AND column_name = 'attachment_data';
 

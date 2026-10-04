@@ -26,10 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * F3 #41: finished tickets (RESOLVED or WITHDRAWN) can be archived, and the
- * student can list what they archived at GET /api/tickets/archived.
- */
+/** Archiving finished tickets (RESOLVED or WITHDRAWN) and listing them at GET /api/tickets/archived. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

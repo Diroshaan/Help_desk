@@ -6,16 +6,7 @@ import com.helpdesk.ticket.entity.TicketStatus;
 
 import java.time.LocalDateTime;
 
-/**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- *
- * The officer-facing view of a ticket. Distinct from F2's
- * ticket.dto.TicketResponse (shaped for a student viewing their own
- * ticket) because it additionally exposes the queue-routing fields an
- * officer needs - assignedOfficerId, assignedDepartmentId, assignedAt,
- * resolvedAt - none of which a student has any business seeing or which
- * TicketResponse currently returns.
- */
+/** Officer view of a ticket: the student view plus the assignment fields. */
 public class TicketQueueResponse {
 
     private final Long id;

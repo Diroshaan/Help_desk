@@ -6,15 +6,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * Request body for submitting a new ticket. No "studentId" or "status" here -
- * the student is taken from the authenticated session (see
- * TicketController.currentStudentId) and every new ticket starts OPEN,
- * matching the mass-assignment protection used elsewhere (e.g.
- * RegistrationRequest / StudentService.register).
- *
- * The @Size limits mirror Ticket's column lengths, so an over-long value is
- * rejected here with a readable message instead of reaching Hibernate and
- * coming back as a database error.
+ * Body for submitting a ticket. No studentId or status: the student comes from
+ * the session and new tickets always start OPEN.
+ * The @Size limits match Ticket's column lengths, so long input gets a clear message.
  */
 public class TicketCreateRequest {
 

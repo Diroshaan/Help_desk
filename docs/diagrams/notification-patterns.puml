@@ -1,8 +1,13 @@
 @startuml
+' UNIHELP notifications: Observer (events and listeners) and Strategy (channels)
 skinparam classAttributeIconSize 0
 skinparam dpi 150
-skinparam linetype ortho
+skinparam linetype polyline
+skinparam nodesep 40
+skinparam ranksep 60
 hide empty members
+
+package "Strategy" {
 interface NotificationChannel {
 + String getName()
 + boolean isEnabledFor(NotificationRecipient)
@@ -15,14 +20,11 @@ class PortalNotificationChannel {
 + void send(NotificationRecipient,NotificationMessage)
 }
 class EmailNotificationChannel {
-- {static} Logger log
 + String getName()
 + boolean isEnabledFor(NotificationRecipient)
 + void send(NotificationRecipient,NotificationMessage)
-~ {static} String mask(String)
 }
 class NotificationService {
-- {static} Logger log
 - List<NotificationChannel> channels
 + List<String> notify(NotificationRecipient,NotificationMessage)
 }
@@ -39,65 +41,96 @@ class NotificationMessage <<record>> {
 - String body
 - String link
 }
+class Notification <<entity>> {
+- Long recipientUserId
+- String title
+- String body
+- String link
+- LocalDateTime readAt
+}
+}
+
+package "Observer: events" {
+class TicketSubmittedEvent <<record>> {
+- Long ticketId
+- String subject
+- String categoryName
+- String assignedDepartmentCode
+}
 class TicketStatusChangedEvent <<record>> {
 - Long ticketId
 - Long studentId
 - String subject
 - TicketStatus fromStatus
 - TicketStatus toStatus
+- Long changedByOfficerId
 }
 class PasswordChangedEvent <<record>> {
 - Long userId
 }
-class TicketStatusNotifier {
-- StudentRepository studentRepository
-- NotificationService notificationService
-+ void onTicketStatusChanged(TicketStatusChangedEvent)
-~ {static} NotificationMessage messageFor(TicketStatusChangedEvent)
+class FeedbackSubmittedEvent <<record>> {
+- Long ticketId
+- String ticketSubject
+- int rating
 }
-class AccountSecurityNotifier {
-- AppUserRepository appUserRepository
-- NotificationService notificationService
-+ void onPasswordChanged(PasswordChangedEvent)
 }
-class TicketHistoryRecorder {
-- TicketHistoryService historyService
-+ void on(TicketStatusChangedEvent)
+
+package "Observer: publishers" {
+class TicketService {
++ Ticket createTicket(Long,TicketCreateRequest)
 }
 class QueueService {
 + Ticket updateStatus(Long,Long,TicketStatus)
-~ Ticket markResolved(Ticket)
-~ Ticket reopen(Ticket)
+~ Ticket markResolved(Ticket,Long)
+~ Ticket reopen(Ticket,Long)
 }
 class PasswordService {
 + void changePassword(String,String,PasswordChangeRequest)
 }
-class Notification {
-- Long id
-- Long recipientUserId
-- String title
-- String body
-- String link
-- LocalDateTime createdAt
-- LocalDateTime readAt
-+ void markRead()
-+ boolean isRead()
+class FeedbackService {
++ Feedback submitFeedback(Long,Long,Integer,String)
 }
+}
+
+package "Observer: listeners" {
+class QueueArrivalNotifier {
++ void onTicketSubmitted(TicketSubmittedEvent)
+}
+class TicketStatusNotifier {
++ void onTicketStatusChanged(TicketStatusChangedEvent)
+}
+class TicketHistoryRecorder {
++ void on(TicketStatusChangedEvent)
+}
+class AccountSecurityNotifier {
++ void onPasswordChanged(PasswordChangedEvent)
+}
+class FeedbackReceivedNotifier {
++ void onFeedbackSubmitted(FeedbackSubmittedEvent)
+}
+}
+
+TicketService ..> TicketSubmittedEvent : publishes
 QueueService ..> TicketStatusChangedEvent : publishes
 PasswordService ..> PasswordChangedEvent : publishes
+FeedbackService ..> FeedbackSubmittedEvent : publishes
+
+QueueArrivalNotifier ..> TicketSubmittedEvent : listens
+TicketStatusNotifier ..> TicketStatusChangedEvent : listens
+' two observers of the same event: the publisher didn't change when the history was added
+TicketHistoryRecorder ..> TicketStatusChangedEvent : listens
+AccountSecurityNotifier ..> PasswordChangedEvent : listens
+FeedbackReceivedNotifier ..> FeedbackSubmittedEvent : listens
+
+QueueArrivalNotifier ..> NotificationService : uses
+TicketStatusNotifier ..> NotificationService : uses
+AccountSecurityNotifier ..> NotificationService : uses
+FeedbackReceivedNotifier ..> NotificationService : uses
+
 NotificationChannel <|.. PortalNotificationChannel
 NotificationChannel <|.. EmailNotificationChannel
 NotificationService o-- "1..*" NotificationChannel
-PortalNotificationChannel ..> Notification : creates
 NotificationService ..> NotificationRecipient
 NotificationService ..> NotificationMessage
-TicketStatusNotifier ..> TicketStatusChangedEvent : listens
-AccountSecurityNotifier ..> PasswordChangedEvent : listens
-TicketStatusNotifier ..> NotificationService : uses
-AccountSecurityNotifier ..> NotificationService : uses
-' F2 #45: a SECOND observer of the same TicketStatusChangedEvent QueueService
-' already publishes for TicketStatusNotifier - F2 added this listener without
-' QueueService (the publisher) changing at all, which is the point of Observer.
-TicketHistoryRecorder ..> TicketStatusChangedEvent : listens
-TicketHistoryRecorder ..> TicketHistoryService : uses
+PortalNotificationChannel ..> Notification : saves
 @enduml

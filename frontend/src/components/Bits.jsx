@@ -4,13 +4,8 @@ import { motion, useReducedMotion } from 'framer-motion'
 import { formatDateTime } from '../api.js'
 
 /**
- * When something goes wrong, take the reader to the message.
- *
- * A long form (registration, profile) can show its error far above or below
- * where the user is looking, so the screen looked as if nothing happened.
- * Each error-capable block calls this; only the FIRST error on the page acts,
- * so a form with three invalid fields scrolls once, to the topmost one, and
- * puts the cursor in that field so it can be fixed straight away.
+ * Scrolls to an error (and focuses its input) so it isn't missed on a long form.
+ * Only the first error on the page does this, so we scroll once.
  */
 function useRevealError(active, focusInput, key) {
   const ref = useRef(null)
@@ -30,12 +25,7 @@ function useRevealError(active, focusInput, key) {
   return ref
 }
 
-/**
- * The muted-vs-teal split every status-ish word in the app uses: a live/
- * positive state gets the teal .pill, a closed/inactive one gets the grey
- * .pill--muted. One list here rather than scattering the same ternary across
- * every screen that shows a TicketStatus, ArticleStatus or active flag.
- */
+/* statuses shown with the grey pill instead of the teal one */
 const MUTED_VALUES = new Set([
   'WITHDRAWN', 'RESOLVED', 'CLOSED', 'ARCHIVED', 'INACTIVE', 'EXPIRED'
 ])
@@ -47,39 +37,20 @@ export function humanize(value) {
   return text.charAt(0) + text.slice(1).toLowerCase().replace(/_/g, ' ')
 }
 
-/* ==========================================================================
-   The small pieces every page shares. Each one renders exactly the markup the
-   stylesheet already expects, so moving to React changed no class names and
-   no layout.
-   ========================================================================== */
-
-/**
- * A message block with a coloured bar down its left edge.
- * kind: 'info' (default) | 'error' | 'warn'
- */
+/** Message block. kind: 'info' (default), 'error' or 'warn'. */
 export function Notice({ kind = 'info', children, style }) {
   const ref = useRevealError(kind === 'error' && Boolean(children), false, typeof children === 'string' ? children : '')
   if (!children) return null
   const className = 'notice' + (kind === 'info' ? '' : ' notice--' + kind)
-  /* NFR 5.4: a screen reader must hear "Your profile has been updated" without
-     the user having to go looking for it. role="alert" interrupts, which is
-     right for an error the user has to act on; role="status" waits for a
-     pause, which is right for a confirmation. Without either, the message is
-     only visible, and a blind user never learns whether the save worked. */
+  /* so screen readers announce it: errors interrupt, other messages wait */
   const role = kind === 'error' ? 'alert' : 'status'
   return <div ref={ref} className={className} style={style} role={role}>{children}</div>
 }
 
 /**
- * Up to `max` phone numbers as a column of inputs, with "Add another" and
- * "Remove" controls (F1: "contact number(s)", at most three - the same limit
- * Student.setContactNumbers enforces, so the form cannot offer a fourth box the
- * server would refuse).
- *
- * The first box is the primary number and has no Remove button: an account
- * with numbers always keeps one first, and clearing it is how a student says
- * "no phone". Blank boxes are fine - the server drops them - so removing a box
- * is a convenience, not a requirement.
+ * Up to `max` contact numbers (the server also allows three). The first one is
+ * the primary number and can't be removed, only cleared. Blank boxes are
+ * dropped by the server.
  */
 export function PhoneList({ values, onChange, max = 3, error }) {
   const list = values.length ? values : ['']
@@ -119,10 +90,7 @@ export function PhoneList({ values, onChange, max = 3, error }) {
   )
 }
 
-/**
- * A labelled input with room for a server-side error underneath.
- * Anything extra (a strength meter, a hint) goes in as children.
- */
+/** Labelled input with its error underneath. Extras (e.g. strength meter) go in children. */
 export function Field({ id, label, error, hint, children, ...inputProps }) {
   const ref = useRevealError(Boolean(error), true, error)
   return (
@@ -136,7 +104,6 @@ export function Field({ id, label, error, hint, children, ...inputProps }) {
   )
 }
 
-/** The same, for a <textarea>: marked red and jumped to like any other field. */
 export function TextAreaField({ id, label, error, hint, ...areaProps }) {
   const ref = useRevealError(Boolean(error), true, error)
   return (
@@ -149,7 +116,6 @@ export function TextAreaField({ id, label, error, hint, ...areaProps }) {
   )
 }
 
-/** The same, for a <select>. */
 export function SelectField({ id, label, error, options, ...selectProps }) {
   const ref = useRevealError(Boolean(error), true, error)
   return (
@@ -165,10 +131,7 @@ export function SelectField({ id, label, error, options, ...selectProps }) {
   )
 }
 
-/**
- * The solid teal panel down the left of the auth pages. `points` may be plain
- * strings, or { lead, body } for the two-tier version used on the register page.
- */
+/** Teal panel on the auth pages. points are strings or { lead, body }. */
 export function BrandPanel({ home = '/', heading, points }) {
   return (
     <aside className="brand-panel">
@@ -194,7 +157,6 @@ export function BrandPanel({ home = '/', heading, points }) {
   )
 }
 
-/** The circle that shows a picture if there is one and initials if there is not. */
 export function Avatar({ marks, src, small = false }) {
   const className = 'avatar' + (small ? ' avatar--sm' : '')
   return (
@@ -204,22 +166,13 @@ export function Avatar({ marks, src, small = false }) {
   )
 }
 
-/** A status word (TicketStatus, ArticleStatus, "Active"/"Suspended", ...) in a .pill. */
 export function StatusPill({ value, label }) {
   if (value === undefined || value === null || value === '') return null
   const muted = MUTED_VALUES.has(String(value))
   return <span className={'pill' + (muted ? ' pill--muted' : '')}>{label || humanize(value)}</span>
 }
 
-/**
- * One row in a list of records — tickets, queue items, articles, users. This
- * is the row-list pattern every "many records" screen in the app shares: the
- * same .pref hairline-and-spacing rhythm the preference toggles already use,
- * not a bordered table and not a card grid.
- *
- * `to` makes the whole row a Link (for "open this record"); omit it and pass
- * `onClick` for a row that performs an action instead of navigating.
- */
+/** One row in a record list. Pass `to` to make it a link, or `onClick` for an action. */
 export function Row({ to, title, subtitle, meta, right, onClick }) {
   const inner = (
     <>
@@ -245,19 +198,8 @@ export function Row({ to, title, subtitle, meta, right, onClick }) {
 }
 
 /**
- * A 1-5 star rating, used by the ticket feedback form (F3, US-12).
- *
- * WHY BUTTONS RATHER THAN A ROW OF DECORATIVE SPANS
- * -------------------------------------------------
- * A rating is an input, so it has to behave like one: reachable by Tab,
- * settable with Enter or Space, and announced to a screen reader as "Rate 4
- * out of 5". A div with an onClick is none of those things, and NFR 5.4 asks
- * for keyboard accessibility explicitly. Native <button> elements give all of
- * it for free rather than needing role/tabIndex/onKeyDown written by hand.
- *
- * `readOnly` renders the same markup with the buttons disabled, so the saved
- * rating looks identical to the one being chosen instead of being a second,
- * slightly different star row somewhere else in the file.
+ * 1-5 star rating for ticket feedback. Real buttons so it works with the
+ * keyboard and screen readers. readOnly shows a saved rating.
  */
 export function Rating({ value, onChange, readOnly = false }) {
   const stars = [1, 2, 3, 4, 5]
@@ -274,10 +216,6 @@ export function Rating({ value, onChange, readOnly = false }) {
           aria-pressed={!readOnly && star === value}
           onClick={readOnly ? undefined : () => onChange(star)}
         >
-          {/* A filled or hollow star. aria-hidden because the button's own
-              aria-label already says what this control does - without it a
-              screen reader would read the character as well and announce the
-              control twice. */}
           <span aria-hidden="true">{star <= value ? '★' : '☆'}</span>
         </button>
       ))}
@@ -285,19 +223,9 @@ export function Rating({ value, onChange, readOnly = false }) {
   )
 }
 
-/* ==========================================================================
-   Pieces added for the final screens. Same rules as above: one place, used by
-   every page, so the timeline on the student's ticket and the one in the
-   officer's queue can never drift apart.
-   ========================================================================== */
-
 /**
- * The status history of a ticket (F2 #45), oldest first, drawn as a vertical
- * line with a dot per change. `entries` is TicketStatusChangeResponse[]:
- * { sequenceNo, fromStatus, toStatus, changedBy, changedAt }.
- *
- * Each step eases in after the one before it, so the reader sees the order in
- * which things happened; with reduced motion they simply appear.
+ * Ticket status history, oldest first, shared by the student and officer
+ * pages. Steps fade in one after another unless reduced motion is on.
  */
 export function StatusTimeline({ entries, emptyText = 'No status changes recorded yet.' }) {
   const reduce = useReducedMotion()
@@ -318,8 +246,7 @@ export function StatusTimeline({ entries, emptyText = 'No status changes recorde
                 ? humanize(entry.fromStatus) + ' → ' + humanize(entry.toStatus)
                 : 'Submitted as ' + humanize(entry.toStatus)}
             </strong>
-            {/* "Unknown" comes back when the server does not record which officer
-                made the change; to the student that is simply the help desk. */}
+            {/* no recorded officer: show it as "Help desk" */}
             <span>{!entry.changedBy || entry.changedBy === 'Unknown' ? 'Help desk' : entry.changedBy} · {formatDateTime(entry.changedAt)}</span>
           </div>
         </motion.li>
@@ -329,10 +256,8 @@ export function StatusTimeline({ entries, emptyText = 'No status changes recorde
 }
 
 /**
- * A button for something that cannot be undone (withdraw, revoke, remove).
- * The first click asks; only "Yes" does it. Built into the page rather than
- * window.confirm(), which some browsers block and which a screen reader
- * announces badly.
+ * Two-step button for actions that can't be undone. Inline instead of
+ * window.confirm(), which some browsers block.
  */
 export function ConfirmButton({ label, question, confirmLabel, onConfirm, busy = false, kind = 'danger', disabled = false }) {
   const [asking, setAsking] = useState(false)
@@ -341,9 +266,7 @@ export function ConfirmButton({ label, question, confirmLabel, onConfirm, busy =
 
   if (!asking) {
     return (
-      // First click: an outline button in the warning colour. Only the
-      // "Yes, ..." step is solid red, so a page is not shouting before anything
-      // has been asked.
+      // outline first; only the confirm step is solid red
       <button type="button" className={'btn btn--' + (kind === 'danger' ? 'danger-line' : kind)} disabled={disabled || busy}
               onClick={() => setAsking(true)}>
         {busy ? 'Working…' : label}
@@ -363,11 +286,7 @@ export function ConfirmButton({ label, question, confirmLabel, onConfirm, busy =
   )
 }
 
-/**
- * Two or more views of one list (Active / Archived). The underline slides to
- * the chosen tab instead of jumping, which is what tells the eye that the list
- * below changed for that reason.
- */
+/** Tabs with a sliding underline (e.g. Active / Archived). */
 export function Tabs({ tabs, value, onChange, label }) {
   return (
     <div className="tabs" role="tablist" aria-label={label}>
@@ -421,10 +340,7 @@ function useCountUp(target) {
   return shown
 }
 
-/**
- * Horizontal bars for a {label: count} breakdown, longest first. One colour:
- * length carries the number, the label carries the meaning.
- */
+/** Horizontal bar chart for a label/count breakdown. */
 export function BarList({ items, empty = 'Nothing to show yet.' }) {
   const reduce = useReducedMotion()
   if (!items || items.length === 0) return <p className="empty">{empty}</p>

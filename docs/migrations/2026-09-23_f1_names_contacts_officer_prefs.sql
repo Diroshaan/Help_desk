@@ -1,42 +1,15 @@
--- ===========================================================================
---  F1 - given name / surname, multiple contact numbers, officer preferences
---  Branch: feat/f1-account-completion
--- ===========================================================================
+-- Migration: split student names into given_name + surname, move contact numbers
+-- to their own table, and add officer phone and notification settings.
+-- Date: 2026-09-23   Target: MySQL 8
 --
---  !! ORDER MATTERS - READ BEFORE RUNNING !!
+-- Run order: after 2026-09-18, and before the new code first starts on MySQL. This
+-- drops students.full_name and students.contact_number, which older code still uses,
+-- so test on H2 first and tell the team to pull before running against the shared database.
+-- Safe to re-run: each step checks information_schema first.
 --
---  The hosted MySQL on Aiven is SHARED by the whole team. This script removes
---  two columns (students.full_name, students.contact_number) that the OLD code
---  on develop still reads and writes. So:
---
---    1. Test the branch on H2 first (no profile). H2 is rebuilt from the
---       entities on every start, so it needs none of this.
---    2. Merge the pull request into develop.
---    3. THEN run this script on Aiven, and only then start the new code with
---       the mysql profile. Tell the team to pull develop before they next run
---       against Aiven - old code on the new schema cannot insert students.
---
---  Run it BEFORE the new code first starts against Aiven. If the new code
---  starts first, Hibernate (ddl-auto=update) adds given_name as NOT NULL with
---  '' in every existing row and leaves full_name NOT NULL, so every student
---  shows a blank name and new registrations fail until this script runs. The
---  script is written to repair that state too, but it is better never entered.
---
---  Safe to run more than once: every step checks information_schema first
---  (MySQL has no ADD COLUMN IF NOT EXISTS), the same pattern as
---  2026-09-18_student_avatar.sql.
--- ===========================================================================
+-- 1. Student name. Same rule as Student.setFullName: the last word is the surname,
+-- the rest is the given name, and a one-word name has no surname.
 
-
--- ---------------------------------------------------------------------------
--- 1. STUDENT NAME -> given_name + surname
---
---    Requirement 3.2: "store the student's name as separate given name and
---    surname components". The rule used to split existing names is the same
---    one the application uses (Student.setFullName): the LAST word is the
---    surname, everything before it is the given name, and a single-word name
---    has no surname. "L. S. N. Perera" -> "L. S. N." + "Perera".
--- ---------------------------------------------------------------------------
 SET @has_given := (SELECT COUNT(*) FROM information_schema.columns
                    WHERE table_schema = DATABASE() AND table_name = 'students' AND column_name = 'given_name');
 SET @sql := IF(@has_given = 0,
@@ -51,8 +24,9 @@ SET @sql := IF(@has_surname = 0,
     'SELECT ''surname already present'' AS step_1b');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Backfill from full_name - only where the given name is missing or empty, so
--- a name a student has already edited under the new code is never overwritten.
+
+-- Copy from full_name, but only where given_name is still empty, so names already
+-- edited in the new code are not overwritten.
 SET @has_full := (SELECT COUNT(*) FROM information_schema.columns
                   WHERE table_schema = DATABASE() AND table_name = 'students' AND column_name = 'full_name');
 SET @sql := IF(@has_full = 1,
@@ -70,29 +44,21 @@ SET @sql := IF(@has_full = 1,
     'SELECT ''full_name already removed - nothing to copy'' AS step_1c');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- Every student now has a given name, so it can become NOT NULL, as the
--- entity declares. (If this fails, a row has an empty full_name - find it with
--- SELECT id, student_id FROM students WHERE given_name IS NULL OR given_name = '';)
+
+-- Every student has a given name now, so make it NOT NULL. If this fails, find the row with:
+-- SELECT id, student_id FROM students WHERE given_name IS NULL OR given_name = '';
 ALTER TABLE students MODIFY COLUMN given_name VARCHAR(120) NOT NULL;
 
--- The old column goes. Keeping it would store the same name twice, in two
--- places that could disagree after the next edit - and it is NOT NULL, so the
--- new code (which no longer writes it) could not insert a student at all.
+
+-- Drop the old column so the name isn't stored twice.
 SET @sql := IF(@has_full = 1,
     'ALTER TABLE students DROP COLUMN full_name',
     'SELECT ''full_name already removed'' AS step_1d');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
--- ---------------------------------------------------------------------------
--- 2. CONTACT NUMBERS -> their own table
---
---    Requirement 3.2: "permit a student to record more than one contact
---    number". A multivalued attribute becomes a table keyed by its owner:
---    primary key (student_id, list_index), a foreign key to students, and the
---    existing single number copied in as each student's FIRST number.
---    Matches what Hibernate generates for Student.contactNumbers exactly.
--- ---------------------------------------------------------------------------
+-- 2. Contact numbers move to their own table (a student can have several).
+-- The old single number becomes each student's first entry.
 CREATE TABLE IF NOT EXISTS student_contact_numbers (
     student_id   BIGINT       NOT NULL,
     list_index   INT          NOT NULL,
@@ -118,15 +84,8 @@ SET @sql := IF(@has_contact = 1,
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
--- ---------------------------------------------------------------------------
--- 3. OFFICER PROFILE (US-04) - phone + two notification toggles
---
---    Defaults of 1 (on) for the toggles, so officers who existed before this
---    change keep receiving alerts. A NOT NULL BIT added without a default
---    would give them 0 - every existing officer silently switched off.
---    BIT(1) because that is what Hibernate uses for a Java boolean on MySQL,
---    so ddl-auto=validate will agree with this script later.
--- ---------------------------------------------------------------------------
+-- 3. Officer phone and notification toggles. The toggles default to on, so existing
+-- officers keep getting alerts.
 SET @n := (SELECT COUNT(*) FROM information_schema.columns
            WHERE table_schema = DATABASE() AND table_name = 'officers' AND column_name = 'contact_number');
 SET @sql := IF(@n = 0,
@@ -149,30 +108,28 @@ SET @sql := IF(@n = 0,
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
--- ===========================================================================
---  4. VERIFICATION - run these and read the output.
--- ===========================================================================
-
--- Expect: given_name varchar(120) NO, surname varchar(120) YES,
---         and NO rows for full_name or contact_number.
+-- 4. Verify.
+-- Expect given_name varchar(120) NO, surname varchar(120) YES, and no full_name or contact_number.
 SELECT column_name, column_type, is_nullable
   FROM information_schema.columns
  WHERE table_schema = DATABASE() AND table_name = 'students'
    AND column_name IN ('given_name', 'surname', 'full_name', 'contact_number')
  ORDER BY ordinal_position;
 
--- Expect 0. Any row here is a student with no usable name.
+
+-- Expect 0.
 SELECT COUNT(*) AS students_without_given_name
   FROM students WHERE given_name IS NULL OR given_name = '';
 
--- Spot-check the split and the copied numbers.
+
+-- Spot-check the split names and copied numbers.
 SELECT s.id, s.student_id, s.given_name, s.surname, c.list_index, c.phone_number
   FROM students s
   LEFT JOIN student_contact_numbers c ON c.student_id = s.id
  ORDER BY s.id, c.list_index;
 
--- Expect three rows: contact_number, email_notifications_enabled,
--- portal_notifications_enabled; the two toggles NOT NULL with default b'1'.
+
+-- Expect three rows; the two toggles NOT NULL with default b'1'.
 SELECT column_name, column_type, is_nullable, column_default
   FROM information_schema.columns
  WHERE table_schema = DATABASE() AND table_name = 'officers'

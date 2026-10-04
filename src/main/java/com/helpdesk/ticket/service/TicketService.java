@@ -18,12 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /**
- * F2 - Advanced Ticket Request Engine (Chamikara A. K, IT25102416)
- *
- * Business logic for a student's own tickets: submit, view, edit and
- * withdraw. Editing and withdrawing are only allowed while the ticket is
- * still OPEN - once F4's queue engine moves it to IN_PROGRESS or RESOLVED,
- * the student can no longer change it (see Ticket.java).
+ * A student's own tickets: submit, view, edit and withdraw.
+ * Edit and withdraw only work while the ticket is OPEN.
  */
 @Service
 public class TicketService {
@@ -31,20 +27,15 @@ public class TicketService {
     private final TicketRepository ticketRepository;
     private final CategoryRepository categoryRepository;
 
-    // Added with the new-ticket alert for officers (US-04), agreed with
-    // Chamikara: this service only ANNOUNCES that a ticket was submitted. Who
-    // gets told, and how, is decided in the notification module
-    // (QueueArrivalNotifier + the channels) - the Observer pattern, the same
-    // way QueueService announces status changes.
+    // Observer publisher: we publish TicketSubmittedEvent and the notification
+    // module decides who gets told.
     private final ApplicationEventPublisher eventPublisher;
 
-    // The status-change history (#45). Student-made changes (create,
-    // withdraw) are recorded directly here, because they are never
-    // published as a TicketStatusChangedEvent - that event exists for F4's
-    // officer-made transitions, which TicketHistoryRecorder observes instead.
+    // Student changes (create, withdraw) are recorded here directly; officer
+    // changes reach the history through TicketHistoryRecorder.
     private final TicketHistoryService historyService;
 
-    // Category-based routing (WBHD-25), agreed with Chamikara (contract C4).
+    // Picks the department from the ticket's category.
     private final RoutingService routingService;
 
     @Autowired
@@ -58,7 +49,6 @@ public class TicketService {
         this.routingService = routingService;
     }
 
-    // Create
     @Transactional
     public Ticket createTicket(Long studentId, TicketCreateRequest request) {
         requireValidCategory(request.getCategory());
@@ -74,21 +64,15 @@ public class TicketService {
 
         Ticket saved = ticketRepository.save(ticket);
 
-        // The first history row has no "from" status - the ticket did not
-        // exist a moment before. Recorded directly (not through the event),
-        // and inside this same transaction (record() is MANDATORY), so the
-        // ticket and its first history row commit or roll back together.
+        // First history row has no "from" status.
         historyService.record(saved.getId(), null, TicketStatus.OPEN, studentId);
 
-        // After the save, so the event carries the real ticket id. The
-        // listener runs only once the ticket is committed (AFTER_COMMIT), so
-        // a submission that fails never alerts anybody.
+        // Published after the save so it has the real id; listeners run after commit.
         eventPublisher.publishEvent(new TicketSubmittedEvent(
                 saved.getId(), saved.getSubject(), saved.getCategory(), saved.getAssignedDepartmentId()));
         return saved;
     }
 
-    // Read
     @Transactional(readOnly = true)
     public List<Ticket> listByStudent(Long studentId) {
         return ticketRepository.findByStudentId(studentId);
@@ -99,8 +83,7 @@ public class TicketService {
         return findOwnedTicket(ticketId, studentId);
     }
 
-    // Ownership + OPEN check together, for callers (e.g. AttachmentService)
-    // whose action is only valid while the ticket is still editable.
+    // Ownership and OPEN check together, e.g. for attachment upload/delete.
     @Transactional(readOnly = true)
     public Ticket getOwnedOpenTicket(Long ticketId, Long studentId) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
@@ -108,7 +91,6 @@ public class TicketService {
         return ticket;
     }
 
-    // Update - only while OPEN
     @Transactional
     public Ticket updateTicket(Long ticketId, Long studentId, TicketUpdateRequest request) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
@@ -123,7 +105,7 @@ public class TicketService {
         return ticketRepository.save(ticket);
     }
 
-    // Withdraw (soft "delete") - only while OPEN
+    // Withdrawing is a soft delete: the ticket stays, with status WITHDRAWN.
     @Transactional
     public Ticket withdrawTicket(Long ticketId, Long studentId) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
@@ -132,7 +114,6 @@ public class TicketService {
         ticket.setStatus(TicketStatus.WITHDRAWN);
         Ticket saved = ticketRepository.save(ticket);
 
-        // requireOpen above already guarantees the "from" was OPEN.
         historyService.record(ticketId, TicketStatus.OPEN, TicketStatus.WITHDRAWN, studentId);
         return saved;
     }
@@ -153,16 +134,7 @@ public class TicketService {
         }
     }
 
-    // CHANGED during the F4 shared-reference-data merge (feature/f4-RESPONSE):
-    // this used to call ticket.TicketCategories.isValid(category), a hardcoded
-    // in-memory list. Now that common.reference.entity.Category is a real,
-    // seeded table, validation checks against it instead so a category added
-    // there is recognised without a code change here.
-    // FLAG FOR F2 REVIEW (Chamikara): this changes validation behavior, not
-    // just its wording - TicketCategories.ALL and the seeded category names
-    // happen to match today, but they are no longer the same source of truth,
-    // and TicketController's GET dropdown endpoint still reads TicketCategories.ALL
-    // directly. Please confirm this is the intended replacement before merging.
+    // Checked against the categories table, so new categories need no code change.
     private void requireValidCategory(String category) {
         if (!categoryRepository.existsByName(category)) {
             throw new ValidationException("Invalid category");

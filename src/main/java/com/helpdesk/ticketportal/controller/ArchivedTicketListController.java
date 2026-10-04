@@ -13,13 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * F3 - the student's archived tickets (#41, option A: the active list hides
- * them, this lists them).
- *
- * A separate controller because TicketArchiveController is mapped to
- * /api/tickets/{ticketId}/archive. GET /api/tickets/archived sits beside F2's
- * GET /api/tickets/{ticketId}; Spring prefers the literal segment "archived"
- * over the {ticketId} pattern, so the two don't clash.
+ * Lists the student's archived tickets. Kept separate from TicketArchiveController
+ * because of its base path; Spring matches "archived" before {ticketId}, so no clash.
  */
 @RestController
 public class ArchivedTicketListController {

@@ -6,19 +6,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * Request body for PUT /api/auth/password.
- *
- * WHY THE CURRENT PASSWORD IS REQUIRED EVEN THOUGH THE USER IS SIGNED IN
- * ----------------------------------------------------------------------
- * Being signed in proves that somebody had the password at some point - not
- * that the person at the keyboard now is that somebody. A laptop left open in
- * a library, or a session cookie stolen from a shared machine, would otherwise
- * let a stranger change the password and lock the real owner out of their own
- * account permanently. Asking for the current password turns "has this
- * browser" into "knows the secret", which is the thing a password is for.
- *
- * The new password gets exactly the rule registration uses - both read it from
- * ValidationRules, so the two can never disagree.
+ * Body for PUT /api/auth/password. The current password is required so someone using an
+ * unattended or stolen session can't lock the owner out. Same password rule as registration.
  */
 public record PasswordChangeRequest(
 

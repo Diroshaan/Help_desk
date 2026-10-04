@@ -6,22 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
 /**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- *
- * An officer's official solution to a ticket. One per ticket (ticketId is
- * unique) rather than a revision history table - editing a resolution
- * overwrites responseText/attachment and bumps updatedAt, which is enough
- * for the current requirements without a separate audit table.
- *
- * ticketId and officerId are kept as plain Long references, matching the
- * pattern used by Ticket.studentId, instead of @ManyToOne relations.
- *
- * The optional attachment fields mirror ticket.entity.Attachment's shape
- * rather than reusing that entity directly: Attachment.ticketId is
- * NOT NULL and it isn't generalized for a second, unrelated owner
- * (an officer's solution file vs. a student's upload), so bolting a
- * resolution attachment onto it would mean either a fake ticketId-only
- * link or loosening a constraint F2 depends on.
+ * An officer's solution to a ticket. One per ticket - editing it overwrites the
+ * text and file. The optional file is stored on this row, not in attachments.
  */
 @Entity
 @Table(name = "resolutions")
@@ -47,7 +33,7 @@ public class Resolution {
 
     private String attachmentFileType;
 
-    // Explicit MEDIUMBLOB: a bare @Lob byte[] is TINYBLOB (255 bytes) on MySQL.
+    // MEDIUMBLOB: a plain @Lob is TINYBLOB (255 bytes) on MySQL.
     @Column(name = "attachment_data", columnDefinition = "MEDIUMBLOB")
     private byte[] attachmentData;
 
@@ -62,10 +48,8 @@ public class Resolution {
         this.updatedAt = LocalDateTime.now();
     }
 
-    //Constructors
-    public Resolution() {}    // Required no-argument constructor for JPA
+    public Resolution() {}
 
-    //Getters and setters
     public Long getId() {
         return id;
     }

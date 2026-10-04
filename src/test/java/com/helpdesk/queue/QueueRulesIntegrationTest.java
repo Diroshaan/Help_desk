@@ -40,10 +40,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * F4 final backend: queue rules, resolution authorship, supervisor, routing.
- * Whole application on H2, real services.
- */
+/** Queue rules on real H2: routing, claiming, resolution authorship, supervisors and file access. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -108,15 +105,11 @@ class QueueRulesIntegrationTest {
         return ticketRepository.save(t);
     }
 
-    // ---- Commit 1 ------------------------------------------------------
-
     @Test
     @DisplayName("The demo seeder runs only with no profile (H2), never on mysql")
     void seederIsDefaultProfileOnly() {
         assertThat(DevQueueDataSeeder.class.getAnnotation(Profile.class).value()).containsExactly("default");
     }
-
-    // ---- Commit 2 ------------------------------------------------------
 
     @Test
     @DisplayName("An unrouted ticket cannot be worked: updateStatus is 400")
@@ -170,8 +163,6 @@ class QueueRulesIntegrationTest {
                 .hasMessageContaining("another officer");
     }
 
-    // ---- Commit 3 ------------------------------------------------------
-
     @Test
     @DisplayName("Only the author edits an answer; the author may")
     void onlyAuthorEdits() {
@@ -184,8 +175,6 @@ class QueueRulesIntegrationTest {
         assertThat(resolutionService.edit(officerA.getId(), t.getId(), "Reset the router, then retry.", null)
                 .getResponseText()).startsWith("Reset the router");
     }
-
-    // ---- Commit 4 ------------------------------------------------------
 
     @Test
     @DisplayName("Resolution file: a fake PNG is 400, a real PDF is stored as application/pdf")
@@ -219,8 +208,6 @@ class QueueRulesIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
-    // ---- Commit 5 ------------------------------------------------------
-
     @Test
     @DisplayName("Supervisor: A->B allowed, B->A is a loop, self is rejected, supervisor can edit")
     void supervisorRules() {
@@ -240,8 +227,6 @@ class QueueRulesIntegrationTest {
         assertThat(supervisionService.assignSupervisor(officerA2.getId(), null).getSupervisor()).isNull();
     }
 
-    // ---- Commit 6/8 ----------------------------------------------------
-
     @Test
     @DisplayName("Officer lists attachments and history in their department; another department is 404; student 403")
     void attachmentsAndHistoryAreScoped() throws Exception {
@@ -258,8 +243,6 @@ class QueueRulesIntegrationTest {
         mvc.perform(get("/api/queue/" + t.getId() + "/attachments")
                         .with(user(student.getEmail()).roles("STUDENT"))).andExpect(status().isForbidden());
     }
-
-    // ---- Commit 7 ------------------------------------------------------
 
     @Test
     @DisplayName("A new ticket is routed to the department that owns its category")

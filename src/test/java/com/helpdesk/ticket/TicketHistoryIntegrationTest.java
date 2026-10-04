@@ -35,14 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * #45: the status-change history, against the whole running application.
- *
- * Full application rather than a mock: the point of this feature is that
- * TicketHistoryRecorder observes F4's real TicketStatusChangedEvent through
- * the real QueueService, inside the real transaction - none of that exists
- * if QueueService or the event bus is mocked away.
- */
+/** Status-change history through the real QueueService and event, inside the real transaction. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -85,9 +78,7 @@ class TicketHistoryIntegrationTest {
         officer = officerRepository.save(o);
     }
 
-    // ---- #45: created through the real HTTP create, so the history row is
-    // recorded inside the SAME request/transaction as the ticket itself.
-
+    // Goes through the real HTTP create, so the history row is written in the same transaction.
     @Test
     @DisplayName("Submitting a ticket records one history entry: null -> OPEN, by the student")
     void creatingATicketRecordsTheFirstEntry() throws Exception {
@@ -116,14 +107,11 @@ class TicketHistoryIntegrationTest {
     @DisplayName("An officer moving the ticket to IN_PROGRESS appends a second entry")
     void officerStatusChangeAppendsASecondEntry() throws Exception {
         Ticket ticket = openTicket();
-        // The direct repository save above bypasses TicketService, so it
-        // bypasses the history recording create() does too - the real
-        // create path is already covered by the test above. Seed entry 1
-        // by hand here so this test is only about the SECOND entry.
+        // Saved straight to the repository, which skips create(), so add entry 1 by hand.
         historyRepository.save(new com.helpdesk.ticket.entity.TicketStatusChange(
                 ticket.getId(), 1, null, TicketStatus.OPEN, student.getId(), java.time.LocalDateTime.now()));
 
-        // Contract C2: F4 now passes the officer id, so the history names the officer.
+        // The officer id is passed, so the history names the officer.
         queueService.updateStatus(officer.getId(), ticket.getId(), TicketStatus.IN_PROGRESS);
 
         mvc.perform(get("/api/tickets/" + ticket.getId() + "/history")
@@ -153,10 +141,8 @@ class TicketHistoryIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
-    // Why this test exists: TicketHistoryRecorder is a plain @EventListener
-    // specifically so it runs inside the same transaction as the status
-    // change. If the change rolls back, its history row must never have
-    // been written either.
+    // The recorder is a plain @EventListener so it runs in the same transaction;
+    // a rolled-back change must leave no history row.
     @Test
     @DisplayName("If the status change rolls back, no history row exists")
     void rolledBackChangeLeavesNoHistoryRow() {
@@ -180,7 +166,7 @@ class TicketHistoryIntegrationTest {
         t.setCategory("Network");
         t.setPriority(TicketPriority.MEDIUM);
         t.setStatus(TicketStatus.OPEN);
-        // Routed: working an unrouted ticket is refused (F4-N3).
+        // Officers can't work an unrouted ticket.
         t.setAssignedDepartmentId(department.getCode());
         return ticketRepository.save(t);
     }

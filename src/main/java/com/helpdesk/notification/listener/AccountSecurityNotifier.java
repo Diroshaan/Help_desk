@@ -12,13 +12,8 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * OBSERVER PATTERN: a second observer, for account security events.
- *
- * Kept separate from TicketStatusNotifier so each listener has one job. It
- * also shows the other half of the Observer idea: PasswordService and
- * QueueService publish completely different events, and neither knows the
- * notification module exists. Same AFTER_COMMIT / REQUIRES_NEW reasoning as
- * TicketStatusNotifier.
+ * Observer: listens for PasswordChangedEvent and tells the user on every channel they
+ * have on. Same AFTER_COMMIT / REQUIRES_NEW setup as TicketStatusNotifier.
  */
 @Component
 public class AccountSecurityNotifier {

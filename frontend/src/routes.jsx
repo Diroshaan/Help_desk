@@ -27,17 +27,9 @@ import AdminUsers from './pages/admin/Users.jsx'
 import AdminAnnouncements from './pages/admin/Announcements.jsx'
 
 /**
- * One row per screen. App.jsx turns this into <Route> elements; Sidebar.jsx
- * turns the ones carrying a `nav` entry into the links for the signed-in
- * role(s) listed in `access`. Adding a screen is adding one object here, not
- * editing both files by hand.
- *
- * `access`:
- *   'public' — anyone, logged in or not
- *   'guest'  — only a signed-out visitor (App.jsx sends a signed-in user to
- *              their home screen instead of showing this one)
- *   [roles]  — only those roles; anyone else is sent to '/' (see Protected
- *              in App.jsx)
+ * One row per screen. App.jsx builds the routes from this and Sidebar.jsx builds
+ * the nav links from the rows that have `nav`.
+ * access: 'public' (anyone), 'guest' (signed out only) or a list of roles.
  */
 export const ROUTES = [
   { path: '/', Component: Welcome, access: 'public' },
@@ -47,14 +39,10 @@ export const ROUTES = [
   { path: '/profile', Component: Profile, access: ['STUDENT'],
     nav: { section: 'My account', label: 'My profile' } },
   { path: '/delete-account', Component: DeleteAccount, access: ['STUDENT'] },
-  // US-04: the officer's own profile. A separate route from /profile because
-  // it is a different account type with a different endpoint
-  // (/api/officers/me) and a different set of editable fields.
+  // officers have their own profile page and endpoint (/api/officers/me)
   { path: '/officer/profile', Component: OfficerProfile, access: ['OFFICER'],
     nav: { section: 'My account', label: 'My profile' } },
-  // Every role: the inbox the Observer listeners write to, and the password
-  // change that PasswordService (and its PasswordChangedEvent) handles.
-  // Administrators have no profile page, so this is where they change theirs.
+  // Admins have no profile page, so change password gets its own nav link.
   { path: '/notifications', Component: Notifications, access: ['STUDENT', 'OFFICER', 'ADMIN'],
     nav: { section: 'My account', label: 'Notifications' } },
   { path: '/account/password', Component: ChangePassword, access: ['STUDENT', 'OFFICER', 'ADMIN'],
@@ -82,12 +70,7 @@ export const ROUTES = [
     nav: { section: 'Support queue', label: 'Queue' } },
   { path: '/queue/:id', Component: QueueDetail, access: ['OFFICER'] },
 
-  // Every signed-in role, because an outage notice matters to staff as much
-  // as to students.
-  //
-  // Its own section rather than 'Help desk': Sidebar.jsx renders that heading
-  // itself for the Home and Browse FAQ links, and reusing the name here would
-  // draw a second heading with the same text further down the nav.
+  // Not under 'Help desk': Sidebar.jsx already draws that heading itself.
   { path: '/announcements', Component: Announcements, access: ['STUDENT', 'OFFICER', 'ADMIN'],
     nav: { section: 'Notices', label: 'Announcements' } },
 
@@ -99,10 +82,7 @@ export const ROUTES = [
     nav: { section: 'Administration', label: 'Manage announcements' } }
 ]
 
-/** Where to send someone the instant we know their role — after login, and
- *  whenever a page they may not view sends them away instead of showing a
- *  403. A student's home is their tickets: that is what they came to the help
- *  desk for, and the profile is one click away in the sidebar. */
+/** Home screen for each role, used after login and when a page is off-limits. */
 export function homeFor(role) {
   if (role === 'OFFICER') return '/queue'
   if (role === 'ADMIN') return '/admin/dashboard'
@@ -110,9 +90,8 @@ export function homeFor(role) {
 }
 
 /**
- * The page a guest was trying to reach, carried through the login form as
- * ?next=/tickets/new. Only an in-app path is accepted: "//evil.example" or a
- * full URL would turn the login page into an open redirect.
+ * Reads ?next= from the login URL. Only in-app paths are allowed, so the login
+ * page can't be used as an open redirect.
  */
 export function nextFrom(search) {
   const next = new URLSearchParams(search || '').get('next')
@@ -121,8 +100,7 @@ export function nextFrom(search) {
   return next
 }
 
-/** Where to go once signed in: the page they asked for, if their role may see
- *  it, otherwise their own home. */
+/** After login: the ?next page if this role may see it, otherwise home. */
 export function afterLogin(role, search) {
   const next = nextFrom(search)
   if (next) {
@@ -135,7 +113,6 @@ export function afterLogin(role, search) {
   return homeFor(role)
 }
 
-/** The login page, remembering where the visitor wanted to go. */
 export function loginFor(path) {
   return path && path !== '/' ? '/login?next=' + encodeURIComponent(path) : '/login'
 }

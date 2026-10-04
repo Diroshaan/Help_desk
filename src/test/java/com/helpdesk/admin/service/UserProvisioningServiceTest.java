@@ -38,24 +38,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * UserProvisioningService with its collaborators mocked.
- *
- * F6-N2 (who provisioned the account) and F6-N3 (which departments an officer
- * serves).
- *
- * Mockito rather than a running application because what is under test is this
- * service's own decision - that the administrator who is signed in, and nobody
- * the request nominates, is recorded as the provisioner; that an officer is
- * never created serving a department that does not exist. A mock lets a test
- * state "the caller's email resolves to a student" or "that department code is
- * closed" in one line, which is awkward to build in a database and impossible to
- * reach through the API while SecurityConfig is doing its job.
- *
- * The real BCrypt encoder at its lowest strength, as StudentServiceTest does:
- * these tests never assert on the hash, but a mocked encoder returning null
- * would hide a NullPointerException that a real one would surface.
- */
+/** UserProvisioningService with mocks: who provisioned an account, officer departments, removal and lock-out rules. */
 @ExtendWith(MockitoExtension.class)
 class UserProvisioningServiceTest {
 
@@ -112,12 +95,6 @@ class UserProvisioningServiceTest {
         when(officerRepository.existsByStaffNumber(anyString())).thenReturn(false);
     }
 
-    // ---- F6-N2: provisionedBy is recorded ----
-
-    // Why this test exists: the provisionedBy column and its foreign key existed
-    // from the first version of F6, and nothing ever assigned them. Every
-    // account provisioned through the admin screen recorded nothing about who
-    // created it, and no test failed, because no test asked. This one asks.
     @Test
     @DisplayName("provisionOfficer records the signed-in administrator")
     void provisionOfficerRecordsTheCallingAdministrator() {
@@ -130,10 +107,8 @@ class UserProvisioningServiceTest {
         ArgumentCaptor<Officer> saved = ArgumentCaptor.forClass(Officer.class);
         verify(officerRepository).save(saved.capture());
 
-        // isSameAs, not isEqualTo: the association must hold the administrator
-        // entity the service resolved, not an equal-looking copy. A copy would
-        // save a detached instance and, depending on the persistence context,
-        // either fail at flush or silently insert a second administrator row.
+        // isSameAs, not isEqualTo: a copy would be a detached entity and could fail at
+        // flush or insert a second administrator row.
         assertThat(saved.getValue().getProvisionedBy()).isSameAs(caller);
     }
 
@@ -153,14 +128,8 @@ class UserProvisioningServiceTest {
         assertThat(saved.getValue().getProvisionedBy()).isSameAs(caller);
     }
 
-    // ---- F6-N2: the caller must actually be an administrator ----
-
-    // SecurityConfig restricts /api/admin/** to ROLE_ADMIN, so this situation
-    // should be unreachable through the API. The test exists because
-    // "unreachable" is a claim about today's configuration, and the column being
-    // written is declared Administrator. Without the type check the failure would
-    // be a ClassCastException from inside Hibernate at flush time, which names
-    // neither the caller nor the cause.
+    // SecurityConfig should stop this, but without the type check Hibernate would fail
+    // at flush with a ClassCastException that names neither the caller nor the cause.
     @Test
     @DisplayName("a caller who is not an administrator is refused, and nothing is saved")
     void provisioningRejectsANonAdministratorCaller() {
@@ -173,10 +142,7 @@ class UserProvisioningServiceTest {
 
         verify(officerRepository, never()).save(any(Officer.class));
 
-        // And the request was never inspected. This is the ordering decision in
-        // provisionOfficer made testable: a caller we have just refused does not
-        // get told, via the duplicate-email message, whether an address is
-        // already registered. Delete the reordering and this line fails.
+        // Refused before the email check, so a non-admin can't probe which addresses exist.
         verify(appUserRepository, never()).existsByEmail(anyString());
     }
 
@@ -191,12 +157,6 @@ class UserProvisioningServiceTest {
         verify(officerRepository, never()).save(any(Officer.class));
     }
 
-    // ---- F6-N3: officers are provisioned WITH departments ----
-
-    // Why this test exists: before F6-N3 the provisioning request had no
-    // departments at all, so every officer created here served nothing and the
-    // queue showed them no routed work. The saved officer must carry exactly the
-    // departments the administrator picked.
     @Test
     @DisplayName("provisionOfficer assigns the departments the administrator chose")
     void provisionOfficerAssignsTheChosenDepartments() {
@@ -227,9 +187,7 @@ class UserProvisioningServiceTest {
         verify(officerRepository, never()).save(any(Officer.class));
     }
 
-    // A closed desk is refused too: assigning a new officer to it would rebuild
-    // the original bug in a subtler form - an officer who serves "a department"
-    // and still sees no work, because nothing is routed to a closed desk.
+    // Nothing is routed to a closed department, so the officer would still see no work.
     @Test
     @DisplayName("a closed department is refused, and nothing is saved")
     void provisionOfficerRejectsAClosedDepartment() {
@@ -261,9 +219,7 @@ class UserProvisioningServiceTest {
         assertThat(response.departmentCodes()).containsExactly("REG");
     }
 
-    // 404 for an id that is not an officer - including one that belongs to a
-    // student or an administrator. OfficerRepository.findById only finds rows
-    // in the officers table, so a student's id is simply "no such officer".
+    // Also covers student and admin ids: findById only looks in the officers table.
     @Test
     @DisplayName("updateOfficerDepartments on an id that is not an officer is 'not found'")
     void updateOfficerDepartmentsOnAnUnknownOfficerIsNotFound() {
@@ -276,9 +232,7 @@ class UserProvisioningServiceTest {
         verify(officerRepository, never()).save(any(Officer.class));
     }
 
-    // Review on PR #56: a removed officer has left. Their record is kept for
-    // history, not edited - and giving them desks would route tickets to
-    // somebody who can no longer sign in.
+    // A removed officer can't sign in, so giving them departments would route tickets to nobody.
     @Test
     @DisplayName("updateOfficerDepartments refuses a removed officer, and nothing is saved")
     void updateOfficerDepartmentsRefusesARemovedOfficer() {
@@ -294,8 +248,6 @@ class UserProvisioningServiceTest {
         verify(officerRepository, never()).save(any(Officer.class));
         verify(departmentRepository, never()).findAllById(any());
     }
-
-    // ---- #48 / F6-N6 part 2: removal is final, and admins cannot lock themselves out ----
 
     private Officer officerWithId(long id, String email) {
         Officer officer = new Officer(email, "hash", "OF-" + id, "Support Officer", "Officer " + id);

@@ -5,19 +5,14 @@ import { useUnreadCount } from '../hooks/useUnreadCount.js'
 import { ROUTES } from '../routes.jsx'
 
 /**
- * The teal sidebar every signed-in screen shares — extracted from what used
- * to be Profile.jsx's own local component. Which links appear below "Help
- * desk" depends on the signed-in role: a route only shows up here if it
- * carries a `nav` entry in routes.jsx AND the current role is in that
- * route's `access` list, so adding a screen to routes.jsx is enough to put
- * it in the sidebar too — no second place to remember.
+ * Sidebar for signed-in pages. Links come from routes.jsx: any route with a
+ * `nav` entry that the current role can access.
  */
 export function Sidebar() {
   const { role, user, student, signOut } = useSession()
   const navigate = useNavigate()
   const location = useLocation()
-  // Only once someone is signed in: a guest has no inbox, and asking would
-  // just be a 403 that api.js then has to double-check.
+  // guests have no inbox
   const unread = useUnreadCount(Boolean(role))
 
   const sections = []
@@ -32,9 +27,8 @@ export function Sidebar() {
   })
 
   async function handleSignOut() {
-    // Leave the protected page FIRST. Signing out first made this page's
-    // guard see a guest and send them to "Log in ?next=this page" before the
-    // jump home could happen, so "Log out" landed on the login form.
+    // Navigate away before signing out, otherwise this page's guard sees a
+    // guest and redirects to the login form.
     navigate('/')
     await signOut()
   }
@@ -58,9 +52,6 @@ export function Sidebar() {
               <Link key={link.path} to={link.path}
                     aria-current={location.pathname === link.path ? 'page' : undefined}>
                 {link.label}
-                {/* The count is spoken as part of the link ("Notifications, 3
-                    unread") rather than as a bare number a screen reader would
-                    read with no context. */}
                 {link.path === '/notifications' && unread > 0 && (
                   <span className="nav-badge" aria-label={unread + ' unread'}>
                     {unread > 99 ? '99+' : unread}

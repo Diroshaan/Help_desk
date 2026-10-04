@@ -18,11 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * A student's saved articles. studentId is derived from the session on every
- * call, never accepted as a path/query/body parameter - trusting a request
- * body for identity is exactly the IDOR class of bug this project's other
- * bookmarking code (BookmarkFolderController.currentStudentId()) already
- * guards against, and this copies that pattern rather than re-deciding it.
+ * A student's saved articles. studentId always comes from the session, never the
+ * request, so one student can't act on another's bookmarks.
  */
 @RestController
 public class ArticleBookmarkController {
@@ -53,13 +50,7 @@ public class ArticleBookmarkController {
         return bookmarkService.listBookmarked(currentStudentId(authentication));
     }
 
-    /**
-     * Copy of BookmarkFolderController.currentStudentId(): the session
-     * principal name is the student's email (StudentUserDetailsService
-     * always sets it that way, even when the student logged in with their
-     * student ID), so the student row is looked up by email, not by
-     * re-parsing whatever the caller typed at login.
-     */
+    // the principal name is always the student's email, even after logging in by student ID
     private Long currentStudentId(Authentication authentication) {
         Student student = studentRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException(

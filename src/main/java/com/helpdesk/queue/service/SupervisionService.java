@@ -9,9 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * F4 - the recursive supervisor relationship (#46): officers.supervisor_id -> officers.id.
- * "At most one supervisor" is the single column; the loop check lives here because
- * SQL cannot express it simply.
+ * Sets an officer's supervisor (a recursive link from officers to officers).
+ * Supervisor cycles are rejected here, since the database can't easily check that.
  */
 @Service
 public class SupervisionService {
@@ -44,8 +43,7 @@ public class SupervisionService {
                 .filter(o -> o.getDeletedAt() == null)
                 .orElseThrow(() -> new ValidationException("The supervisor must be an active officer"));
 
-        // Walk upwards from the candidate: reaching this officer means the new
-        // link would close a loop.
+        // Walk up from the candidate; reaching this officer means a cycle.
         for (Officer up = candidate; up != null; up = up.getSupervisor()) {
             if (up.getId().equals(officerId)) {
                 throw new ValidationException("That would create a supervision loop");

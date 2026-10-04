@@ -30,24 +30,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * F6 - System Analytics, Provisioning & Announcements
- *
- * Creating privileged accounts and suspending or restoring existing ones
- * (WBHD-35).
- *
- * Requirement specification 3.1: "Provision privileged staff/admin accounts and
- * assign role-based permissions; deactivate or delete student, help desk or
- * other admin accounts."
- *
- *
- * WHY PROVISIONING LIVES HERE AND NOT IN A SHARED PACKAGE
- * -------------------------------------------------------
- * common.user holds the entities and repositories because four features need
- * them. It deliberately holds no service and no controller: creating a
- * privileged account is an access-controlled administrative action, and putting
- * it in a shared package would mean any feature that imports the user model
- * also imports the ability to mint an officer. The shared package holds the
- * shape of a user; F6 holds the authority to create one.
+ * Creates officer and administrator accounts, edits officer departments, and suspends,
+ * restores or removes accounts. Kept in the admin feature, not common.user, so only
+ * admin code has the power to create privileged accounts.
  */
 @Service
 public class UserProvisioningService {
@@ -57,31 +42,10 @@ public class UserProvisioningService {
     private final AdministratorRepository administratorRepository;
     private final PasswordEncoder passwordEncoder;
 
-    /**
-     * Ends a suspended account's live sessions.
-     *
-     * Added because suspension was only half implemented without it. Marking
-     * active = false stops the next LOGIN, because StudentUserDetailsService
-     * builds the UserDetails with .disabled(!isActive()) - but that check runs
-     * during authentication and never again, so a user who was already signed in
-     * when the administrator suspended them carried on working until their
-     * session happened to expire. They could keep raising tickets, keep reading
-     * the knowledge base, keep everything. A suspension the suspended person can
-     * ignore is not a suspension.
-     *
-     * The collaborator lives in com.helpdesk.auth rather than here because
-     * ending a session is an authentication concern, and F1 needs the same
-     * behaviour for a student closing their own account. One implementation,
-     * two callers.
-     */
+    // Signs a suspended or removed user out of sessions they already have open.
     private final SessionRevoker sessionRevoker;
 
-    /**
-     * Reads the departments table to check the codes an administrator picks
-     * (F6-N3). Read only - F6 never creates, renames or deactivates a
-     * department; that reference data belongs to common.reference and its
-     * seeder. This service only asks "does this code name a desk that is open".
-     */
+    // Read only: used to check the department codes an admin picks.
     private final DepartmentRepository departmentRepository;
 
     private final AdministratorLockRepository administratorLockRepository;
@@ -103,51 +67,15 @@ public class UserProvisioningService {
         this.administratorLockRepository = administratorLockRepository;
     }
 
-    // ------------------------------------------------------------------
-    // Provisioning
-    // ------------------------------------------------------------------
-
     /**
-     * Create a help desk officer account.
-     *
-     * callerEmail is the signed-in administrator, taken from the security
-     * context by the controller and never from the request body. Requirement
-     * specification 3.2 asks the system to record which administrator
-     * provisioned each privileged account, and an audit record that the audited
-     * party can fill in themselves records nothing.
-     *
-     * The email pre-check queries AppUserRepository, which spans the WHOLE
-     * hierarchy, not OfficerRepository - because email is unique across every
-     * account type. Checking only the officers table would let an officer be
-     * created with a student's address, and the failure would arrive as a
-     * database constraint violation that GlobalExceptionHandler turns into a
-     * generic 409 with no mention of which field is at fault.
-     *
-     * Both pre-checks are exactly that - pre-checks. Two simultaneous requests
-     * can both query before either saves, both find nothing, and one loses at
-     * the database. The unique constraints are what GUARANTEE no duplicate, and
-     * GlobalExceptionHandler's DataIntegrityViolationException handler is the
-     * backstop. The checks here exist to produce a message that names the
-     * problem in the normal case. Two layers answering the same question: one
-     * fast and friendly, one slow and certain. StudentService.register makes the
-     * same argument at more length.
-     *
-     * The password is hashed here and the plaintext is never stored, never
-     * logged and never returned - UserSummaryResponse has no password field at
-     * all.
+     * Creates an officer. The email check covers every account type because emails are
+     * unique across all of them. These checks give a clear message; the unique
+     * constraints are the real guarantee if two requests race.
      */
     @Transactional
     public UserSummaryResponse provisionOfficer(ProvisionOfficerRequest request, String callerEmail) {
-        // DECISION: the caller is resolved BEFORE the payload is inspected.
-        //
-        // The alternative - validate the request first, identify the actor after
-        // - would mean a caller whose session does not resolve to an
-        // administrator still learns whether an email address is already
-        // registered, because rejectDuplicateEmail answers that question by
-        // name. That is a small disclosure, but it is a disclosure made to
-        // somebody we have just established should not be here, and it costs
-        // nothing to avoid. Establish WHO is asking, then look at WHAT they
-        // asked for.
+        // Check who is asking first, so a non-admin can't use this to find out which
+        // emails are registered.
         Administrator provisioner = requireAdministrator(callerEmail);
 
         rejectDuplicateEmail(request.email());
@@ -157,16 +85,9 @@ public class UserProvisioningService {
                     "Staff number " + request.staffNumber() + " is already issued to another officer.");
         }
 
-        // Resolved BEFORE the officer is built, so an unknown or closed
-        // department code is a 400 with nothing saved - not a half-created
-        // officer who serves nothing, which is the very state F6-N3 fixes.
+        // Bad department codes fail here, before anything is saved.
         Set<Department> departments = resolveDepartments(request.departmentCodes());
 
-        // Five-argument constructor, not the four-argument one: Officer.fullName
-        // is NOT NULL, so an officer built without a name is rejected at flush
-        // time with a database error rather than a useful message. The
-        // four-argument constructor is kept only for source compatibility and
-        // should not be used by new code.
         Officer officer = new Officer(
                 request.email(),
                 passwordEncoder.encode(request.password()),
@@ -175,11 +96,7 @@ public class UserProvisioningService {
                 request.fullName()
         );
 
-        // Set before the save, not after. Officer.provisionedBy is nullable, so
-        // a save with it still null would succeed and leave a row the
-        // requirement says should never exist - and nothing would fail to say
-        // so. Assigning it while the entity is still being built means the
-        // insert either carries the provisioner or does not happen.
+        // provisionedBy is nullable in the DB, so set it before saving to keep the audit record.
         officer.setProvisionedBy(provisioner);
         officer.setDepartments(departments);
 
@@ -187,24 +104,9 @@ public class UserProvisioningService {
     }
 
     /**
-     * Create a system administrator account.
-     *
-     * staffNumber is optional, matching the entity - the first administrator in
-     * a new deployment is a bootstrap account created before anybody has been
-     * issued a number, and demanding one would mean inventing a fake. It stays
-     * unique when supplied, which a SQL unique constraint expresses for free
-     * because it permits multiple NULLs.
-     *
-     * Blank is normalised to null rather than stored. An empty string is a
-     * VALUE as far as a unique constraint is concerned, so a second
-     * administrator provisioned through a form that sends "" would be rejected
-     * as a duplicate staff number - a confusing failure with no real cause.
-     *
-     * provisionedBy matters more here than on the officer path. An
-     * administrator this method creates can itself create administrators, so
-     * without the record there is no way to trace a chain of privilege back to
-     * the person who started it. The bootstrap account is the one deliberate
-     * exception - see AdminBootstrapSeeder.
+     * Creates an administrator. A blank staff number is stored as null, because "" would
+     * clash with the next blank one under the unique constraint. provisionedBy lets us
+     * trace who created each admin.
      */
     @Transactional
     public UserSummaryResponse provisionAdministrator(ProvisionAdministratorRequest request, String callerEmail) {
@@ -230,31 +132,9 @@ public class UserProvisioningService {
     }
 
     /**
-     * Replace the set of departments an existing officer serves (F6-N3).
-     *
-     * This is the repair path as much as the edit path. Every officer
-     * provisioned before departmentCodes existed has an empty set and can see
-     * no routed work; until this method existed, nothing in the application
-     * could fix that, because only the dev seeder ever wrote to
-     * officer_departments.
-     *
-     * 404 for an id that is not an officer - including an id that IS an account
-     * but a student's or an administrator's. The question being asked is "which
-     * officer?", and a student is not a wrong kind of officer, it is no officer
-     * at all. OfficerRepository.findById answers exactly that question, because
-     * under JOINED inheritance it only finds rows that exist in the officers
-     * table.
-     *
-     * The managed collection is cleared and refilled rather than replaced with
-     * a new Set. Hibernate tracks changes on the collection instance it loaded;
-     * swapping in a different object works, but makes Hibernate delete and
-     * re-insert every row, and it is the kind of detail that breaks orphan
-     * handling when a mapping later changes. Mutating in place says what is
-     * actually happening: the same officer, a different set of desks.
-     *
-     * Takes effect on the officer's NEXT request - there is no session to end.
-     * The queue reads the officer's departments from the database each time it
-     * builds a view, so nothing about the officer's login has to change.
+     * Replaces an officer's departments; also how older officers with no department get
+     * fixed. Ids that aren't officers give 404. The set is changed in place so Hibernate
+     * only writes the difference. Takes effect on the officer's next request.
      */
     @Transactional
     public UserSummaryResponse updateOfficerDepartments(Long officerId, OfficerDepartmentsRequest request) {
@@ -262,13 +142,7 @@ public class UserProvisioningService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "No officer account exists with id " + officerId + "."));
 
-        // A REMOVED officer's departments are not edited (review on PR #56).
-        // Removal is final (AppUser.markRemoved, PR #53): the row is kept so
-        // history still resolves to a name, not so it can go on being changed.
-        // Giving desks to somebody who has left would make that history say
-        // something that never happened - and would put a person who cannot
-        // sign in back into the routing, where tickets could be assigned to
-        // them. 400, not 404: the officer exists; the request is not allowed.
+        // A removed officer can't be given desks again, or tickets could be routed to them.
         if (officer.isRemoved()) {
             throw new IllegalArgumentException(
                     "This officer account was removed, so its departments can no longer be changed.");
@@ -282,41 +156,14 @@ public class UserProvisioningService {
         return UserSummaryResponse.from(officerRepository.save(officer));
     }
 
-    // ------------------------------------------------------------------
-    // Listing
-    // ------------------------------------------------------------------
-
     /**
-     * Every account in the system, optionally narrowed to one role.
-     *
-     * The filter is applied in Java rather than as a repository query, and that
-     * is a conscious trade rather than an oversight. getRole() is not a mapped
-     * column - AppUser has no role column on purpose, because under JOINED the
-     * table a row lives in IS its role (see the comment on AppUser) - so there
-     * is nothing to put in a WHERE clause. Filtering by role in the database
-     * would mean "SELECT ... FROM AppUser u WHERE TYPE(u) = Officer", which
-     * works, but needs a Class parameter rather than the Role enum the API
-     * takes, and a mapping between the two somewhere.
-     *
-     * The honest reason this is acceptable HERE and not in the dashboard queries
-     * is size. This is a bounded administrative list of user accounts, read
-     * occasionally by one administrator. The dashboard aggregates the tickets
-     * table, which is unbounded and grows every day - that is where loading rows
-     * to discard them in Java becomes the FeedbackService.summaryByCategory
-     * mistake. If the account list ever needs paging, the TYPE(u) query is the
-     * change to make, and this comment is the reason it was not made today.
-     *
-     * Note this method is @Transactional(readOnly = true) and that is now
-     * load-bearing: UserSummaryResponse.from reads the LAZY provisionedBy
-     * association, which only works while the persistence context is open. The
-     * annotation was a good habit before; it is a requirement now.
+     * Filtered in Java because role isn't a column (the table a user lives in is their
+     * role). Fine for a small admin list. Must stay in a transaction because
+     * UserSummaryResponse.from reads lazy fields.
      */
     @Transactional(readOnly = true)
     public List<UserSummaryResponse> findAll(Role role, boolean includeRemoved) {
         List<AppUser> users = appUserRepository.findAll();
-        // Removed accounts are history, not people to manage, so the default
-        // listing hides them. includeRemoved is there for the audit question
-        // "who has left?", which still needs to see them.
         if (!includeRemoved) {
             users = users.stream().filter(user -> !user.isRemoved()).toList();
         }
@@ -326,44 +173,10 @@ public class UserProvisioningService {
         return UserSummaryResponse.fromAll(users);
     }
 
-    // ------------------------------------------------------------------
-    // Suspend, restore, soft delete
-    // ------------------------------------------------------------------
-
     /**
-     * Suspend or restore any account other than your own.
-     *
-     * TWO SAFETY RULES
-     * ----------------
-     * 1. You cannot suspend yourself. This screen is for managing other people:
-     *    an administrator who deactivates their own account is signed out at once
-     *    and then needs ANOTHER administrator to bring them back. That is a
-     *    lockout caused by a misclick, and it is cheap to refuse. (An earlier
-     *    version of this method allowed it, as long as another administrator
-     *    remained; the cost of that choice was a recovery step for no benefit.)
-     * 2. The system must always have an active administrator. A deployment with
-     *    none is locked out of itself, because provisioning an administrator is
-     *    an administrator action - the only way back in would be a manual UPDATE
-     *    against the database. See requireAnotherActiveAdmin.
-     *
-     * The two rules are not the same rule. The first protects one person from a
-     * mistake; the second protects the deployment, and is the only thing that
-     * stops administrator A suspending administrator B while B suspends A.
-     *
-     * A REMOVED ACCOUNT CANNOT BE RESTORED
-     * ------------------------------------
-     * Removal is final (AppUser.markRemoved): the person has left, and the row
-     * only survives so old tickets still resolve to a name. Letting the ordinary
-     * toggle switch such an account back on would make "remove" mean the same as
-     * "suspend" again, which is the bug this rule exists to prevent.
-     *
-     * The rules live in the service rather than the controller because they are
-     * facts about the state of the system, not about HTTP. A seeder, a scheduled
-     * job or a future bulk import gets them by calling this method, and cannot
-     * route around them by using a different endpoint or verb.
-     *
-     * @param callerEmail the signed-in administrator, taken from the session so a
-     *                    client cannot claim to be someone else
+     * Suspend or restore an account. Rules: you can't suspend yourself, there must
+     * always be an active admin, and a removed account can't be restored. They live
+     * here so no other endpoint can get around them.
      */
     @Transactional
     public UserSummaryResponse setActive(Long id, boolean active, String callerEmail) {
@@ -378,9 +191,7 @@ public class UserProvisioningService {
             throw new IllegalArgumentException("Removed accounts can't be restored.");
         }
 
-        // Only deactivating an active administrator can break the invariant.
-        // Restoring an account never can, and a student or officer is not an
-        // administrator; the helper ignores those cases.
+        // Only taking away an active admin can leave the system with none.
         if (!active) {
             requireAnotherActiveAdmin(user);
         }
@@ -388,22 +199,7 @@ public class UserProvisioningService {
         user.setActive(active);
         UserSummaryResponse summary = UserSummaryResponse.from(appUserRepository.save(user));
 
-        // Throw them out of any session they are already in.
-        //
-        // Only on the way DOWN. Restoring an account has nobody to evict - the
-        // account was unusable a moment ago - and calling this on a restore
-        // would be a no-op that reads as though it does something.
-        //
-        // After the save, deliberately. If the save fails the account is still
-        // active, and ending a session someone is entitled to would be a fault
-        // of our own making rather than the suspension taking effect.
-        //
-        // Note this does not depend on WHICH account type was suspended:
-        // SessionRevoker matches on the email, and every account type
-        // authenticates with the email as its principal name (see
-        // StudentUserDetailsService, which builds the UserDetails with
-        // .username(user.getEmail()) regardless of whether the person typed
-        // their Student ID or their address).
+        // Sign them out of open sessions, only when suspending and only after the save.
         if (!active) {
             sessionRevoker.revokeAllSessionsFor(user.getEmail());
         }
@@ -412,24 +208,9 @@ public class UserProvisioningService {
     }
 
     /**
-     * DELETE /api/admin/users/{id} - the account is REMOVED, which is final.
-     *
-     * Never a hard row delete. Tickets, bookmarks, feedback and activity-log
-     * rows all carry user ids; removing the row destroys the history of every
-     * ticket that person ever handled, and on the associations that ARE real
-     * foreign keys the database would refuse the delete anyway. Instead
-     * AppUser.markRemoved() sets deletedAt (and active = false, so the account
-     * cannot authenticate - StudentUserDetailsService builds the UserDetails with
-     * .disabled(!isActive())).
-     *
-     * This is different from setActive(false) on purpose. Suspension is
-     * temporary and can be undone with the toggle; removal cannot, which is why
-     * it is a separate method rather than a delegate to setActive.
-     *
-     * The same two safety rules apply as for suspension: you cannot remove
-     * yourself, and you cannot remove the last active administrator. The second
-     * is shared with setActive through requireAnotherActiveAdmin, so choosing
-     * DELETE instead of PATCH is not a way round it.
+     * Removes an account for good. It's a soft delete (deletedAt set, active false) so
+     * tickets and logs still point at a real row. Same self and last-admin rules as
+     * setActive.
      */
     @Transactional
     public void softDelete(Long id, String callerEmail) {
@@ -441,9 +222,7 @@ public class UserProvisioningService {
             throw new IllegalArgumentException("You can't remove your own account.");
         }
 
-        // Idempotent: a second click, or a retry after a timeout, must not fail
-        // and must not rewrite when the person actually left. Nothing to revoke
-        // either - the sessions were ended the first time.
+        // Already removed: do nothing, so a retry doesn't fail or change deletedAt.
         if (user.isRemoved()) {
             return;
         }
@@ -455,45 +234,17 @@ public class UserProvisioningService {
         sessionRevoker.revokeAllSessionsFor(user.getEmail());
     }
 
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
-
-    /**
-     * Whether the account being acted on is the one signed in. Compared by email
-     * because that is what the session carries (see the controller), and
-     * case-insensitively because the sign-in form does not force a case.
-     */
+    // Compared by email (what the session holds), ignoring case.
     private boolean isCaller(AppUser target, String callerEmail) {
         return callerEmail != null && target.getEmail().equalsIgnoreCase(callerEmail);
     }
 
     /**
-     * The last-administrator invariant, shared by suspend and remove.
-     *
-     * Only an ACTIVE administrator can break it: a suspended one is not counted
-     * as available, so losing them changes nothing, and a student or officer is
-     * not an administrator at all. For those the method does nothing.
-     *
-     * THE RACE, AND WHY THE ROWS ARE LOCKED FIRST
-     * -------------------------------------------
-     * Administrator A suspends B while B suspends A. Each request asks "is there
-     * another active administrator?", each is told yes because the other is still
-     * active, and both commit: zero administrators. Checking is not enough when
-     * two checks can overlap.
-     *
-     * lockActiveAdministrators() reads every active administrator with
-     * SELECT ... FOR UPDATE. The second request blocks there until the first
-     * transaction commits, then sees the committed truth and is refused.
-     *
-     * The answer comes from the locked rows themselves, not from a separate
-     * existsBy query afterwards. A locking read always returns the latest
-     * committed data, whereas an ordinary SELECT inside the same MySQL
-     * transaction reads from a snapshot taken at its first read - before the
-     * wait - and could still report the other administrator as active. Only
-     * the ids are used, because the entities may already be in the persistence
-     * context in their older state; which rows come back is decided by the
-     * database.
+     * Stops the last active admin being suspended or removed. If admin A suspends B
+     * while B suspends A, both could see "another admin exists", so we lock the active
+     * admin rows first (pessimistic lock); the second request waits and then sees the
+     * real state. We use the locked result itself, not a separate query, so we don't
+     * read a stale snapshot.
      */
     private void requireAnotherActiveAdmin(AppUser user) {
         if (!(user instanceof Administrator) || !user.isActive()) {
@@ -509,37 +260,8 @@ public class UserProvisioningService {
     }
 
     /**
-     * The signed-in administrator, resolved from the email in the security
-     * context.
-     *
-     * WHY AppUserRepository AND NOT AdministratorRepository
-     * -----------------------------------------------------
-     * findByEmail on the supertype is polymorphic across the JOINED hierarchy:
-     * it returns whichever account type holds that address, already constructed
-     * as the right class. Querying AdministratorRepository would return empty
-     * for a student's address, which is indistinguishable from "no such
-     * account" - so an officer reaching this code would get "no account exists
-     * for the signed-in user", which is false and unhelpful. Loading the real
-     * account first lets the type check below say something true.
-     *
-     * WHY THE instanceof CHECK IS NOT REDUNDANT WITH SecurityConfig
-     * -------------------------------------------------------------
-     * SecurityConfig already restricts /api/admin/** to hasRole("ADMIN"). That
-     * guards the URL. This guards the TYPE about to be written into a column
-     * declared Administrator. They agree today; if they ever stop agreeing -
-     * a role granted by a new authentication path, a test wiring a principal
-     * directly - the failure here is a 400 with a sentence in it rather than a
-     * ClassCastException from inside Hibernate.
-     *
-     * DECISION: DUPLICATED FROM AnnouncementService, NOT EXTRACTED
-     * ------------------------------------------------------------
-     * AnnouncementService has a method of the same shape. Eight lines are
-     * duplicated, and that is deliberate for now: the two differ in the message
-     * they throw, which is the part a user reads, and a shared helper would
-     * either lose that or take a message parameter and become a worse version
-     * of both. The threshold for extracting it is a THIRD caller - at that
-     * point the pattern is established rather than coincidental, and it belongs
-     * in one package-private class in com.helpdesk.admin.
+     * Loads the caller through AppUserRepository so we get the real account type, then
+     * checks it is an Administrator before storing it as provisionedBy.
      */
     private Administrator requireAdministrator(String email) {
         AppUser user = appUserRepository.findByEmail(email)
@@ -554,35 +276,8 @@ public class UserProvisioningService {
     }
 
     /**
-     * Turn the codes an administrator picked into Department entities, refusing
-     * anything that is not a real, open desk (F6-N3).
-     *
-     * ONE QUERY, NOT ONE PER CODE
-     * ---------------------------
-     * findAllById loads every requested department in a single
-     * "WHERE code IN (...)". The request is already bounded to ten codes by
-     * @Size on the DTO, but looping findById would still be ten round trips for
-     * what the database answers in one.
-     *
-     * EVERY FAILURE NAMES THE CODE
-     * ----------------------------
-     * "Unknown department" is useless on a form with six checkboxes; "Unknown
-     * department code: ITT" tells the administrator exactly which one is wrong.
-     * All three failures are IllegalArgumentException, so they arrive as 400:
-     * the request is well-formed, but asks for something the business rules
-     * do not allow.
-     *
-     * WHY AN INACTIVE DEPARTMENT IS REFUSED
-     * -------------------------------------
-     * Department.active = false means the desk is closed - ReferenceDataService
-     * already hides inactive departments from the dropdowns. Assigning a new
-     * officer to a closed desk would recreate the original bug in a subtler
-     * form: an officer who serves "a department", and still sees no work,
-     * because nothing is routed to a desk that is closed.
-     *
-     * Codes are trimmed but not upper-cased. They are identifiers the client
-     * copies from GET /api/departments, not text a person types, so "it" is a
-     * client bug worth surfacing, not a spelling to quietly correct.
+     * Turns department codes into entities in one query. Unknown or closed departments
+     * are rejected with a 400 that names the code, since a closed desk gets no tickets.
      */
     private Set<Department> resolveDepartments(Set<String> requestedCodes) {
         Set<String> codes = new HashSet<>();

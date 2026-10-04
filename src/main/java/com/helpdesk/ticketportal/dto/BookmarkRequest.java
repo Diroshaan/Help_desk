@@ -2,16 +2,13 @@ package com.helpdesk.ticketportal.dto;
 
 import jakarta.validation.constraints.NotNull;
 
-/**
- * Request body for creating a bookmark.
- * Only ticketId and folderId are accepted - no "id" and no "studentId".
- */
+/** Request body for creating a bookmark. Only ticketId and folderId - no id or studentId. */
 public class BookmarkRequest {
 
     @NotNull(message = "Ticket ID is required")
     private Long ticketId;
 
-    // Null is a valid value - it means "not filed in any folder yet".
+    // null means not filed in a folder
     private Long folderId;
 
     public Long getTicketId() {

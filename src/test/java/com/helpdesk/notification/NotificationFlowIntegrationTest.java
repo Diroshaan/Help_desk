@@ -35,11 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * End to end: an officer changes a ticket's status through the real
- * QueueService, the event is published, the listener runs after commit,
- * and the student finds the message in their portal inbox over HTTP.
- */
+/** End to end: an officer's status change reaches the student's portal inbox after commit. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -88,7 +84,7 @@ class NotificationFlowIntegrationTest {
         t.setCategory("Network");
         t.setPriority(TicketPriority.MEDIUM);
         t.setStatus(TicketStatus.OPEN);
-        // Routed: working an unrouted ticket is refused (F4-N3).
+        // Officers can't work an unrouted ticket.
         t.setAssignedDepartmentId(department.getCode());
         return ticketRepository.save(t);
     }

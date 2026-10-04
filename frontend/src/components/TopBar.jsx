@@ -6,13 +6,7 @@ import { useSession } from '../hooks/useSession.jsx'
 import { homeFor } from '../routes.jsx'
 import { Avatar } from './Bits.jsx'
 
-/**
- * The landing page's top bar.
- *
- * It has two states. A guest sees Login and Register; someone signed in sees
- * an account chip that opens a menu with their details and the way into their
- * profile. Which one shows is decided by the session, not by the page.
- */
+/** Landing page top bar: Login/Register for guests, an account menu when signed in. */
 export function TopBar() {
   const { status, user, student, signOut } = useSession()
   const navigate = useNavigate()
@@ -21,9 +15,7 @@ export function TopBar() {
   const wrapRef = useRef(null)
   const buttonRef = useRef(null)
 
-  /* Close on a click anywhere else, and on Escape — the two things every user
-     tries first. Both listeners are removed when the menu closes, so the page
-     is not carrying handlers it does not need. */
+  /* close the menu on an outside click or Escape */
   useEffect(() => {
     if (!open) return
 
@@ -64,18 +56,11 @@ export function TopBar() {
       </Link>
 
       <nav className="topbar__nav">
-        {/* A Link with a hash, not a plain <a href="#topics">.
-            The app uses HashRouter (see App.jsx), so everything after '#' is
-            the ROUTE. A bare anchor rewrote the whole hash to '#topics', the
-            router looked for a route called '/topics', found none, and fell
-            through to the catch-all - so "Browse FAQ" quietly landed at the
-            top of the home page instead of at the topics section.
-            to="/#topics" keeps the route as '/' and puts 'topics' in the
-            hash, which ScrollToTop in App.jsx then scrolls to. */}
+        {/* Not a plain <a href="#topics">: with HashRouter that would be read as
+            a route. ScrollToTop handles the anchor. */}
         <Link to="/#topics">Browse FAQ</Link>
 
-        {/* While the session is still loading, neither state is shown. Flashing
-            "Register" at someone who is already logged in looks broken. */}
+        {/* nothing shows while the session is still loading */}
         {status === 'guest' && (
           <>
             <Link to="/login">Login</Link>

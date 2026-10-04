@@ -14,31 +14,10 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
- * OBSERVER PATTERN: an observer of F3's FeedbackSubmittedEvent.
- *
- * Tells the officer who wrote a ticket's answer that the student has rated
- * it. FeedbackService never calls this class - it only publishes the event -
- * so another reaction (e.g. flagging 1/5 ratings to a supervisor) would be a
- * new listener, with no change to FeedbackService.
- *
- * The notification itself goes through NotificationService, whose channels
- * (portal, email) are the STRATEGY pattern: the officer's own preferences
- * choose which ones run.
- *
- * Same transaction choices as notification/listener/TicketStatusNotifier:
- *
- * AFTER_COMMIT: only runs once the feedback is really saved, so an officer is
- * never told "you were rated" about feedback that rolled back.
- *
- * REQUIRES_NEW: the notification row is saved in its own transaction, so a
- * problem while notifying can't undo the student's feedback.
- *
- * fallbackExecution = true: FeedbackService.submitFeedback isn't itself
- * transactional (its saveAndFlush commits on its own), so the event is
- * published outside a transaction; without this Spring would silently drop it.
- *
- * Reads F4's ResolutionRepository read-only, as F3 already does under
- * contract C5, to find which officer wrote the answer.
+ * Observer: on FeedbackSubmittedEvent, tells the officer who answered the ticket that it was rated.
+ * AFTER_COMMIT so we never report feedback that rolled back, and REQUIRES_NEW so a
+ * failed notification can't undo the feedback. fallbackExecution because the event
+ * is published outside a transaction.
  */
 @Component
 public class FeedbackReceivedNotifier {
@@ -61,17 +40,15 @@ public class FeedbackReceivedNotifier {
         resolutionRepository.findByTicketId(event.ticketId())
                 .map(Resolution::getOfficerId)
                 .flatMap(officerRepository::findById)
-                // A suspended or removed officer can't sign in to read it, so don't write to their inbox.
+                // inactive officers can't sign in, so skip them
                 .filter(officer -> officer.isActive())
                 .ifPresent(officer -> notificationService.notify(
                         NotificationRecipient.from(officer), messageFor(event)));
     }
 
-    /** Package-visible so the wording can be checked without Spring. */
     static NotificationMessage messageFor(FeedbackSubmittedEvent event) {
         return new NotificationMessage("A student rated your answer",
                 "\"" + event.ticketSubject() + "\" was rated " + event.rating() + "/5.",
-                // The officer's view of the ticket, not the student's.
                 "#/queue/" + event.ticketId());
     }
 }

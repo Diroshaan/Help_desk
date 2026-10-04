@@ -7,7 +7,7 @@ import { Sidebar } from '../../components/Sidebar.jsx'
 export default function Bookmarks() {
   const [folders, setFolders] = useState([])
   const [bookmarks, setBookmarks] = useState([])
-  const [tickets, setTickets] = useState({})     // id -> TicketResponse
+  const [tickets, setTickets] = useState({})     // id -> ticket
   const [activeFolder, setActiveFolder] = useState('all')   // 'all' | 'none' | folderId
   const [newFolderName, setNewFolderName] = useState('')
   const [newFolderColour, setNewFolderColour] = useState('#155446')

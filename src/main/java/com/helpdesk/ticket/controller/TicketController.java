@@ -30,12 +30,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * F2 - Advanced Ticket Request Engine (Chamikara A. K, IT25102416)
- *
- * REST endpoints for a student submitting, viewing, editing and withdrawing
- * their own tickets, plus attaching supporting files to them. Every endpoint
- * resolves the acting student from the authenticated session (never from the
- * request body) - see currentStudentId, same approach as FeedbackController.
+ * Student endpoints for submitting, viewing, editing and withdrawing tickets,
+ * plus their attachments. The student always comes from the session, never the
+ * request, and another student's ticket gives 404.
  */
 @RestController
 @RequestMapping("/api/tickets")
@@ -58,18 +55,8 @@ public class TicketController {
         this.categoryRepository = categoryRepository;
     }
 
-    // Shared list of valid categories, used by the frontend to populate the
-    // create/edit ticket dropdown.
-    //
-    // CHANGED (see TicketService.requireValidCategory's "FLAG FOR F2 REVIEW"
-    // comment): this used to return the hardcoded TicketCategories.ALL, which
-    // no longer matches what TicketService actually accepts now that category
-    // validation checks the seeded common.reference.entity.Category table
-    // instead. That mismatch meant EVERY value this dropdown offered a
-    // student was rejected by POST /api/tickets with "Invalid category" -
-    // ticket submission was unconditionally broken. Reading from the same
-    // repository TicketService validates against is what makes the dropdown
-    // and the validation agree again; TicketCategories.ALL is now unused here.
+    // Categories for the ticket form dropdown, read from the same table the
+    // service validates against.
     @GetMapping("/categories")
     public List<String> categories() {
         return categoryRepository.findSelectableWithDepartment().stream()
@@ -110,10 +97,7 @@ public class TicketController {
         return TicketResponse.from(ticket);
     }
 
-    // Contract C3's timeline, over HTTP: ownership first (404 if not yours,
-    // same as every other endpoint here), then the history as it stands -
-    // see TicketHistoryService for why no past state is invented for
-    // tickets that existed before this feature merged.
+    // Ownership check first, then the timeline.
     @GetMapping("/{ticketId}/history")
     public List<TicketStatusChangeResponse> history(@PathVariable Long ticketId, Authentication authentication) {
         ticketService.getOwnedTicket(ticketId, currentStudentId(authentication));
@@ -141,12 +125,8 @@ public class TicketController {
 
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(attachment.getFileType()))
-                // Built by ContentDisposition, not by gluing strings: a name
-                // containing a quote or a line break could otherwise end the
-                // header early or inject header text, and non-English names
-                // need RFC 5987 encoding (filename*=UTF-8''...) to survive.
-                // attachment, not inline: a file someone else uploaded should
-                // download, never render inside our own page.
+                // Built with ContentDisposition so odd file names can't break or inject
+                // headers; "attachment" makes it download instead of rendering in our page.
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment()
                                 .filename(attachment.getFileName(), StandardCharsets.UTF_8)

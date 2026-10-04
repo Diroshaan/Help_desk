@@ -25,26 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * The access rules, tested against the whole running application.
- *
- * WHY THE FULL APPLICATION AND NOT A MOCK
- * ---------------------------------------
- * Who may call what is decided in two places at once: SecurityConfig's matchers
- * (checked first, in order) and the ownership checks inside the controllers.
- * A test of either alone can pass while the pair is wrong - a matcher that
- * shadows another, or a controller that forgets its check. @SpringBootTest
- * starts the real filter chain, the real controllers and an in-memory H2
- * database, so each test below sends a request exactly as a browser would and
- * checks the status the browser would get.
- *
- * The student-profile ownership guard is the one thing between this system and
- * an IDOR vulnerability (student A reading or editing student B by changing the
- * id in the URL). Until these tests existed, nothing proved it worked.
- *
- * "test" profile: skips the dev queue seeder and fixes the bootstrap admin
- * password - see src/test/resources/application-test.properties.
- */
+/** Who may call what, on the full app: SecurityConfig matchers plus the controllers' ownership checks. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -67,8 +48,7 @@ class AccessRulesIntegrationTest {
         bobId = register("bob" + SEQ.incrementAndGet() + "@my.sliit.lk", "Bob Silva");
     }
 
-    // ---- The ownership guard (IDOR) ----
-
+    // Ownership guard: changing the id in the URL must not reach another student (IDOR).
     @Test
     @DisplayName("A student can read their own profile")
     void studentReadsOwnProfile() throws Exception {
@@ -110,8 +90,6 @@ class AccessRulesIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    // ---- Role rules ----
-
     @Test
     @DisplayName("A student cannot open the officer profile endpoint")
     void studentCannotUseOfficerProfile() throws Exception {
@@ -127,16 +105,13 @@ class AccessRulesIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    // Why this test exists: HEAD used to slip past every GET-only matcher and
-    // run the handler. SecurityConfig now denies HEAD on /api/** first.
+    // HEAD must not slip past the GET-only matchers; SecurityConfig denies it on /api/**.
     @Test
     @DisplayName("HEAD cannot be used to get round an officer-only GET rule")
     void headIsDenied() throws Exception {
         mvc.perform(head("/api/articles/manage").with(user(aliceEmail).roles("STUDENT")))
                 .andExpect(status().isForbidden());
     }
-
-    // ---- Password change, end to end with real sessions ----
 
     @Test
     @DisplayName("After a password change the old password stops working and the new one works")
@@ -164,8 +139,6 @@ class AccessRulesIntegrationTest {
                         .content("{\"currentPassword\":\"Wrong1234\",\"newPassword\":\"NewSecret456\"}"))
                 .andExpect(status().isBadRequest());
     }
-
-    // ---- helpers ----
 
     private long register(String email, String fullName) throws Exception {
         String studentId = "IT" + (25000000 + SEQ.incrementAndGet());

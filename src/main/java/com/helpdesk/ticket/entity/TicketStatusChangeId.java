@@ -3,19 +3,13 @@ package com.helpdesk.ticket.entity;
 import java.io.Serializable;
 import java.util.Objects;
 
-/**
- * F2 - composite primary key for TicketStatusChange (#45).
- *
- * A weak entity's identity is its parent's key plus its own partial key, so
- * the @IdClass is exactly that pair - see TicketStatusChange's own Javadoc
- * for why there is no separate auto-increment id.
- */
+/** Composite key for TicketStatusChange: the ticket's id plus the partial key sequenceNo. */
 public class TicketStatusChangeId implements Serializable {
 
     private Long ticketId;
     private Integer sequenceNo;
 
-    public TicketStatusChangeId() {}    // Required no-argument constructor for JPA
+    public TicketStatusChangeId() {}
 
     public TicketStatusChangeId(Long ticketId, Integer sequenceNo) {
         this.ticketId = ticketId;

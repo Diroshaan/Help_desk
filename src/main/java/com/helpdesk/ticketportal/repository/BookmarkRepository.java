@@ -19,9 +19,7 @@ public interface BookmarkRepository extends JpaRepository<Bookmark, Long> {
 
     long countByStudentIdAndFolderId(Long studentId, Long folderId);
 
-    // One grouped query for every folder's bookmark count, instead of a
-    // countByStudentIdAndFolderId call per folder (N+1) when listing all of a
-    // student's folders - see BookmarkFolderResponse/BookmarkFolderService.
+    // bookmark count for every folder in one grouped query, instead of one query per folder
     @Query("SELECT b.folderId AS folderId, COUNT(b) AS count " +
             "FROM Bookmark b WHERE b.studentId = :studentId AND b.folderId IS NOT NULL " +
             "GROUP BY b.folderId")

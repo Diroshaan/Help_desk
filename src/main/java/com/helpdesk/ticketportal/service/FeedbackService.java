@@ -22,6 +22,9 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+/**
+ * Student feedback (1-5 rating and comment) on their resolved tickets, plus per-category stats.
+ */
 @Service
 public class FeedbackService {
 
@@ -29,9 +32,7 @@ public class FeedbackService {
     private final TicketRepository ticketRepository;
     private final CategoryRepository categoryRepository;
 
-    // OBSERVER PATTERN: this service is the subject. It only announces
-    // "feedback was submitted" through Spring's event publisher; it holds no
-    // reference to notifications or to whoever listens.
+    // Observer publisher: announces FeedbackSubmittedEvent without knowing who listens
     private final ApplicationEventPublisher eventPublisher;
 
     @Autowired
@@ -43,9 +44,7 @@ public class FeedbackService {
         this.eventPublisher = eventPublisher;
     }
 
-    // Submitting requires: the ticket exists and belongs to this student,
-    // the ticket is RESOLVED (feedback only makes sense once support has
-    // actually responded), and no feedback exists yet for it.
+    // Only for the student's own RESOLVED ticket, and only once per ticket.
     public Feedback submitFeedback(Long studentId, Long ticketId, Integer rating, String comment) {
         Ticket ticket = findOwnedTicket(ticketId, studentId);
 
@@ -62,11 +61,8 @@ public class FeedbackService {
         feedback.setRating(rating);
         feedback.setComment(comment);
 
-        // Same pattern as F5's ArticleBookmarkService.bookmark: the existsBy...
-        // check above gives the common case a clean message, but two submits
-        // at once can both pass it. The uq_feedback_ticket constraint rejects
-        // the second insert; saveAndFlush makes that happen inside this try,
-        // and it becomes the same 409 the check would have given.
+        // Two submits at once can both pass the check above; the unique constraint
+        // catches the second one and we turn it into the same 409.
         Feedback saved;
         try {
             saved = feedbackRepository.saveAndFlush(feedback);
@@ -74,17 +70,12 @@ public class FeedbackService {
             throw new DuplicateResourceException("Feedback has already been submitted for this ticket");
         }
 
-        // Observer: announce it, only once the save has succeeded and only
-        // for NEW feedback (updateFeedback deliberately doesn't publish, so
-        // correcting a rating never alerts the officer twice). Who reacts,
-        // and how, is FeedbackReceivedNotifier's business, not this service's.
+        // Observer: publish only for new feedback, so an edit doesn't alert the officer again
         eventPublisher.publishEvent(new FeedbackSubmittedEvent(ticketId, ticket.getSubject(), rating));
         return saved;
     }
 
-    // Updating only requires ownership - unlike submission, the ticket's
-    // status is not re-checked. Once feedback exists it can be corrected
-    // even if the ticket has since moved on (e.g. reopened).
+    // status isn't re-checked, so existing feedback can still be corrected later
     public Feedback updateFeedback(Long ticketId, Long studentId, Integer rating, String comment) {
         findOwnedTicket(ticketId, studentId);
         Feedback feedback = findByTicketId(ticketId);
@@ -99,13 +90,9 @@ public class FeedbackService {
         return findByTicketId(ticketId);
     }
 
-    // Aggregate stats across every ticket in a category: average rating,
-    // how many feedback entries exist, and a per-star (1-5) breakdown.
     public FeedbackSummaryResponse summaryByCategory(String category) {
-        // An unknown category used to return "0 ratings", which is
-        // indistinguishable from a real category nobody has rated yet. A 400 names
-        // the problem. existsByName also accepts retired categories on purpose:
-        // they still have tickets and feedback worth reporting on.
+        // Unknown category is a 400 rather than "0 ratings". Retired categories are
+        // still allowed since they have old feedback.
         if (category == null || category.isBlank() || !categoryRepository.existsByName(category)) {
             throw new IllegalArgumentException("Unknown category: " + category);
         }
@@ -133,6 +120,7 @@ public class FeedbackService {
         return new FeedbackSummaryResponse(averageRating, totalCount, ratingBreakdown);
     }
 
+    // someone else's ticket is a 404, not a 403, so ids can't be probed
     private Ticket findOwnedTicket(Long ticketId, Long studentId) {
         Ticket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));

@@ -2,7 +2,7 @@ package com.helpdesk.queue.dto;
 
 import com.helpdesk.common.user.entity.Officer;
 
-/** F4 - an officer and who supervises them (no supervisor is a normal state, so both may be null). */
+/** An officer and their supervisor; the supervisor fields are null if they have none. */
 public record OfficerSupervisorResponse(Long officerId, Long supervisorId, String supervisorName) {
 
     public static OfficerSupervisorResponse from(Officer officer) {

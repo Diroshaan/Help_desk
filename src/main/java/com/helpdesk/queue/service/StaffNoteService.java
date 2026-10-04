@@ -11,12 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- *
- * Business logic for internal officer-only notes on a ticket. Notes are not
- * author-restricted for reading or deletion - StaffNote is department-shared
- * (visible to any officer working the ticket, see StaffNote.java), not a
- * personal scratchpad, so any officer scoped to the ticket may purge one.
+ * Internal staff notes on a ticket. Notes are shared within the department, so
+ * any officer who can work the ticket may read or delete them, not just the author.
  */
 @Service
 public class StaffNoteService {
@@ -51,7 +47,6 @@ public class StaffNoteService {
         return staffNoteRepository.findByTicketIdOrderByCreatedAtDesc(ticketId);
     }
 
-    // Delete/purge
     @Transactional
     public void delete(Long officerId, Long ticketId, Long noteId) {
         queueService.getWorkableTicket(officerId, ticketId);

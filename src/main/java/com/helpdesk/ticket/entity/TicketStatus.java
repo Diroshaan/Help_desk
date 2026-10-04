@@ -1,11 +1,8 @@
 package com.helpdesk.ticket.entity;
 
 /**
- * F2 - Advanced Ticket Request Engine
- *
- * Lifecycle states a ticket moves through. Transitions (OPEN -> IN_PROGRESS ->
- * RESOLVED) are driven by the F4 Queue Engine; a student may only edit or
- * withdraw a ticket while it is still OPEN.
+ * Ticket lifecycle: OPEN -> IN_PROGRESS -> RESOLVED, moved along by officers.
+ * A student can only edit or withdraw a ticket while it is OPEN.
  */
 public enum TicketStatus {
     OPEN,

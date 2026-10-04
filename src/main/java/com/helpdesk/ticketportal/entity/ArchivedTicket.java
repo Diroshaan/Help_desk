@@ -5,9 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
 /**
- * F3 - marks a resolved ticket as archived/hidden from a student's active
- * history view. This is a soft-delete: the underlying Ticket is untouched,
- * only its visibility in the student's default list is affected.
+ * Marks a finished ticket as archived for a student. Soft hide only: the ticket itself
+ * is untouched.
  */
 @Entity
 @Table(

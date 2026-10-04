@@ -9,17 +9,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Outgoing shape for GET /api/articles/{id}.
- *
- * relatedArticles is List<ArticleSummaryResponse>, not List<Article> or
- * List<ArticleDetailResponse> - summary, not detail, which is what breaks
- * the A -> B -> A infinite recursion a self-referencing relationship would
- * otherwise cause Jackson to attempt.
- *
- * status is included even though it isn't in F5_Knowledge_Base_Spec.md
- * section 5's field list - the officer "manage" view (GET /api/articles/manage)
- * needs to show DRAFT/ARCHIVED articles too, and there is no other field on
- * this response that tells the caller which one they're looking at.
+ * Full article for GET /api/articles/{id}. Related articles use the summary shape
+ * to avoid infinite recursion. status is there for the officer manage view.
  */
 public record ArticleDetailResponse(
         Long id,
@@ -34,32 +25,15 @@ public record ArticleDetailResponse(
         LocalDateTime updatedAt
 ) {
 
-    /**
-     * "Show all" - every related article regardless of status, for the
-     * officer/admin view where managing the links (deciding whether a draft
-     * is worth pointing at yet) is exactly the point.
-     */
+    // officer view: related articles of any status
     public static ArticleDetailResponse from(Article article) {
         return from(article, false);
     }
 
     /**
-     * F5-N1 fix: a related article's own status was never checked here,
-     * only the top-level article's - so a published article linked to a
-     * draft (or one later archived) leaked the draft's title through this
-     * list, even though GET /api/articles/{draftId} itself correctly 404s
-     * for a student. {@code publishedRelatedOnly} filters relatedArticles to
-     * PUBLISHED before mapping, when true.
-     *
-     * Filtered at *read* time, not at link time - addRelated still allows
-     * linking any status, deliberately. An article PUBLISHED today can be
-     * ARCHIVED tomorrow, and a link made while both sides were published
-     * shouldn't need every existing link revisited the moment one side's
-     * status changes; checking status on every read is the simpler rule
-     * that stays correct automatically as statuses move.
-     *
-     * Must run inside the same transaction that loaded {@code article} - see
-     * the same warning on ArticleSummaryResponse.from().
+     * With publishedRelatedOnly, students only see PUBLISHED related articles, so a
+     * linked draft or archived article's title doesn't leak. Filtered on read, since
+     * statuses change after linking. Call inside the loading transaction.
      */
     public static ArticleDetailResponse from(Article article, boolean publishedRelatedOnly) {
         List<String> categoryNames = article.getCategories().stream()

@@ -23,16 +23,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * The first-run administrator seeder when the bootstrap address already exists
- * (F6-N6 part 1).
- *
- * The bug: on a database that had run before, the bootstrap account is still
- * there but suspended. The seeder saw "no ACTIVE administrator", tried to insert
- * the same email again and hit the unique constraint, so the application could
- * not start. Mockito is enough here because what is under test is the decision
- * (insert, reactivate or leave alone), not the database.
- */
+/** AdminBootstrapSeeder: insert, reactivate or leave alone when the bootstrap email already exists. */
 @ExtendWith(MockitoExtension.class)
 class AdminBootstrapSeederTest {
 

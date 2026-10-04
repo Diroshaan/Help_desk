@@ -4,9 +4,6 @@ import com.helpdesk.queue.entity.StaffNote;
 
 import java.time.LocalDateTime;
 
-/**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- */
 public class StaffNoteResponse {
 
     private final Long id;

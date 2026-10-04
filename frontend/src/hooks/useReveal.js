@@ -1,17 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * Reveals an element the first time it scrolls into view.
- *
- * Returns a ref to attach and a boolean to drive the class:
- *
- *   const [ref, shown] = useReveal()
- *   <section ref={ref} className={'reveal' + (shown ? ' is-visible' : '')}>
- *
- * It unobserves as soon as it fires, so the animation happens once rather than
- * every time the student scrolls past. Browsers without IntersectionObserver
- * are shown everything immediately — an effect that fails should never leave
- * content invisible.
+ * Returns [ref, shown]: shown turns true the first time the element scrolls
+ * into view. Runs once only. Without IntersectionObserver everything is shown
+ * straight away so nothing stays hidden.
  */
 export function useReveal(options = {}) {
   const ref = useRef(null)

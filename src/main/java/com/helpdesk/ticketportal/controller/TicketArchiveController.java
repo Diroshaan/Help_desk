@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+/** Archive and unarchive one of the student's own tickets. */
 @RestController
 @RequestMapping("/api/tickets/{ticketId}/archive")
 public class TicketArchiveController {
