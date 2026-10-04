@@ -19,13 +19,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * F2/F4 - lets a student filter and search their own tickets (by status,
- * priority, category, and a free-text keyword against subject/description),
- * with sorting and pagination.
- *
- * Every query is scoped to the requesting student's own tickets - this is
- * not a general-purpose ticket search, it must never let one student see or
- * page through another student's tickets.
+ * Search, filter, sort and page a student's own tickets. Every query is limited
+ * to that student's tickets, and archived ones are left out.
  */
 @Service
 public class StudentTicketQueryService {
@@ -36,11 +31,7 @@ public class StudentTicketQueryService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
 
-    // PageRequest multiplies page * size internally to compute an offset.
-    // Spring Data clamps neither value, so an arbitrarily large page number
-    // overflowed int and came back as a 500 (F2-N5) instead of an empty
-    // page. 10,000 pages at the max size is 1,000,000 rows - already far
-    // beyond anything a real search page would reach.
+    // Capped because page * size overflows int for huge page numbers and gave a 500.
     private static final int MAX_PAGE = 10_000;
 
     private final TicketRepository ticketRepository;

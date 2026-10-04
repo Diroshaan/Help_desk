@@ -4,7 +4,7 @@ import com.helpdesk.notification.entity.Notification;
 
 import java.time.LocalDateTime;
 
-/** What the portal inbox receives. recipientUserId is left out on purpose: it's always the caller. */
+/** Inbox item. No recipient id since it's always the caller. */
 public record NotificationResponse(Long id,
                                    String title,
                                    String body,

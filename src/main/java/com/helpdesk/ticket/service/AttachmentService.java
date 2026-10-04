@@ -17,21 +17,13 @@ import java.io.UncheckedIOException;
 import java.util.List;
 
 /**
- * F2 - Advanced Ticket Request Engine (Chamikara A. K, IT25102416)
- *
- * Business logic for files a student attaches to their own ticket (e.g. a
- * screenshot or log file). Ownership of the ticket is delegated to
- * TicketService.getOwnedTicket/getOwnedOpenTicket rather than re-checked
- * here, so there is one place that decides "does this ticket belong to this
- * student" (and, for upload/delete, "is it still open").
+ * Files attached to a ticket. Ownership checks are left to TicketService so
+ * there is only one place that decides whether a ticket belongs to a student.
  */
 @Service
 public class AttachmentService {
 
-    // NFR 5.1: attachments are restricted to PDF and standard image formats
-    // only. The allow-list is FileTypeDetector.ATTACHMENT_TYPES, shared with
-    // F4's resolution files, and it deliberately has no SVG: an SVG can carry
-    // embedded JavaScript that executes when a browser renders it.
+    // Only PDFs and images are allowed (see FileTypeDetector). No SVG, since it can contain scripts.
     private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
 
     private final AttachmentRepository attachmentRepository;
@@ -43,7 +35,7 @@ public class AttachmentService {
         this.ticketService = ticketService;
     }
 
-    // Create - only while the ticket is still OPEN (draft-stage requests only)
+    // Only while the ticket is still OPEN.
     public Attachment upload(Long studentId, Long ticketId, MultipartFile file) {
         ticketService.getOwnedOpenTicket(ticketId, studentId);
 
@@ -61,11 +53,8 @@ public class AttachmentService {
             throw new UncheckedIOException("Failed to read uploaded file", e);
         }
 
-        // The type is decided from the file's own first bytes, never from
-        // file.getContentType(): the browser's Content-Type is written by the
-        // client; the first bytes of the file are not. A renamed .exe
-        // labelled image/png would otherwise be stored and later served back
-        // to an officer as an "image".
+        // Check the file's first bytes, not the Content-Type the browser sent,
+        // so a renamed .exe can't pass as an image.
         String detectedType = FileTypeDetector.detect(bytes, FileTypeDetector.ATTACHMENT_TYPES)
                 .orElseThrow(() -> new ValidationException(
                         "Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed"));
@@ -78,16 +67,13 @@ public class AttachmentService {
         attachment.setFileType(detectedType);
         attachment.setFileSize(file.getSize());
         attachment.setData(bytes);
-        // #44, contract C8: the uploader is the SESSION's student id, never
-        // something the request could claim to be. RESOLUTION is reserved -
-        // resolution files stay on the resolutions row (F4, see AttachmentKind).
         attachment.setUploadedByUserId(studentId);
         attachment.setKind(AttachmentKind.SUBMISSION);
 
         return attachmentRepository.save(attachment);
     }
 
-    // Read - metadata only; the bytes are fetched one file at a time, on download.
+    // Metadata only; the bytes are loaded one file at a time on download.
     @Transactional(readOnly = true)
     public List<AttachmentResponse> listByTicket(Long studentId, Long ticketId) {
         ticketService.getOwnedTicket(ticketId, studentId);
@@ -100,37 +86,20 @@ public class AttachmentService {
         return findByIdAndTicketId(attachmentId, ticketId);
     }
 
-    // Officer-side reads (contract C1, issue #40). These live here, not in
-    // F4's code, so there is still one class that knows how attachments are
-    // stored. They take no student id because the officer is not the owner:
-    // F4 proves the officer's right to the ticket (department scoping) before
-    // calling, and this class proves only that the file is on that ticket.
-
-    /**
-     * The metadata (no bytes) of every file attached to a ticket, oldest first.
-     *
-     * No ownership check: the caller must already have proved access to the
-     * ticket (F4 calls QueueService.getQueuedTicket first).
-     */
+    // Officer-side reads. No ownership check here: the queue checks the
+    // officer's department before calling these.
     @Transactional(readOnly = true)
     public List<AttachmentResponse> listForTicket(Long ticketId) {
         return attachmentRepository.findMetadataByTicketId(ticketId);
     }
 
-    /**
-     * One attachment, with its bytes, for download.
-     *
-     * No ownership check: the caller must already have proved access to the
-     * ticket (F4 calls QueueService.getQueuedTicket first). Still 404 if the
-     * attachment is not on THAT ticket, so access to one ticket can't be used
-     * to read another ticket's files by changing the attachment id.
-     */
+    // Still 404 if the file isn't on this ticket, so access to one ticket
+    // can't be used to read another ticket's files.
     @Transactional(readOnly = true)
     public Attachment getForTicket(Long ticketId, Long attachmentId) {
         return findByIdAndTicketId(attachmentId, ticketId);
     }
 
-    // Delete - only while the ticket is still OPEN
     public void delete(Long studentId, Long ticketId, Long attachmentId) {
         ticketService.getOwnedOpenTicket(ticketId, studentId);
         Attachment attachment = findByIdAndTicketId(attachmentId, ticketId);

@@ -17,18 +17,9 @@ import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 /**
- * F2 - one entry in a ticket's status-change history (#45).
- *
- * A WEAK ENTITY: it cannot exist without its ticket, and its identity is the
- * pair (ticketId, sequenceNo) - see TicketStatusChangeId. sequenceNo is a
- * PARTIAL KEY, unique only within one ticket ("the 3rd change of ticket
- * 12"), and the relationship to Ticket is IDENTIFYING, because the ticket's
- * own primary key is part of this row's key. An auto-increment id was
- * deliberately not used: it would make a history row identifiable on its
- * own, independent of its ticket, and lose the natural "nth change of THIS
- * ticket" key the requirement asks for.
- *
- * fromStatus is null only for a ticket's very first row (OPEN has no "from").
+ * One entry in a ticket's status history.
+ * Weak entity with a composite key (ticketId, sequenceNo) - "the nth change of this ticket".
+ * fromStatus is null only on the first row.
  */
 @Entity
 @Table(name = "ticket_status_changes")
@@ -43,8 +34,6 @@ public class TicketStatusChange {
     @Column(name = "sequence_no")
     private Integer sequenceNo;
 
-    // @JdbcTypeCode(VARCHAR): the same ENUM-column trap as Ticket.status -
-    // see that field's comment.
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "from_status", length = 20)
@@ -55,26 +44,20 @@ public class TicketStatusChange {
     @Column(name = "to_status", nullable = false, length = 20)
     private TicketStatus toStatus;
 
-    // The student (create, withdraw) or the officer who acted; null means
-    // unknown (F4 has not yet started passing its officer id - contract C2).
+    // Student or officer who made the change; null if unknown.
     @Column(name = "changed_by_user_id")
     private Long changedByUserId;
 
     @Column(name = "changed_at", nullable = false)
     private LocalDateTime changedAt;
 
-    // Read-only: ticketId above is the writable column. This association
-    // exists only so a FRESH schema gets the foreign key straight from the
-    // entity; on the shared (Aiven) database the same key is added by the
-    // state-aware migration script instead (docs/migrations/2026-10-02),
-    // the same split used for every other ticket-side key (see
-    // docs/migrations/2026-10-01_referential_integrity.sql).
+    // Read-only link that gives a fresh schema the foreign key; ticketId is the column we write.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "ticket_id", insertable = false, updatable = false,
             foreignKey = @ForeignKey(name = "fk_status_changes_ticket"))
     private Ticket ticket;
 
-    public TicketStatusChange() {}    // Required no-argument constructor for JPA
+    public TicketStatusChange() {}
 
     public TicketStatusChange(Long ticketId, Integer sequenceNo, TicketStatus fromStatus, TicketStatus toStatus,
                                Long changedByUserId, LocalDateTime changedAt) {

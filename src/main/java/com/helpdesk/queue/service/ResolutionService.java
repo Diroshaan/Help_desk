@@ -21,28 +21,14 @@ import java.io.UncheckedIOException;
 import java.util.Optional;
 
 /**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- *
- * Business logic for an officer's official solution to a ticket. Ticket
- * ownership/department scoping is delegated to QueueService.getQueuedTicket
- * rather than re-checked here, same pattern as AttachmentService delegating
- * to TicketService.
- *
- * "Finalized" / "final closure" (create is always allowed while IN_PROGRESS;
- * edit and revoke are blocked once it has happened) is defined here as: the
- * student has left feedback on the ticket. ticketportal.entity.Feedback can
- * only be submitted for a RESOLVED ticket (see FeedbackService), and once a
- * rating exists for a specific resolution, silently changing or pulling that
- * resolution out from under it would make the feedback refer to a solution
- * that's no longer there. FeedbackRepository.existsByTicketId is the check.
+ * An officer's resolution for a ticket. Access checks are done by QueueService.
+ * Once the student has left feedback the resolution is final and can no longer
+ * be edited or revoked, so the feedback always matches the answer it rated.
  */
 @Service
 public class ResolutionService {
 
-    // Same limits as AttachmentService (ticket.service) - not extracted to a
-    // shared constant, since the two packages don't currently share any
-    // utility class and duplicating two constants is cheaper than
-    // introducing one for this alone.
+    // Same limit as student attachments.
     private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
 
     private final ResolutionRepository resolutionRepository;
@@ -59,10 +45,8 @@ public class ResolutionService {
         this.officerRepository = officerRepository;
     }
 
-    // Create - also moves the ticket to RESOLVED and stamps resolvedAt.
-    // Only while IN_PROGRESS: a ticket must be claimed (OPEN -> IN_PROGRESS,
-    // see QueueService.updateStatus) before it can be resolved, keeping the
-    // OPEN -> IN_PROGRESS -> RESOLVED order intact end to end.
+    // Also marks the ticket RESOLVED. Only allowed while IN_PROGRESS, so a
+    // ticket has to be picked up before it can be resolved.
     @Transactional
     public Resolution create(Long officerId, Long ticketId, String responseText, MultipartFile attachment) {
         Ticket ticket = queueService.getWorkableTicket(officerId, ticketId);
@@ -84,22 +68,19 @@ public class ResolutionService {
         return resolution;
     }
 
-    // Read
     @Transactional(readOnly = true)
     public Resolution getByTicketId(Long officerId, Long ticketId) {
         queueService.getQueuedTicket(officerId, ticketId);
         return findByTicketId(ticketId);
     }
 
-    // Used by the queue detail endpoint, where "no resolution yet" is a
-    // normal, non-error state rather than a 404.
+    // For the detail view, where no resolution yet is normal rather than a 404.
     @Transactional(readOnly = true)
     public Optional<Resolution> findByTicketIdOptional(Long officerId, Long ticketId) {
         queueService.getQueuedTicket(officerId, ticketId);
         return resolutionRepository.findByTicketId(ticketId);
     }
 
-    // Update - blocked once the student has left feedback (see class comment)
     @Transactional
     public Resolution edit(Long officerId, Long ticketId, String responseText, MultipartFile attachment) {
         queueService.getWorkableTicket(officerId, ticketId);
@@ -114,8 +95,7 @@ public class ResolutionService {
         return resolutionRepository.save(resolution);
     }
 
-    // Revoke - deletes the resolution and reopens the ticket to IN_PROGRESS.
-    // Same finalization guard as edit.
+    // Deletes the resolution and puts the ticket back to IN_PROGRESS.
     @Transactional
     public void revoke(Long officerId, Long ticketId) {
         Ticket ticket = queueService.getWorkableTicket(officerId, ticketId);
@@ -132,9 +112,8 @@ public class ResolutionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Resolution not found"));
     }
 
-    // Only the officer who wrote the answer (or that officer's supervisor) may
-    // change it; otherwise the response would still credit the original author
-    // with words they never wrote.
+    // Only the author or their supervisor may edit or revoke, since the answer
+    // is still credited to the author.
     private void requireAuthorOrSupervisor(Resolution resolution, Long officerId) {
         if (resolution.getOfficerId().equals(officerId)) {
             return;
@@ -177,7 +156,7 @@ public class ResolutionService {
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read uploaded file", e);
         }
-        // The type comes from the file's own bytes, never from the client's label.
+        // Type is taken from the file's bytes, not the client's label.
         String type = FileTypeDetector.detect(bytes, FileTypeDetector.ATTACHMENT_TYPES)
                 .orElseThrow(() -> new ValidationException(
                         "Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed"));

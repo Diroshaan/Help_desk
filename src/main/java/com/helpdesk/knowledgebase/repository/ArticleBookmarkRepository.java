@@ -12,8 +12,6 @@ public interface ArticleBookmarkRepository extends JpaRepository<ArticleBookmark
 
     Optional<ArticleBookmark> findByStudentIdAndArticleId(Long studentId, Long articleId);
 
-    // Caller's own bookmarks only - ArticleBookmarkController always derives
-    // studentId from the session, never from a request parameter, so this
-    // query can never be used to read another student's saved list.
+    // studentId always comes from the session, so students only see their own list
     List<ArticleBookmark> findByStudentIdOrderByCreatedAtDesc(Long studentId);
 }

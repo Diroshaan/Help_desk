@@ -13,12 +13,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Reading side of the portal channel: listing and marking notifications.
- *
- * Every method takes the caller's email from the session, never a user id
- * from the request, so nobody can read or mark someone else's inbox. A
- * notification that belongs to another user comes back as 404, not 403, the
- * same rule the rest of the project uses so ids can't be probed.
+ * Lists and marks the caller's portal notifications.
+ * The user comes from the session email, never a request id, and another user's
+ * notification gives 404 (not 403) so ids can't be probed.
  */
 @Service
 public class NotificationInboxService {

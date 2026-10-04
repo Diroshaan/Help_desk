@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/** A student's bookmarks on their own tickets, optionally filed into folders. */
 @Service
 public class BookmarkService {
 
@@ -31,9 +32,7 @@ public class BookmarkService {
 
     @Transactional
     public Bookmark createBookmark(Long studentId, Long ticketId, Long folderId) {
-        // Ownership, not mere existence: 404 for a missing ticket AND for someone else's,
-        // so the response never reveals which ticket ids exist (no enumeration).
-        // existsById alone let student A bookmark student B's ticket (IDOR, F3-N1).
+        // must be the student's own ticket; someone else's is a 404 so ids can't be probed
         ticketService.getOwnedTicket(ticketId, studentId);
         if (folderId != null) {
             requireOwnedFolder(folderId, studentId);
@@ -47,11 +46,8 @@ public class BookmarkService {
         bookmark.setTicketId(ticketId);
         bookmark.setFolderId(folderId);
 
-        // Same pattern as F5's ArticleBookmarkService.bookmark: the existsBy...
-        // check above gives the common case a clean message, but two clicks
-        // at once can both pass it. The uq_bookmark_student_ticket constraint
-        // rejects the second insert; saveAndFlush makes that happen inside
-        // this try, and it becomes the same 409 the check would have given.
+        // Two clicks at once can both pass the check above; the unique constraint
+        // rejects the second insert and we return the same 409.
         try {
             return bookmarkRepository.saveAndFlush(bookmark);
         } catch (DataIntegrityViolationException e) {
@@ -77,7 +73,6 @@ public class BookmarkService {
         return bookmark;
     }
 
-    //Moves a bookmark into a different folder, or unfiles it (folderId == null).
     @Transactional
     public Bookmark moveToFolder(Long id, Long studentId, Long folderId) {
         Bookmark bookmark = findByIdAndStudentId(id, studentId);
@@ -94,9 +89,7 @@ public class BookmarkService {
         bookmarkRepository.delete(bookmark);
     }
 
-    //findById alone would let one student file a bookmark into someone
-    //else's folder. This is the same ownership check BookmarkFolderService
-    //applies in findByIdAndStudentId, answering 404 for another student's folder.
+    // another student's folder gives 404, same as a missing one
     private void requireOwnedFolder(Long folderId, Long studentId) {
         boolean ownsFolder = bookmarkFolderRepository.findById(folderId)
                 .map(folder -> folder.getStudentId().equals(studentId))

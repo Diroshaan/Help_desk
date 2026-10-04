@@ -22,11 +22,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Business rules for authoring, publishing and browsing articles. Search has
- * its own service (ArticleSearchService) - the multi-keyword intersection
- * logic is a distinct enough concern to keep separate from create/edit/
- * publish, matching the split BookmarkService/BookmarkFolderService already
- * uses in this project for a related pair of concerns.
+ * Business rules for writing, publishing and reading articles. Search is in
+ * ArticleSearchService.
  */
 @Service
 public class ArticleService {
@@ -49,13 +46,7 @@ public class ArticleService {
         return ArticleDetailResponse.from(saved);
     }
 
-    /**
-     * Edits title/body/tags/categories. Deliberately not author-restricted -
-     * OFFICER is one shared role in this project (SecurityConfig gates by
-     * role, not by individual account), so any officer editing any article is
-     * consistent with how every other hasRole("OFFICER") endpoint here
-     * behaves. Author of record does not change on edit.
-     */
+    // Any officer can edit any article; the author stays the same.
     @Transactional
     public ArticleDetailResponse update(Long id, ArticleRequest request) {
         Article article = requireArticle(id);
@@ -63,26 +54,13 @@ public class ArticleService {
         article.setBody(request.body());
         article.setTags(normaliseTags(request.tags()));
         article.setCategories(resolveCategories(request.categoryIds()));
-        // No explicit save() - the method is @Transactional, so Hibernate's
-        // dirty checking flushes these field changes at commit. Same pattern
-        // as ticketportal's deleteFolder relying on dirty checking rather
-        // than an explicit save call.
+        // no save() needed, dirty checking writes the changes on commit
         return ArticleDetailResponse.from(article);
     }
 
     /**
-     * @param callerIsStudent when true, a DRAFT or ARCHIVED article is
-     *                         reported as 404 rather than returned - a
-     *                         student has no legitimate reason to see an
-     *                         unpublished article, and 404 (rather than 403)
-     *                         avoids confirming that an id belongs to a real,
-     *                         just-not-visible-to-you article. The same flag
-     *                         also tells ArticleDetailResponse.from() to
-     *                         filter relatedArticles to PUBLISHED only
-     *                         (F5-N1) - protecting the article itself was
-     *                         never enough on its own, since a published
-     *                         article's related list could still name a
-     *                         draft by title.
+     * Students only see PUBLISHED articles: drafts and archived ones give 404, and
+     * their related list is filtered to PUBLISHED too.
      */
     @Transactional(readOnly = true)
     public ArticleDetailResponse getById(Long id, boolean callerIsStudent) {
@@ -93,20 +71,13 @@ public class ArticleService {
         return ArticleDetailResponse.from(article, callerIsStudent);
     }
 
-    /**
-     * All statuses, any officer. Hydrated with the same fetch-join query the
-     * search path uses, so this list doesn't reintroduce the N+1 that query
-     * exists to avoid.
-     */
+    // All statuses, for officers. Uses the fetch-join query to avoid N+1.
     @Transactional(readOnly = true)
     public Page<ArticleSummaryResponse> listForManagement(Pageable pageable) {
         Page<Article> page = articleRepository.findAllByOrderByUpdatedAtDesc(pageable);
         var ids = page.getContent().stream().map(Article::getId).collect(Collectors.toList());
         var hydrated = articleRepository.findWithCategoriesAndTagsByIdIn(ids);
-        // findWithCategoriesAndTagsByIdIn doesn't preserve the page's order
-        // (IN clauses make no ordering guarantee), so look each hydrated
-        // article back up by id rather than trusting the query's row order -
-        // page.map() below walks the original, already-correctly-ordered page.
+        // the IN query doesn't keep the page order, so map back by id
         var byId = hydrated.stream()
                 .collect(Collectors.toMap(Article::getId, a -> a));
         return page.map(a -> ArticleSummaryResponse.from(byId.get(a.getId())));
@@ -122,6 +93,7 @@ public class ArticleService {
         article.setStatus(ArticleStatus.PUBLISHED);
     }
 
+    // only PUBLISHED articles can be archived
     @Transactional
     public void archive(Long id) {
         Article article = requireArticle(id);
@@ -132,19 +104,11 @@ public class ArticleService {
         article.setStatus(ArticleStatus.ARCHIVED);
     }
 
-    /**
-     * Links {@code id} -> {@code relatedArticleId}. One-directional by
-     * design - see the comment on Article.relatedArticles for why linking
-     * A -> B is not the same as also linking B -> A.
-     */
+    // links one way only: A -> B doesn't add B -> A
     @Transactional
     public void addRelated(Long id, Long relatedArticleId) {
         if (id.equals(relatedArticleId)) {
-            // A self-reference can't be stopped by the join table's own
-            // constraints (there's no "not equal to my own id" check JPA can
-            // generate across two columns of the same row), so it has to be
-            // guarded here. Left unguarded, it renders as an infinite
-            // "see also" loop in the UI.
+            // the database can't block this, so we check it here
             throw new ValidationException("An article cannot be related to itself.");
         }
         Article article = requireArticle(id);
@@ -152,12 +116,7 @@ public class ArticleService {
         article.getRelatedArticles().add(related);
     }
 
-    /**
-     * Unlinks {@code id} -> {@code relatedArticleId}. Only removes that one
-     * direction, matching addRelated only ever adding one direction -
-     * linking without a way to unlink would make a mistaken or outdated link
-     * permanent, which a "see also" list shouldn't be.
-     */
+    // removes only the A -> B direction
     @Transactional
     public void removeRelated(Long id, Long relatedArticleId) {
         Article article = requireArticle(id);
@@ -175,20 +134,13 @@ public class ArticleService {
 
     private Set<Category> resolveCategories(Set<Long> categoryIds) {
         return categoryIds.stream()
-                // requireCategory throws ResourceNotFoundException (-> 404
-                // via GlobalExceptionHandler) for an unknown id, rather than
-                // silently dropping it - an officer who mistypes a category
-                // id should see an error, not a quietly uncategorised article.
+                // an unknown id is a 404, not silently dropped
                 .map(referenceDataService::requireCategory)
                 .collect(Collectors.toCollection(HashSet::new));
     }
 
     private Set<String> normaliseTags(Set<String> tags) {
-        // trim + toLowerCase(Locale.ROOT), same as BookmarkFolder.syncNameKey()
-        // elsewhere in this project. Locale.ROOT is explicit and not
-        // incidental: on a Turkish-locale JVM, "I".toLowerCase() produces a
-        // dotless i (ı), and tags typed in English would silently stop
-        // matching each other and stop matching search terms.
+        // Locale.ROOT so a Turkish-locale server doesn't turn "I" into a dotless i
         return tags.stream()
                 .map(t -> t.trim().toLowerCase(Locale.ROOT))
                 .filter(t -> !t.isEmpty())

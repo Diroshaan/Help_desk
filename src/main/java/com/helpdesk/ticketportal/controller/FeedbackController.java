@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+/** Student feedback on their own tickets, plus the per-category summary. */
 @RestController
 public class FeedbackController {
 
@@ -51,6 +52,7 @@ public class FeedbackController {
         return FeedbackResponse.from(feedback);
     }
 
+    // officers and admins only (see SecurityConfig)
     @GetMapping("/api/feedback/summary")
     public FeedbackSummaryResponse summary(@RequestParam String category) {
         return feedbackService.summaryByCategory(category);

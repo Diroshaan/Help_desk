@@ -9,24 +9,9 @@ import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 
 /**
- * F2 - Advanced Ticket Request Engine (Chamikara A. K, IT25102416)
- *
  * A support ticket submitted by a student.
- *
- * studentId is kept as a plain Long reference (not @ManyToOne), matching the
- * same pattern used by ticketportal.entity.Feedback, so this stays decoupled
- * from the profile package.
- *
- * assignedOfficerId / assignedDepartmentId / assignedAt / resolvedAt are
- * added for F4 (common.user.entity.Officer / common.reference.entity.Department
- * own the referenced rows) - queue routing needs to live somewhere, and
- * shouldn't be reinvented separately by F2/F3/F4 given how central Ticket
- * already is to all three. assignedOfficerId keeps the same plain-Long-reference
- * pattern as studentId; assignedDepartmentId is a plain String reference instead,
- * because Department's primary key is its natural code (see Department.code),
- * not a generated Long. Together with the existing createdAt/updatedAt,
- * assignedAt and resolvedAt give F4 the timestamps it needs to render a
- * ticket's history timeline.
+ * The assigned* fields are filled in by the queue; assignedDepartmentId is a
+ * String because departments are keyed by their code.
  */
 @Entity
 @Table(name = "tickets")
@@ -48,17 +33,13 @@ public class Ticket {
     @Column(nullable = false, length = 2000)
     private String description;
 
-    // Matches categories.name (VARCHAR(120)), which this column now has a
-    // foreign key to (docs/migrations/2026-10-01_referential_integrity.sql).
+    // Foreign key to categories.name, so the length matches that column.
     @NotBlank(message = "Category is required")
     @Column(nullable = false, length = 120)
     private String category;
 
-    // @JdbcTypeCode(VARCHAR) forces MySQL to store this as varchar rather
-    // than a native ENUM column. ddl-auto=update never alters an existing
-    // column, so a plain @Enumerated(STRING) enum would make adding a fifth
-    // priority later a silent-start, every-insert-fails runtime bug rather
-    // than a schema change. Same fix as knowledgebase/entity/Article.status.
+    // Stored as VARCHAR, not a MySQL ENUM, so adding a value later doesn't
+    // break inserts (ddl-auto=update never alters an existing column).
     @NotNull(message = "Priority is required")
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
@@ -75,7 +56,7 @@ public class Ticket {
 
     private LocalDateTime updatedAt = LocalDateTime.now();
 
-    // Null until F4's queue engine assigns the ticket to an officer/department.
+    // Null until the queue assigns the ticket.
     private Long assignedOfficerId;
 
     private String assignedDepartmentId;
@@ -85,12 +66,8 @@ public class Ticket {
     // Null until the ticket reaches TicketStatus.RESOLVED.
     private LocalDateTime resolvedAt;
 
-    // Optimistic locking (F2-N2): Hibernate adds "WHERE version = ?" to every
-    // UPDATE and bumps this on save. If a student loads the ticket, then an
-    // officer's save lands first, the student's save matches zero rows and
-    // Hibernate throws ObjectOptimisticLockingFailureException instead of
-    // silently overwriting the officer's change - GlobalExceptionHandler maps
-    // that to 409. No setter: Hibernate manages this column, nobody else should.
+    // Optimistic locking: if a student and an officer save the same ticket at
+    // once, the later save fails with a 409 instead of overwriting the other.
     @Version
     @ColumnDefault("0")
     private Long version;
@@ -100,10 +77,8 @@ public class Ticket {
         this.updatedAt = LocalDateTime.now();
     }
 
-    //Constructors
-    public Ticket() {}    // Required no-argument constructor for JPA
+    public Ticket() {}
 
-    //Getters and setters
     public Long getId() {
         return id;
     }

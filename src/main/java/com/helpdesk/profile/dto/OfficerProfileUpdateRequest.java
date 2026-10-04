@@ -6,29 +6,13 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * Request body for PUT /api/officers/me (US-04).
- *
- * The same partial-update contract as the student's ProfileUpdateRequest, and
- * for the same reason: the page saves details and preferences with separate
- * buttons, so each request carries only some fields. A null field means "the
- * caller is not changing this", never "clear it".
- *
- * That is why the booleans are Boolean, not boolean. A primitive boolean cannot
- * be null - an absent field would arrive as false and silently switch the
- * officer's notifications off every time they saved their name. That exact bug
- * happened on the student profile once; this class is written so it cannot.
- *
- * What is NOT here matters as much as what is: no email, staff number, job
- * title or departments. See OfficerProfileResponse for why those are read-only.
- * A request that sends them is not rejected - Jackson ignores unknown
- * properties - it simply changes nothing, because there is nowhere for the
- * value to go.
+ * Partial update for PUT /api/officers/me: a null field means "leave it as it is".
+ * The toggles are Boolean, not boolean, so a missing field isn't read as false.
+ * There are no fields for email, staff number, job title or departments on purpose.
  */
 public class OfficerProfileUpdateRequest {
 
-    // "Not blank if present" - @Pattern treats null as valid, so an absent
-    // name passes and is skipped, while "" or "   " is rejected. @NotBlank
-    // could not tell those two apart. (The student DTO has the full story.)
+    // null passes (field skipped) but "" or spaces are rejected
     @Pattern(regexp = ".*\\S.*", message = "Full name cannot be blank")
     @Size(max = 120, message = "Full name must be 120 characters or fewer")
     private String fullName;

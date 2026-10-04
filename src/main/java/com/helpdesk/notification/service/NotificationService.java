@@ -9,18 +9,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * STRATEGY PATTERN: the context.
- *
- * Spring hands this class every bean that implements NotificationChannel
- * (right now PortalNotificationChannel and EmailNotificationChannel). For each
- * message it asks every channel "is this person subscribed to you?" and, if
- * so, "deliver it". It never checks which class it's talking to.
- *
- * Compare this with the lab's Student class: Student holds a
- * CompetitionStrategy and calls getPoints() without knowing whether it's
- * CodeFest or RoboFest. Here the strategy is chosen per user from their
- * notification preferences, and a user can have more than one switched on,
- * which is why this holds a list rather than a single field.
+ * Strategy context: Spring injects every NotificationChannel and we send through
+ * each one the recipient has switched on, without checking the concrete class.
+ * A user can have several channels on, so this holds a list.
  */
 @Service
 public class NotificationService {
@@ -34,13 +25,8 @@ public class NotificationService {
     }
 
     /**
-     * Sends the message through every channel the recipient has turned on.
-     *
-     * One broken channel mustn't stop the others. If email fails, the portal
-     * message should still arrive, so each send is wrapped on its own.
-     *
-     * @return the names of the channels that delivered it (tests use this;
-     *         an empty list means the user has everything switched off)
+     * Each send is caught separately so one failing channel doesn't stop the others.
+     * Returns the names of the channels that delivered it.
      */
     public List<String> notify(NotificationRecipient recipient, NotificationMessage message) {
         List<String> delivered = new ArrayList<>();

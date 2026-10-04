@@ -14,11 +14,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Read-only, student-facing endpoints. Both fall through to
- * .anyRequest().authenticated() in SecurityConfig - correct, since published
- * articles are for logged-in students, and there's nothing here an officer
- * or admin shouldn't also be able to call. The create/edit/publish/archive
- * endpoints live in ArticleAdminController, gated to hasRole("OFFICER").
+ * Read-only article endpoints for any logged-in user. Writing articles is in
+ * ArticleAdminController.
  */
 @RestController
 public class ArticleController {
@@ -31,16 +28,7 @@ public class ArticleController {
         this.articleService = articleService;
     }
 
-    /**
-     * GET /api/articles?q=&category=&page=0&size=20 - PUBLISHED only. Both
-     * q and category are optional; q missing means "everything published",
-     * not an error (F5_Knowledge_Base_Spec.md section 6).
-     *
-     * page and size are clamped (F5-N3) before PageRequest.of() ever sees
-     * them - page to 0-10,000, size to 1-50 - so a request for size=2000000
-     * or a negative page can't force a disproportionate amount of work back
-     * through ArticleSearchService.
-     */
+    // Search published articles. q and category are optional; page and size are clamped.
     @GetMapping("/api/articles")
     public Page<ArticleSummaryResponse> list(
             @RequestParam(required = false) String q,
@@ -51,24 +39,13 @@ public class ArticleController {
                 PageRequest.of(PageBounds.clampPage(page), PageBounds.clampSize(size)));
     }
 
-    /**
-     * GET /api/articles/{id} - 404 if absent, or if the article is DRAFT/
-     * ARCHIVED and the caller is a student (ArticleService.getById enforces
-     * this). An officer or admin sees any status, which is what lets an
-     * officer preview a draft through the same endpoint the student app uses.
-     */
+    // Students get 404 for drafts and archived articles; officers and admins see any status.
     @GetMapping("/api/articles/{id}")
     public ArticleDetailResponse getById(@PathVariable Long id, Authentication authentication) {
         return articleService.getById(id, isStudentOnly(authentication));
     }
 
-    /**
-     * True only when the caller has no OFFICER or ADMIN authority. Officers
-     * provisioned through F6 and administrators both need to see unpublished
-     * articles through this same path (an officer previewing their own
-     * draft), so the restriction is "student and nothing else", not "not an
-     * officer".
-     */
+    // true unless the caller has the OFFICER or ADMIN role
     private boolean isStudentOnly(Authentication authentication) {
         return authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)

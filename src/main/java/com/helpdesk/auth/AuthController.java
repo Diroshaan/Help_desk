@@ -29,10 +29,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * F7 - Login/logout endpoints (shared/cross-cutting).
- *
- * POST /api/auth/login  { "email": "...", "password": "..." }  -> creates a session
- * POST /api/auth/logout                                        -> ends the session
+ * Login, logout, "who am I" and password change for every account type.
+ * Login is done by hand (no formLogin), so session fixation protection and session
+ * registration are done here explicitly.
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -40,42 +39,17 @@ public class AuthController {
 
     private final AuthenticationManager authenticationManager;
 
-    /**
-     * Resolves a login email to an account of ANY type. Deliberately not
-     * StudentRepository - see the comment on me() below for what that choice
-     * was costing.
-     */
     private final AppUserRepository appUserRepository;
 
-    /**
-     * Records each new session against its user so SessionRevoker can end it
-     * later. See the note in the login method for why this has to be done by
-     * hand here.
-     */
+    // Lets SessionRevoker find and end this user's sessions later.
     private final SessionRegistry sessionRegistry;
 
-    /**
-     * Used only to record a successful sign-in on the student's activity log
-     * (F1 - "Dashboard & Activity View").
-     *
-     * This is the one place outside com.helpdesk.profile that writes to the log,
-     * and it is here rather than in StudentService because this is where the
-     * event actually happens - only this class knows that an authentication
-     * attempt succeeded. Recording it from anywhere else would mean inferring a
-     * login from something that is not one.
-     *
-     * The dependency points from auth into profile, which is the direction that
-     * already exists (StudentUserDetailsService reads Student), so this adds no
-     * new coupling between packages.
-     */
+    // Records successful logins on the student's activity log.
     private final ActivityLogService activityLogService;
 
-    /** Password change for every account type - see changePassword() below. */
     private final PasswordService passwordService;
 
-    // Handles actually persisting the authenticated user into the HTTP session,
-    // so subsequent requests (with the same session cookie) are recognised as
-    // logged in without needing to send the password again.
+    // Saves the login into the HTTP session so later requests stay signed in.
     private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
 
     @Autowired
@@ -91,7 +65,7 @@ public class AuthController {
         this.passwordService = passwordService;
     }
 
-    // A simple record for the JSON request body: { "email": "...", "password": "..." }
+    // email may also be a Student ID
     public record LoginRequest(String email, String password) {}
 
     @PostMapping("/login")
@@ -103,33 +77,9 @@ public class AuthController {
                     new UsernamePasswordAuthenticationToken(request.email(), request.password())
             );
 
-            // SESSION FIXATION DEFENCE - this one line, and why it matters.
-            //
-            // changeSessionId() requires an existing session - it throws
-            // IllegalStateException otherwise. In apps where CSRF protection is
-            // active, Spring creates one before login for exactly that reason
-            // (to hold CSRF state); this app disables CSRF (see SecurityConfig),
-            // so nothing touches the session before this point, and one has to
-            // be created explicitly here first.
-            //
-            // getSession(true) creates a session if none exists yet (a no-op if
-            // one already does), so this is safe to call unconditionally
-            // regardless of what ran before it.
-            //
-            // The attack changeSessionId() defends against: plant a known
-            // session id in a victim's browser first (a link carrying it, an
-            // XSS on any page of the site, a shared machine), wait for them to
-            // log in normally, and the attacker's pre-known id is now a valid
-            // authenticated session for that victim's account. The attacker
-            // never needs the password.
-            //
-            // changeSessionId() issues a new id and copies the session's
-            // contents across, so whatever the attacker planted is now
-            // worthless. Spring's built-in formLogin does this automatically;
-            // this endpoint authenticates manually, so it has to do it
-            // explicitly - and it must happen AFTER authenticate() succeeds and
-            // BEFORE the security context is saved, or the context would be
-            // written to the old id.
+            // Session fixation defence: give the session a new id after login, so an id planted
+            // by an attacker before login is useless. CSRF is off, so no session exists yet and we
+            // create one first (changeSessionId() needs one).
             httpRequest.getSession(true);
             httpRequest.changeSessionId();
 
@@ -137,68 +87,21 @@ public class AuthController {
             context.setAuthentication(authentication);
             SecurityContextHolder.setContext(context);
 
-            // Without this line, the login would succeed for this one request only -
-            // the session wouldn't remember it on the next request.
             securityContextRepository.saveContext(context, httpRequest, httpResponse);
 
-            // REGISTER THE SESSION, so it can be ended from outside this request.
-            //
-            // Spring normally does this for you - SessionAuthenticationStrategy
-            // runs inside the form-login filter and registers the session as a
-            // side effect of authenticating. This endpoint authenticates by
-            // hand, so that filter never runs and nothing registers anything.
-            //
-            // The failure without this line is the quiet kind: SessionRevoker
-            // would loop over an empty registry, find nothing, and return
-            // successfully. Suspending an account would report success and the
-            // suspended user would carry on working. Nothing would appear in a
-            // log. So this line is load-bearing despite looking like bookkeeping
-            // - see auth/SessionRevoker.java.
-            //
-            // Registered AFTER changeSessionId(), or the id recorded here would
-            // be the one that was just discarded.
+            // Spring only registers sessions in formLogin, so we do it here; without it SessionRevoker
+            // silently finds nothing. Must come after changeSessionId() so the new id is recorded.
             sessionRegistry.registerNewSession(
                     httpRequest.getSession().getId(), authentication.getPrincipal());
 
-            // Recorded AFTER the session is established, and deliberately using
-            // the "quietly" variant that swallows its own failures.
-            //
-            // By this point the student IS logged in - authentication succeeded
-            // and the session exists. Letting a failed INSERT propagate would
-            // turn that into a 500 and shut them out of an account they have
-            // just proved they own, over a bookkeeping row. The event is worth
-            // recording; it is not worth denying access over. See
-            // ActivityLogService.recordLoginQuietly() for the contrast with
-            // the profile-update entries, which deliberately do NOT swallow.
-            //
-            // authentication.getName() is the email the account authenticated
-            // with, which is what the log needs to find the student - note the
-            // student may have typed their Student ID instead (see
-            // StudentUserDetailsService), so request.email() is not reliable
-            // here and the authenticated principal is.
+            // "Quietly" so a failed log write can't turn a successful login into a 500. Uses the
+            // principal name (always the email) because the student may have typed a Student ID.
             activityLogService.recordLoginQuietly(authentication.getName());
 
-            // Returns the account, not the string "Login successful".
-            //
-            // The old plain-text body was not wrong so much as useless: the
-            // frontend has to decide where to send someone the instant they log
-            // in - a student to their profile, an officer to the queue, an
-            // administrator to the dashboard - and a success message carries
-            // none of the information that decision needs. It had to make a
-            // second request to find out, and the only endpoint that answered
-            // ("who am I") worked for students alone.
-            //
-            // Returning the same body as GET /me means one round trip, one
-            // response shape to handle, and no separate code path that can
-            // disagree with the other one about who is signed in.
+            // Same body as GET /me, so the frontend can route by role straight away.
             return ResponseEntity.ok(currentUser(authentication.getName()));
         } catch (DisabledException e) {
-            // Thrown by DaoAuthenticationProvider because StudentUserDetailsService
-            // builds the UserDetails with .disabled(!student.isActive()) - so an
-            // account that self-deactivated (see StudentService.deactivate) fails
-            // authentication here even with the correct password. Without this
-            // catch block, DisabledException would fall through as an unhandled
-            // exception and surface as a generic 500 instead of a clear rejection.
+            // correct password but the account is inactive (.disabled() in StudentUserDetailsService)
             return ResponseEntity.status(401).body("This account has been deactivated");
         } catch (BadCredentialsException e) {
             return ResponseEntity.status(401).body("Invalid Student ID, email or password");
@@ -206,47 +109,12 @@ public class AuthController {
     }
 
     /**
-     * Who is logged in right now - for ANY account type.
-     *
-     * This is the endpoint the frontend's session hook should call on startup,
-     * and the reason it had to be written. The existing GET /api/students/me
-     * resolves the caller through StudentService, which searches the students
-     * table and nothing else, so an officer or administrator authenticated
-     * perfectly well and then got 403 from it. useSession.jsx treats a 403 there
-     * as "guest", so staff logged in and were immediately shown as signed out -
-     * which made every officer and admin screen impossible to build or test,
-     * even though the endpoints behind them were finished and merged.
-     *
-     * Why it belongs in AuthController rather than in a new SessionController or
-     * alongside the student endpoints: the question "who is this session" is
-     * about authentication, not about any one feature's data. Putting it under
-     * /api/students said, structurally, that only students have sessions - and
-     * that assumption is exactly what broke.
-     *
-     * 401, not 403, when the session is gone. Spring answers an anonymous
-     * request to a protected path with 403 because neither formLogin nor
-     * httpBasic is enabled (see SecurityConfig), and that is fine for endpoints
-     * generally - but this one is specifically asked in order to find out
-     * whether a session exists. 401 says "you are not authenticated", which is
-     * the actual answer; 403 says "you are, but you may not", which is not.
-     *
-     * The empty case is reachable in practice: the session outlives the account
-     * when an administrator deactivates a user, or a student deletes their own
-     * profile, while their browser still holds a valid cookie.
+     * Current user for any account type; the frontend calls this on startup.
+     * Returns 401 (not 403) when there is no session or the account no longer exists.
      */
     @GetMapping("/me")
     public ResponseEntity<CurrentUserResponse> me(Authentication authentication) {
-        // Three ways there is nobody here, and all three mean the same 401.
-        //
-        // The AnonymousAuthenticationToken case is the one that is easy to miss:
-        // because this path is permitAll (see SecurityConfig), Spring supplies an
-        // anonymous token rather than null, and that token reports
-        // isAuthenticated() == true. Checking only for null would therefore let a
-        // logged-out visitor through to the lookup below with the principal name
-        // "anonymousUser". It would still come back empty and still produce a
-        // 401 - but by accident, because no account happens to have that email.
-        // Saying so explicitly means the behaviour does not depend on that
-        // coincidence.
+        // permitAll path, so a logged-out visitor arrives with an anonymous token, not null.
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || authentication instanceof AnonymousAuthenticationToken) {
@@ -258,44 +126,14 @@ public class AuthController {
                 : ResponseEntity.ok(user);
     }
 
-    /**
-     * Resolve a login email to the account behind it, whatever type it is.
-     *
-     * Goes through AppUserRepository, not StudentRepository, and that single
-     * choice is the whole fix: AppUser is the root of a JOINED hierarchy, so
-     * this query is polymorphic - Hibernate returns a Student, an Officer or an
-     * Administrator already constructed as the right class, and
-     * CurrentUserResponse.from() asks it for its role and its display name
-     * without needing to know which it got.
-     *
-     * Returns null rather than throwing, because "no account for this session"
-     * is an expected state here (see the comment on me() above), not an error
-     * worth an exception and a stack trace.
-     */
+    // null when the session's account has been deleted - an expected case, not an error.
     private CurrentUserResponse currentUser(String email) {
         return appUserRepository.findByEmail(email)
                 .map(CurrentUserResponse::from)
                 .orElse(null);
     }
 
-    /**
-     * Change the signed-in account's password - students, officers and
-     * administrators alike. See PasswordService for the rules and why each one
-     * exists.
-     *
-     * PUT rather than POST: the request replaces one well-defined value on an
-     * existing resource and sending it twice leaves the same end state (the
-     * second attempt fails the "must differ from current" rule, changing
-     * nothing), which is what PUT promises.
-     *
-     * Access: /api/auth/login and /api/auth/me are the only permitAll paths
-     * under /api/auth, so this one falls to anyRequest().authenticated() in
-     * SecurityConfig - an anonymous caller gets 403 before reaching here.
-     *
-     * 204 No Content on success: there is nothing to send back, and returning
-     * the account would mean one more place a password hash could leak from if
-     * a DTO were ever swapped for an entity.
-     */
+    // Any signed-in user; rules are in PasswordService. 204 so nothing about the account is returned.
     @PutMapping("/password")
     public ResponseEntity<Void> changePassword(@Valid @RequestBody PasswordChangeRequest request,
                                                Authentication authentication,
@@ -308,14 +146,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<String> logout(HttpServletRequest request) {
-        // Deliberately NOT logged.
-        //
-        // A sign-out is not something a student needs to check up on: it is
-        // never surprising and never evidence of anything. Every login already
-        // implies the previous session ended, so recording both would double
-        // the size of the busiest part of the history while halving how much
-        // of it is worth reading. If suspicious-activity review is ever a
-        // requirement, this is where it would be added.
+        // Logouts aren't written to the activity log on purpose; logins are enough.
         HttpSession session = request.getSession(false);
         if (session != null) {
             session.invalidate();

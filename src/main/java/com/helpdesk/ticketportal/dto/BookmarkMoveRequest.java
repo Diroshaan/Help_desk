@@ -1,11 +1,6 @@
 package com.helpdesk.ticketportal.dto;
 
-/**
- * Request body for moving a bookmark into a different folder .
- *
- * folderId deliberately has no @NotNull - null is a valid, meaningful value
- * here: it unfiles the bookmark rather than assigning it to a folder.
- */
+/** Request body for moving a bookmark. A null folderId unfiles it, so there is no @NotNull. */
 public class BookmarkMoveRequest {
 
     private Long folderId;

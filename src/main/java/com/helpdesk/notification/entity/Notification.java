@@ -14,19 +14,9 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 
 /**
- * One message in a user's portal inbox, written by PortalNotificationChannel.
- *
- * recipientUserId is a plain id, not a @ManyToOne to AppUser. Ticket.studentId
- * and Resolution.officerId use the same approach. A notification is a record
- * of something we said to someone at a point in time. It shouldn't drag the
- * whole user row along every time the inbox is listed, and it should still
- * read correctly if the account is later deactivated.
- *
- * readAt null means unread. A timestamp instead of a boolean costs nothing
- * extra and answers "when did they see it" if anyone ever asks.
- *
- * The index covers the one query the inbox runs: "this user's notifications,
- * newest first".
+ * One message in a user's portal inbox, saved by PortalNotificationChannel.
+ * recipientUserId is a plain id (not @ManyToOne) so listing the inbox doesn't load users.
+ * readAt == null means unread.
  */
 @Entity
 @Table(name = "notifications",
@@ -63,7 +53,6 @@ public class Notification {
     private LocalDateTime readAt;
 
     protected Notification() {
-        // for JPA
     }
 
     public Notification(Long recipientUserId, String title, String body, String link) {

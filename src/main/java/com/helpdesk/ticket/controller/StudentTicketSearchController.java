@@ -18,9 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * F3 - exposes StudentTicketQueryService over HTTP. Kept as its own
- * controller (rather than a method on TicketController) so it doesn't
- * collide with F2's ticket CRUD endpoints in that file.
+ * Search endpoint for a student's own tickets (see StudentTicketQueryService).
  */
 @RestController
 @RequestMapping("/api/tickets")

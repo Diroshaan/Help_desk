@@ -2,16 +2,7 @@ package com.helpdesk.queue.dto;
 
 import java.util.List;
 
-/**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- *
- * Response for GET /api/queue/{ticketId}: the ticket itself (whose
- * createdAt/assignedAt/resolvedAt/updatedAt fields already form its
- * history timeline), its resolution if one has been posted yet, and every
- * staff note left on it. A composition of the other three response DTOs
- * rather than a new flat shape, so each stays reusable on its own (e.g.
- * TicketQueueResponse alone for the list endpoint).
- */
+/** One queued ticket with its resolution (null if none yet) and staff notes. */
 public class TicketQueueDetailResponse {
 
     private final TicketQueueResponse ticket;

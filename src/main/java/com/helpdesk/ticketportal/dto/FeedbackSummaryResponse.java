@@ -2,10 +2,7 @@ package com.helpdesk.ticketportal.dto;
 
 import java.util.Map;
 
-/**
- * Aggregate feedback stats, e.g. across a department or all tickets.
- * ratingBreakdown maps each star value (1-5) to how many feedback entries gave that rating.
- */
+/** Aggregate feedback stats. ratingBreakdown maps each star value (1-5) to its count. */
 public class FeedbackSummaryResponse {
 
     private final double averageRating;

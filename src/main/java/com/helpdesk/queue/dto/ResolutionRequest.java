@@ -3,20 +3,9 @@ package com.helpdesk.queue.dto;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- *
- * Request body for posting or editing a ticket's resolution
- * (POST/PUT /api/queue/{id}/resolution). Bound from a multipart/form-data
- * request via @ModelAttribute rather than @RequestBody, since it optionally
- * carries a supporting file - the same reason TicketController's attachment
- * upload takes a MultipartFile parameter instead of JSON.
- *
- * responseText is deliberately NOT annotated with @NotBlank/@Valid here:
- * for a @ModelAttribute argument (unlike @RequestBody), a failed @Valid
- * throws BindException, which GlobalExceptionHandler has no mapping for
- * and would surface as an unhandled 500 instead of a clean 400.
- * ResolutionService validates responseText and the attachment manually
- * instead, the same way AttachmentService validates its MultipartFile.
+ * Multipart form for posting or editing a resolution (it can carry a file).
+ * No @NotBlank here: ResolutionService checks the text itself, because a failed
+ * @Valid on a form object would come back as a 500 rather than a 400.
  */
 public class ResolutionRequest {
 

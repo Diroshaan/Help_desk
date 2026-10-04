@@ -8,23 +8,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Outgoing shape for search results and the officer "manage" list.
- * Deliberately thin - no body, no relatedArticles - because this is what
- * ArticleDetailResponse embeds for relatedArticles, and a full Article-shaped
- * DTO inside another one is exactly the A -> B -> A recursion this class
- * exists to stop (F5_Knowledge_Base_Spec.md section 5).
- *
- * Includes authorName even though F5_Knowledge_Base_Spec.md section 5 lists
- * it only on the detail response - F5_Build_Guide.md section 2 (the more
- * recent, step-by-step companion doc) lists it here too, and showing who
- * wrote a guide in a search results list is a reasonable thing for a help
- * desk FAQ to show. Flagged as a documented choice where the two source
- * documents disagreed, not an oversight.
- *
- * Never built outside a transaction: article.getAuthor(), .getTags() and
- * .getCategories() are all LAZY, so from()/fromAll() must run inside the
- * @Transactional service method that loaded the Article, never after the
- * controller has already returned.
+ * Short article shape for search results, the manage list and related articles.
+ * Has no body or related list, so related articles can't recurse A -> B -> A.
+ * Build it inside the service transaction, since author, tags and categories are lazy.
  */
 public record ArticleSummaryResponse(
         Long id,

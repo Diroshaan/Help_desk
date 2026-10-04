@@ -38,14 +38,8 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- *
- * REST endpoints for officers working the support queue. Every endpoint
- * resolves the acting officer from the authenticated session (never from
- * the request body) - see currentOfficerId, same approach as
- * TicketController.currentStudentId. This path is already restricted to
- * hasRole("OFFICER") by SecurityConfig; QueueService additionally scopes
- * every lookup to the caller's own department (see its class comment).
+ * Officer endpoints for the support queue. The officer comes from the session,
+ * and QueueService limits every lookup to the officer's own departments.
  */
 @RestController
 @RequestMapping("/api/queue")
@@ -70,7 +64,7 @@ public class QueueController {
         this.ticketHistoryService = ticketHistoryService;
     }
 
-    // List/filter (departmentId/status) or search (studentId) the queue.
+    // Filter by department/status, or search by studentId.
     @GetMapping
     public List<TicketQueueResponse> list(@RequestParam(required = false) String departmentId,
                                            @RequestParam(required = false) TicketStatus status,
@@ -83,7 +77,6 @@ public class QueueController {
         return tickets.stream().map(TicketQueueResponse::from).toList();
     }
 
-    // Detail + history (the ticket's own timestamps) + resolution + notes.
     @GetMapping("/{ticketId}")
     public TicketQueueDetailResponse getOne(@PathVariable Long ticketId, Authentication authentication) {
         Long officerId = currentOfficerId(authentication);
@@ -139,7 +132,6 @@ public class QueueController {
         return ResponseEntity.noContent().build();
     }
 
-    // The officer's own resolution file (students use /api/tickets/{id}/resolution/attachment).
     @GetMapping("/{ticketId}/resolution/attachment")
     public ResponseEntity<byte[]> downloadResolutionAttachment(@PathVariable Long ticketId,
                                                                  Authentication authentication) {
@@ -151,7 +143,7 @@ public class QueueController {
                 resolution.getAttachmentData());
     }
 
-    // The student's attachments, scoped by the officer's department first.
+    // Department check first, then the student's files.
     @GetMapping("/{ticketId}/attachments")
     public List<AttachmentResponse> listAttachments(@PathVariable Long ticketId, Authentication authentication) {
         queueService.getQueuedTicket(currentOfficerId(authentication), ticketId);
@@ -166,16 +158,14 @@ public class QueueController {
         return fileResponse(attachment.getFileType(), attachment.getFileName(), attachment.getData());
     }
 
-    // The ticket's status timeline (F2's history), scoped by department first.
     @GetMapping("/{ticketId}/history")
     public List<TicketStatusChangeResponse> history(@PathVariable Long ticketId, Authentication authentication) {
         queueService.getQueuedTicket(currentOfficerId(authentication), ticketId);
         return ticketHistoryService.listForTicket(ticketId);
     }
 
-    // attachment, not inline: a file someone else uploaded should download, never
-    // render inside our own page. ContentDisposition builds the header safely
-    // (quotes, line breaks, non-English names).
+    // ContentDisposition builds the header safely for any file name, and
+    // "attachment" makes the file download instead of rendering in our page.
     private ResponseEntity<byte[]> fileResponse(String type, String name, byte[] data) {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(type))
@@ -200,12 +190,7 @@ public class QueueController {
         return ResponseEntity.noContent().build();
     }
 
-    // Officer accounts are now a shared common.user.entity.Officer row (see
-    // that class's javadoc) rather than a Student with role=OFFICER, so the
-    // current officer's id is resolved by looking up the polymorphic AppUser
-    // by login email and confirming the row that comes back is actually an
-    // Officer - not, say, a Student or Administrator who somehow reached an
-    // OFFICER-only endpoint.
+    // The logged-in user must actually be an Officer, not another kind of account.
     private Long currentOfficerId(Authentication authentication) {
         AppUser user = appUserRepository.findByEmail(authentication.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("Logged-in officer not found"));

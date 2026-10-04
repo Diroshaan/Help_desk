@@ -6,12 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
 /**
- * F4 - Ticket Resolution & Queue Engine (Weerabaddana)
- *
- * An internal note an officer leaves on a ticket, never shown to the
- * student - only to officers working the queue. Many-to-one with Ticket,
- * kept as a plain ticketId Long reference (matching Ticket.studentId)
- * rather than a JPA relation.
+ * An internal note an officer leaves on a ticket. Only officers see these,
+ * never the student.
  */
 @Entity
 @Table(name = "staff_notes")
@@ -35,10 +31,8 @@ public class StaffNote {
 
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    //Constructors
-    public StaffNote() {}    // Required no-argument constructor for JPA
+    public StaffNote() {}
 
-    //Getters and setters
     public Long getId() {
         return id;
     }

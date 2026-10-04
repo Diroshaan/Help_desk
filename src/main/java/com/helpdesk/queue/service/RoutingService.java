@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * F4 - category-based routing (WBHD-25).
+ * Routes a new ticket to a department based on its category.
  */
 @Service
 public class RoutingService {
@@ -18,9 +18,8 @@ public class RoutingService {
         this.categoryRepository = categoryRepository;
     }
 
-    // Category-based routing (Requirement Spec, System Limitations): every category belongs
-    // to exactly one department, so a ticket goes to that department's queue on arrival.
-    // Ownership WITHIN the department stays manual (pick-up / assign).
+    // Each category belongs to one department. Who owns the ticket inside that
+    // department is still decided by pick-up or assign.
     @Transactional(readOnly = true)
     public String departmentFor(String categoryName) {
         return categoryRepository.findByNameWithDepartment(categoryName)

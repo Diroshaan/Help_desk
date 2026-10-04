@@ -17,73 +17,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * F6 - System Analytics, Provisioning & Announcements
- *
- * The real-time executive dashboard (WBHD-37).
- *
- * Requirement specification 3.1: "Generate real-time executive dashboard
- * reports: total ticket volume, queue backlogs, average resolution times, SLA
- * breach metrics."
- * Requirement specification 3.2: "The system must derive dashboard metrics
- * rather than storing them as separate values."
- *
- *
- * NOTHING HERE IS STORED
- * ----------------------
- * There is no dashboard_stats table and no ticketCount column. Every number is
- * a query against the rows themselves, run when the endpoint is called. That is
- * the requirement, and it is the requirement for a reason worth being able to
- * state: a stored count is a second copy of a fact that can disagree with the
- * first, and it disagrees SILENTLY - the moment a ticket is deleted or a status
- * changes through a code path that forgets the counter, the dashboard starts
- * lying and nothing compares it against reality to notice. Deriving costs a few
- * aggregate queries per page load and cannot drift.
- *
- * The cost is real and worth naming honestly: on a very large tickets table
- * these GROUP BYs get slower, and the usual answer then is a materialised view
- * or a nightly rollup - which is a stored copy, kept correct by the database
- * rather than by application code. That is a different design with a different
- * guarantee, not the thing this requirement forbids.
- *
- * AVERAGE RESOLUTION TIME IS AVERAGED IN JAVA
- * -------------------------------------------
- * The average comes from Ticket.resolvedAt, which is set when a resolution is
- * posted and cleared if it is revoked. The subtraction happens here rather than
- * in the query because timestamp arithmetic in JPQL is not portable between H2
- * and MySQL. With no resolved tickets the value is null rather than 0.0, so the
- * dashboard never reports a made-up "excellent" figure.
- *
- * readOnly = true on the one public method: nothing in it writes, Hibernate can
- * skip dirty-check snapshots of anything it loads, and an accidental setter
- * call could not reach the database if somebody added one.
+ * Builds the admin dashboard. Every number is queried from the ticket and user rows when
+ * asked for; nothing is stored, so the figures can't drift out of date (requirement 3.2).
  */
 @Service
 public class DashboardService {
 
     /**
-     * THE SLA DEFINITION. Invented here, deliberately, and defensible.
-     *
-     * The requirement specification asks for "SLA breach metrics" and never
-     * defines a breach anywhere. A number with no definition behind it is not a
-     * metric - two people reading the same dashboard would mean different things
-     * by it - so F6 picks a rule, writes it down in one place, and stands behind
-     * it. An invented rule that can be explained beats a number that cannot.
-     *
-     * The rule: a ticket is BREACHED when it is still unresolved and older than
-     * the target for its priority.
-     *
-     * Priority-weighted rather than one flat deadline, because a flat deadline
-     * would make the same promise about an urgent account lockout and a
-     * low-priority question about opening hours, and no support desk works that
-     * way. The specific hours are a judgement - one working day for HIGH, three
-     * for MEDIUM - chosen to be plausible for a university help desk rather than
-     * derived from anything; they are constants here so that changing them is a
-     * one-line change with no query to rewrite.
-     *
-     * An EnumMap rather than a HashMap: the keys are enum constants, so the
-     * lookup is an array index rather than a hash, and adding a fifth priority
-     * without adding it here shows up as a missing key at startup rather than as
-     * a quietly wrong number.
+     * Our SLA rule (the spec doesn't define one): a ticket is breached when it is still
+     * unresolved and older than the target hours for its priority. Change the numbers
+     * here and the query picks them up.
      */
     private static final Map<TicketPriority, Integer> SLA_TARGET_HOURS =
             new EnumMap<>(Map.of(
@@ -93,14 +36,7 @@ public class DashboardService {
                     TicketPriority.LOW, 120
             ));
 
-    /**
-     * The states that still count as work in progress.
-     *
-     * WITHDRAWN is excluded alongside RESOLVED, and that is a choice with a
-     * reason: a student who withdrew their own ticket was not let down by the
-     * help desk, so counting it as a backlog item or an SLA breach would make
-     * both numbers worse for something nobody can act on.
-     */
+    // Withdrawn tickets aren't the desk's fault, so they don't count as backlog or breaches.
     private static final List<TicketStatus> UNFINISHED =
             List.of(TicketStatus.OPEN, TicketStatus.IN_PROGRESS);
 
@@ -114,16 +50,7 @@ public class DashboardService {
         this.appUserRepository = appUserRepository;
     }
 
-    /**
-     * One endpoint, one response, computed on the fly.
-     *
-     * All of the queries run inside ONE transaction, which is the point of the
-     * annotation here rather than on the controller. Six separate requests -
-     * or six transactions - would each see the database at a slightly different
-     * moment, so the status breakdown could include a ticket the total does not
-     * and the tiles on the screen would fail to add up, intermittently, in a way
-     * nobody can reproduce.
-     */
+    // One read-only transaction, so all the tiles describe the same moment.
     @Transactional(readOnly = true)
     public DashboardResponse buildDashboard() {
         LocalDateTime now = LocalDateTime.now();
@@ -133,12 +60,8 @@ public class DashboardService {
         Map<String, Long> backlog = toCountMap(
                 ticketMetricsRepository.countOpenByDepartment(UNFINISHED));
 
-        // Every status gets a key, including the ones with no tickets. A GROUP
-        // BY returns no row for a state nothing is in, so without this the
-        // response would be missing "RESOLVED" entirely on a fresh system - and
-        // a frontend reading response.ticketsByStatus.RESOLVED would show
-        // "undefined" rather than 0. Absent and zero are different things to
-        // JavaScript, and only one of them is true here.
+        // GROUP BY skips statuses with no tickets; add them as 0 so the frontend
+        // doesn't get undefined.
         for (TicketStatus status : TicketStatus.values()) {
             byStatus.putIfAbsent(status.name(), 0L);
         }
@@ -163,18 +86,7 @@ public class DashboardService {
         );
     }
 
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
-
-    /**
-     * Mean creation-to-resolution time in hours, rounded to one decimal, or null
-     * when no ticket has been resolved.
-     *
-     * Null rather than 0.0 on purpose: zero looks like a real, excellent result,
-     * while null lets the screen show "no data". Duration.toMinutes() / 60.0
-     * keeps the fractional hour that a plain toHours() would truncate away.
-     */
+    // Null when nothing is resolved yet. Minutes / 60.0 keeps the part-hours that toHours() would drop.
     private Double averageResolutionHours() {
         List<Object[]> rows = ticketMetricsRepository.resolvedTimestamps(TicketStatus.RESOLVED);
         if (rows.isEmpty()) {
@@ -188,35 +100,14 @@ public class DashboardService {
         return Math.round(hours * 10.0) / 10.0;
     }
 
-    /**
-     * The moment before which a ticket of this priority has breached.
-     *
-     * Computing the cutoff timestamps here rather than inside the query is what
-     * keeps the SLA policy in one place: the repository holds no opinion about
-     * how long anything should take, so changing a target is a change to
-     * SLA_TARGET_HOURS and nothing else. It also keeps the query to plain
-     * comparisons against bound parameters, which every database plans well and
-     * can use the created_at index for - date arithmetic written inside a WHERE
-     * clause usually cannot.
-     */
+    // Tickets created before this time have breached for the given priority.
     private LocalDateTime cutoff(LocalDateTime now, TicketPriority priority) {
         return now.minusHours(SLA_TARGET_HOURS.get(priority));
     }
 
     /**
-     * Turns the [key, count] rows an aggregate query returns into a Map.
-     *
-     * The Object[] is unpacked here and never leaves this class, so nothing
-     * downstream has to know which column was which. LinkedHashMap preserves
-     * the order the query returned, so the JSON keys do not reshuffle between
-     * requests for no reason.
-     *
-     * Key.toString() rather than a cast: the first column is an enum for the
-     * status query and a String for the department queries, and toString gives
-     * the constant's name for one and the code itself for the other. Count comes
-     * back as a Number because JPA providers are free to return Long or
-     * BigInteger depending on the database - longValue() covers both rather than
-     * throwing a ClassCastException on whichever one was not expected.
+     * Turns [key, count] rows into a Map, keeping the query's order. The count is read
+     * as a Number because the provider may return Long or BigInteger.
      */
     private Map<String, Long> toCountMap(List<Object[]> rows) {
         Map<String, Long> counts = new LinkedHashMap<>();
@@ -229,18 +120,7 @@ public class DashboardService {
         return counts;
     }
 
-    /**
-     * Accounts that can currently log in.
-     *
-     * Counted by difference rather than by a second query, since AppUserRepository
-     * is a shared file and F6 does not edit shared files - the change goes to
-     * Diroshaan. count() minus the inactive ones needs a count of inactive ones,
-     * which is the same problem, so this uses the one thing JpaRepository gives
-     * for free and the same in-Java filter the account listing uses, for the
-     * same reason: the users table is bounded and administrative, unlike tickets.
-     * If an existsBy/countBy is ever added to AppUserRepository, this becomes one
-     * query.
-     */
+    // Filtered in Java because AppUserRepository has no countByActive; the user table is small.
     private long countActiveUsers() {
         return appUserRepository.findAll().stream().filter(user -> user.isActive()).count();
     }

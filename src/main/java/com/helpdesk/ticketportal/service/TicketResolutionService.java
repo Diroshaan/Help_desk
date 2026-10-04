@@ -12,12 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * F3 - lets a student read the officer's answer to their own ticket.
- *
- * Read-only use of F4's ResolutionRepository, agreed as contract C5. Every
- * read in ResolutionService demands an officer serving the ticket's
- * department, so it can't be reused for students; here the ownership check
- * (TicketService.getOwnedTicket) is the access control instead.
+ * Lets a student read the officer's answer to their own ticket.
+ * Reads ResolutionRepository directly; the ticket ownership check is the access control.
  */
 @Service
 public class TicketResolutionService {
@@ -35,8 +31,7 @@ public class TicketResolutionService {
         this.officerRepository = officerRepository;
     }
 
-    // 404 for a missing ticket AND for someone else's ticket - a 403 would
-    // confirm to the caller that the ticket id exists.
+    // 404 for a missing ticket and for someone else's ticket, so ids can't be probed
     @Transactional(readOnly = true)
     public TicketResolutionResponse getForStudent(Long ticketId, Long studentId) {
         Resolution resolution = findOwnedResolution(ticketId, studentId);
@@ -45,7 +40,6 @@ public class TicketResolutionService {
                 .map(Officer::getFullName)
                 .orElse("Help desk officer");
 
-        // Built inside the transaction, so nothing lazy is touched after it closes.
         return new TicketResolutionResponse(
                 resolution.getId(),
                 resolution.getResponseText(),

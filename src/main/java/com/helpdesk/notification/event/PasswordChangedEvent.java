@@ -1,10 +1,8 @@
 package com.helpdesk.notification.event;
 
 /**
- * OBSERVER PATTERN: published by PasswordService after a successful password change.
- *
- * The user is told on every channel they have on. If they didn't make the
- * change themselves, this message is how they find out.
+ * Observer event: published by PasswordService after a password change, so the user
+ * hears about it (and can act if it wasn't them).
  */
 public record PasswordChangedEvent(Long userId) {
 }

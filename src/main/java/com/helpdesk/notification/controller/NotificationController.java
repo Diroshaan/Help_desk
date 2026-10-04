@@ -14,9 +14,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The portal inbox, for every signed-in role (students, officers and admins
- * all receive notifications). SecurityConfig's catch-all rule already
- * requires a session for /api/notifications/**, so no new rule was needed.
+ * Portal inbox endpoints for any signed-in user (students, officers and admins).
+ * SecurityConfig's catch-all rule already requires a session here.
  */
 @RestController
 @RequestMapping("/api/notifications")
@@ -33,7 +32,7 @@ public class NotificationController {
         return inboxService.listMine(authentication.getName());
     }
 
-    /** Small separate call so the sidebar badge can poll it without fetching the whole list. */
+    /** Lets the sidebar badge poll without fetching the whole list. */
     @GetMapping("/unread-count")
     public Map<String, Long> unreadCount(Authentication authentication) {
         return Map.of("unread", inboxService.unreadCount(authentication.getName()));

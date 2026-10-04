@@ -6,11 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * Request body for editing a ticket (US: a student may edit a ticket while
- * it is still OPEN - see Ticket.java). Only the fields a student is allowed
- * to change are here - no "id", "studentId" or "status".
- *
- * The @Size limits mirror Ticket's column lengths - see TicketCreateRequest.
+ * Body for editing an OPEN ticket. Only the fields a student may change are
+ * here - no id, studentId or status.
  */
 public class TicketUpdateRequest {
 

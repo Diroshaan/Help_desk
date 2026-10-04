@@ -6,8 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * Request body for submitting feedback on a ticket.
- * Only rating and comment are accepted - no "id", "ticketId" or "studentId".
+ * Request body for feedback on a ticket. Only rating and comment - no id, ticketId or studentId.
  */
 public class FeedbackRequest {
 
@@ -16,8 +15,7 @@ public class FeedbackRequest {
     @Max(value = 5, message = "Rating must be at most 5")
     private Integer rating;
 
-    // Matches Feedback.comment's column length (1000). Without this, a longer
-    // comment reached the database and failed there instead of as a clean 400.
+    // matches the column length, so a long comment is a 400 instead of a DB error
     @Size(max = 1000, message = "Comment must be 1000 characters or fewer")
     private String comment;
 
