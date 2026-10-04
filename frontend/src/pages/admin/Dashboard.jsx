@@ -3,13 +3,7 @@ import { API, formatDateTime, request, withQuery } from '../../api.js'
 import { BarList, Notice, SelectField, StatTile, humanize } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 
-/* The five ratings, highest first.
-
-   Descending because that is how a reader scans a rating breakdown: the top
-   row is the best possible score and the eye travels down towards the
-   complaints. Fixed as a constant rather than read from the response, so a
-   rating nobody has given still gets a row showing zero - an absent row would
-   read as "no data" when the truth is "nobody chose it". */
+/* Fixed list so a rating nobody gave still shows a row with zero. */
 const RATINGS = [5, 4, 3, 2, 1]
 
 export default function Dashboard() {
@@ -17,9 +11,7 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
-  // Feedback analytics (#47). Kept in its own state rather than folded into
-  // the dashboard payload: it answers a question about ONE category the
-  // administrator picks, so it cannot be part of a single system-wide summary.
+  // Feedback analytics for one chosen category, loaded separately.
   const [departments, setDepartments] = useState([])
   const [categories, setCategories] = useState([])
   const [category, setCategory] = useState('')
@@ -42,7 +34,7 @@ export default function Dashboard() {
   useEffect(() => {
     request(API.categories).then(r => {
       if (r.ok) setCategories(r.data)
-    }).catch(() => { /* the picker stays empty; the rest of the page still works */ })
+    }).catch(() => { /* picker stays empty */ })
   }, [])
 
   useEffect(() => {
@@ -55,22 +47,17 @@ export default function Dashboard() {
     }).catch(() => { setSummaryError('Could not reach the server.'); setSummaryLoading(false) })
   }, [category])
 
-  // The longest bar fills the track and the rest are drawn in proportion to
-  // it. Scaling to the largest count rather than to the total is what keeps a
-  // breakdown readable when one rating dominates: against the total, four of
-  // the five bars would be slivers.
-  // Codes are what the API returns; names are what an administrator reads.
   function departmentName(code) {
     if (!code || code === 'UNASSIGNED' || code === 'null') return 'Not routed'
     return departments.find(d => d.code === code)?.name || code
   }
-  // Hours under one read better as minutes ("12 min", not "0.2 h").
+  // under an hour, show minutes
   const hours = data?.averageResolutionHours
   const averageTime = typeof hours !== 'number' ? null
     : hours < 1 ? { value: Math.max(1, Math.round(hours * 60)), unit: 'min' }
     : { value: Math.round(hours * 10) / 10, unit: 'h' }
 
-  // Every ticket still waiting on the help desk, routed or not.
+  // open + in progress, routed or not
   const openBacklog = data
     ? (data.ticketsByStatus?.OPEN || 0) + (data.ticketsByStatus?.IN_PROGRESS || 0)
     : null
@@ -132,12 +119,8 @@ export default function Dashboard() {
             </>
           )}
 
-          {/* Feedback analytics (#47).
-
-              Outside the {data && ...} block on purpose: it has its own
-              endpoint and its own failure mode, so a dashboard that could not
-              load should not also hide the feedback tool, and a category with
-              no feedback should not look like a broken dashboard. */}
+          {/* Outside the {data && ...} block: it has its own endpoint, so it still
+              works if the main dashboard fails to load. */}
           <section className="section">
             <h2>Feedback by category</h2>
             <p className="section-note">
@@ -170,8 +153,6 @@ export default function Dashboard() {
                 <div className="detail-list" style={{ marginTop: 16 }}>
                   <div>
                     <dt>Average rating</dt>
-                    {/* One decimal. Two would claim a precision that a handful
-                        of whole-number ratings does not have. */}
                     <dd>{summary.averageRating.toFixed(1)} out of 5</dd>
                   </div>
                   <div>
@@ -187,9 +168,7 @@ export default function Dashboard() {
                     return (
                       <div className="bar-row" key={rating}>
                         <span className="bar-row__label">{rating} star{rating === 1 ? '' : 's'}</span>
-                        {/* The title is the hover layer: it carries the share,
-                            which the row does not already show. Repeating the
-                            count there would be noise. */}
+                        {/* hover title shows the percentage */}
                         <div className="bar-row__track" title={count + ' of ' + responses + ' (' + share + '%)'}>
                           <div className="bar-row__fill" style={{ width: (count / peak) * 100 + '%' }} />
                         </div>

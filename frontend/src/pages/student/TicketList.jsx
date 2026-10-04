@@ -26,19 +26,18 @@ export default function TicketList() {
   const [categories, setCategories] = useState([])
   const [filters, setFilters] = useState({ status: '', priority: '', category: '', keyword: '' })
   const [page, setPage] = useState(0)
-  const [result, setResult] = useState(null)   // Page<TicketResponse>
+  const [result, setResult] = useState(null)   // a page of tickets
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Active (search, which already leaves archived tickets out) or Archived
-  // (F3's GET /api/tickets/archived). Loaded once so the tab can show a count.
+  // archived list is loaded once so its tab can show a count
   const [view, setView] = useState('active')
   const [archived, setArchived] = useState(undefined)  // undefined loading, array, 'off' (not on server), null (failed)
 
   useEffect(() => {
     request(API.ticketCategories).then(r => { if (r.ok) setCategories(r.data || []) })
     request(API.ticketsArchived).then(r => {
-      // 400/404/405: F3's archive list is not on the server yet.
+      // 400/404/405: archive endpoint not available
       setArchived(r.ok && Array.isArray(r.data) ? r.data : ([400, 404, 405].includes(r.status) ? 'off' : null))
     }).catch(() => setArchived(null))
   }, [])

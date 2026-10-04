@@ -5,12 +5,12 @@ import { Field, Notice, StatusPill, TextAreaField } from '../../components/Bits.
 import { Sidebar } from '../../components/Sidebar.jsx'
 
 export default function ArticleEditor() {
-  const { id } = useParams()          // absent on /kb/manage/new
+  const { id } = useParams()          // undefined when creating
   const navigate = useNavigate()
   const isNew = !id
 
   const [allCategories, setAllCategories] = useState([])
-  const [article, setArticle] = useState(null)     // ArticleDetailResponse, once it exists
+  const [article, setArticle] = useState(null)
   const [form, setForm] = useState({ title: '', body: '', tags: '', categoryIds: [] })
   const [relatedId, setRelatedId] = useState('')
   const [errors, setErrors] = useState({})
@@ -32,9 +32,7 @@ export default function ArticleEditor() {
           title: r.data.title,
           body: r.data.body,
           tags: (r.data.tags || []).join(', '),
-          // ArticleDetailResponse only carries category NAMES, not ids — the
-          // ids are recovered by matching against the full category list,
-          // which is the only place both id and name exist together.
+          // the article only has category names, so match them to ids
           categoryIds: allCategories.filter(c => (r.data.categoryNames || []).includes(c.name)).map(c => c.id)
         })
       } else {
@@ -42,9 +40,7 @@ export default function ArticleEditor() {
       }
       setLoading(false)
     })
-    // Deliberately re-runs once allCategories arrives too, so the category
-    // checkboxes still get preselected even if that request was still in
-    // flight when the article itself came back.
+    // re-runs when allCategories arrives so the boxes still get ticked
   }, [id, isNew, allCategories.length])
 
   function toggleCategory(categoryId) {
@@ -60,9 +56,7 @@ export default function ArticleEditor() {
     event.preventDefault()
     setErrors({}); setNotice(null)
 
-    // An article must sit in at least one category, or students can never
-    // find it by browsing (F5, and the server says the same with a 400).
-    // Title and body are checked too, so a blank form marks all three at once.
+    // needs at least one category, or students can't find it by browsing
     const missing = {}
     if (!form.title.trim()) missing.title = 'Give the article a title.'
     if (!form.body.trim()) missing.body = 'Write the article.'

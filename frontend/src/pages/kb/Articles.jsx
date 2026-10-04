@@ -10,8 +10,7 @@ const PAGE_SIZE = 20
 export default function Articles() {
   const { role } = useSession()
   const [categories, setCategories] = useState([])
-  // The home page's search box and topic chips arrive as /kb?q=..., so the
-  // search is already filled in and run.
+  // the home page search arrives as /kb?q=...
   const [searchParams] = useSearchParams()
   const [q, setQ] = useState(searchParams.get('q') || '')
   const [category, setCategory] = useState('')

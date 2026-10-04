@@ -14,11 +14,8 @@ const ROLE_FILTERS = [
 const EMPTY_OFFICER = { email: '', password: '', staffNumber: '', jobTitle: '', fullName: '', departmentCodes: [] }
 const EMPTY_ADMIN = { email: '', password: '', displayName: '', staffNumber: '' }
 
-/* F6-N3: one checkbox per open department. The backend refuses an officer with
-   no department (an officer who serves nothing cannot see routed work), so the
-   form offers the choice rather than letting the request fail for a reason the
-   administrator was never shown. Codes are what the API takes; names are what a
-   person reads. */
+/* One checkbox per department. The backend refuses an officer with no
+   department, so the form asks for at least one up front. */
 function DepartmentPicker({ id, departments, selected, onChange }) {
   function toggle(code) {
     onChange(selected.includes(code) ? selected.filter(c => c !== code) : [...selected, code])
@@ -41,8 +38,7 @@ function DepartmentPicker({ id, departments, selected, onChange }) {
   )
 }
 
-/* The officer part of a row's subtitle. An EMPTY list is the broken state F6-N3
-   exists to make visible, so it is said in words rather than shown as nothing. */
+/* Officer departments for the row subtitle; an empty list is spelled out. */
 function departmentsText(user, departments) {
   if (!Array.isArray(user.departmentCodes)) return ''
   if (user.departmentCodes.length === 0) return ' · Serves no department'
@@ -50,10 +46,7 @@ function departmentsText(user, departments) {
   return ' · ' + names.join(', ')
 }
 
-/**
- * Who an officer reports to (F4 #46). Loaded when the row is opened, because
- * only then is it needed; the choices are the other active officers.
- */
+/** Officer's supervisor, loaded when the row is opened. Choices are the other active officers. */
 function SupervisorPicker({ officer, officers, onSaved, onError }) {
   const [current, setCurrent] = useState(undefined)   // undefined = loading, null = none / unavailable
   const [choice, setChoice] = useState('')
@@ -100,7 +93,7 @@ function SupervisorPicker({ officer, officers, onSaved, onError }) {
   )
 }
 
-/** The server's rule for a temporary password, checked before sending. */
+/** Same temporary-password rule as the server. */
 function passwordProblem(password) {
   if (!password) return 'Set a temporary password.'
   if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
@@ -112,7 +105,7 @@ function passwordProblem(password) {
 export default function Users() {
   const { user: me } = useSession()
   const [roleFilter, setRoleFilter] = useState('')
-  // Removed accounts are history, hidden unless asked for (F6 #48).
+  // removed accounts are hidden unless asked for
   const [showRemoved, setShowRemoved] = useState(false)
   const [officers, setOfficers] = useState([])
   const [users, setUsers] = useState([])
@@ -127,7 +120,7 @@ export default function Users() {
   const [adminForm, setAdminForm] = useState(EMPTY_ADMIN)
   const [adminErrors, setAdminErrors] = useState({})
 
-  // { id, codes } while an officer's departments are being edited in place.
+  // { id, codes } while editing an officer's departments
   const [editing, setEditing] = useState(null)
 
   async function load() {
@@ -137,8 +130,7 @@ export default function Users() {
       includeRemoved: showRemoved ? 'true' : undefined
     }))
     if (result.ok) {
-      // Older servers ignore includeRemoved and return everyone; filtering
-      // here as well keeps the screen honest either way.
+      // also filter here in case the server ignores includeRemoved
       setUsers(showRemoved ? result.data : result.data.filter(u => !u.removed))
     } else {
       setError('We could not load the user list.')
@@ -148,7 +140,7 @@ export default function Users() {
 
   useEffect(() => { load() }, [roleFilter, showRemoved])
 
-  // The supervisor picker needs every officer, whatever the role filter shows.
+  // supervisor picker needs all officers, whatever the filter
   useEffect(() => {
     request(withQuery(API.adminUsers, { role: 'OFFICER' })).then(result => {
       if (result.ok) setOfficers(result.data)
@@ -206,8 +198,7 @@ export default function Users() {
   async function provisionOfficer(event) {
     event.preventDefault()
     setOfficerErrors({}); setNotice(null)
-    // Each empty box is marked and jumped to; the server answers a blank form
-    // with one long combined sentence instead.
+    // check here so each empty field gets its own message
     const missing = {}
     if (!officerForm.fullName.trim()) missing.fullName = 'Enter the officer\'s full name.'
     if (!officerForm.email.trim()) missing.email = 'Enter their email.'
@@ -355,16 +346,14 @@ export default function Users() {
                   <div className="row-side">
                     <StatusPill value={user.active && !user.removed ? 'ACTIVE' : 'INACTIVE'}
                                 label={user.removed ? 'Removed' : user.active ? 'Active' : 'Suspended'} />
-                    {/* No department editor for a removed officer: they have left,
-                        and the backend refuses the change anyway (PR #56 review). */}
+                    {/* removed officers can't have departments changed */}
                     {!user.removed && user.role === 'OFFICER' && (
                       <button type="button" className="btn btn--ghost"
                               onClick={() => setEditing(editing?.id === user.id ? null : { id: user.id, codes: user.departmentCodes || [] })}>
                         {editing?.id === user.id ? 'Close' : 'Departments'}
                       </button>
                     )}
-                    {/* A removed account is final (F6 #48): no reactivate, no
-                        second remove. Nobody suspends or removes themselves. */}
+                    {/* removed is final; admins can't suspend or remove themselves */}
                     {!user.removed && me?.id !== user.id && (
                       <button type="button" className="btn btn--ghost" disabled={busy === 'user-' + user.id}
                               onClick={() => toggleActive(user)}>

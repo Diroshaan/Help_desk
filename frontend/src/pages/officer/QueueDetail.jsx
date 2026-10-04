@@ -9,7 +9,7 @@ export default function QueueDetail() {
   const { id } = useParams()
   const { user } = useSession()
 
-  const [detail, setDetail] = useState(null)     // TicketQueueDetailResponse
+  const [detail, setDetail] = useState(null)
   const [departments, setDepartments] = useState([])
   const [assignDept, setAssignDept] = useState('')
   const [assignOfficerId, setAssignOfficerId] = useState('')
@@ -22,9 +22,7 @@ export default function QueueDetail() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
-  // The student's files (F4 #40) and the status timeline (F4, from F2's
-  // history). null means the endpoint did not answer - shown as a short note
-  // rather than as "no files", which would be a different, false statement.
+  // null = endpoint didn't answer (shown as a note, not as "no files")
   const [files, setFiles] = useState(undefined)     // undefined = still loading
   const [history, setHistory] = useState(undefined)
 
@@ -51,8 +49,7 @@ export default function QueueDetail() {
       request(API.queueAttachments(id)),
       request(API.queueHistory(id))
     ])
-    // 400/404/405 = the endpoint is not on the server yet (F4 not merged):
-    // say "not available yet" rather than reporting a failure.
+    // 400/404/405: endpoint not available, show "not available yet"
     const pick = r => r.ok && Array.isArray(r.data) ? r.data : ([400, 404, 405].includes(r.status) ? 'off' : null)
     setFiles(pick(fileResult))
     setHistory(pick(historyResult))
@@ -83,9 +80,7 @@ export default function QueueDetail() {
     })
     if (result.ok) {
       setDetail(current => ({ ...current, ticket: result.data }))
-      // The server can resolve a department the caller never typed (a target
-      // officer who serves exactly one), so the form has to reflect what was
-      // actually saved, not just what was submitted.
+      // show what the server saved; it may fill in the department itself
       setAssignDept(result.data.assignedDepartmentId || '')
       setAssignOfficerId(result.data.assignedOfficerId || '')
     } else {
@@ -136,8 +131,7 @@ export default function QueueDetail() {
       setAttachment(null)
       setFileKey(k => k + 1)
       setNotice({ kind: 'info', text: editing ? 'Your answer has been updated.' : 'Your answer has been posted and the ticket is resolved.' })
-      // Resolving posts the resolution; the ticket status itself moves to
-      // RESOLVED server-side, so refresh the ticket half of the view too.
+      // the server sets the status to RESOLVED, so reload the ticket
       const ticketResult = await request(API.queueTicket(id))
       if (ticketResult.ok) setDetail(ticketResult.data)
       loadExtras()
@@ -184,12 +178,11 @@ export default function QueueDetail() {
   }
 
   const { ticket, resolution, notes } = detail
-  // Nothing is re-routed or answered once a ticket is finished (F4 rule).
+  // finished tickets can't be re-routed or answered
   const closed = ticket.status === 'RESOLVED' || ticket.status === 'WITHDRAWN'
   const mine = user && ticket.assignedOfficerId === user.id
-  // The server only accepts an answer while the ticket is IN_PROGRESS (an OPEN
-  // one comes back 400 "can only be resolved while it is in progress"), so
-  // the form stays locked until the ticket is picked up.
+  // The server only accepts an answer while the ticket is IN_PROGRESS, so the
+  // form stays locked until the ticket is picked up.
   const answerLocked = ticket.status === 'OPEN' && !resolution
 
   function chooseFile(event) {
@@ -242,7 +235,6 @@ export default function QueueDetail() {
             )}
           </section>
 
-          {/* F4 #40: officers can now open what the student attached. */}
           <section className="section">
             <h2>Student's files</h2>
             {files === null && <p className="empty">The student's files could not be loaded.</p>}

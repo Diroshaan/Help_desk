@@ -36,9 +36,8 @@ export default function TicketNew() {
     event.preventDefault()
     setErrors({}); setNotice(null)
 
-    // The server answers a blank form with one combined sentence ("Description
-    // is required; Subject is required") and no per-field keys, so the boxes
-    // were never marked. Checking here marks each one and jumps to the first.
+    // The server returns one combined message for a blank form, so check here
+    // to mark each empty field.
     const missing = {}
     if (!form.subject.trim()) missing.subject = 'Give the ticket a short subject.'
     if (!form.description.trim()) missing.description = 'Describe the problem.'

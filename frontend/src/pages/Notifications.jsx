@@ -6,24 +6,9 @@ import { Sidebar } from '../components/Sidebar.jsx'
 import { announceUnreadChanged } from '../hooks/useUnreadCount.js'
 
 /**
- * The notification inbox - every signed-in role.
- *
- * This is the visible end of the two design patterns in notification/:
- *   Observer  - QueueService and PasswordService publish events; the
- *               listeners (TicketStatusNotifier, AccountSecurityNotifier)
- *               turn them into messages without the publishers knowing.
- *   Strategy  - NotificationService hands each message to every enabled
- *               NotificationChannel. PortalNotificationChannel is the one that
- *               writes the rows this page reads.
- * So this page only ever READS and MARKS. It never creates a notification.
- *
- * Clicking an item marks it read first, then follows its link. The link is
- * stored as a hash route ("#/tickets/42") because the app uses HashRouter;
- * the leading '#' is stripped before navigating. An item with no link (the
- * password notice) is only marked read.
- *
- * The server keeps the newest 50 (findTop50...), which is plenty for a help
- * desk inbox and keeps this page one fast query.
+ * Notification inbox for every role. This page only reads and marks; the rows
+ * are written by the Observer listeners through the portal channel (Strategy).
+ * Links are stored as "#/tickets/42", so the '#' is stripped before navigating.
  */
 export default function Notifications() {
   const navigate = useNavigate()
@@ -45,8 +30,7 @@ export default function Notifications() {
 
   async function open(item) {
     if (!item.read) {
-      // Optimistic: show it read straight away. If the server refuses, the
-      // next load shows the truth; nothing is lost by a wrong guess here.
+      // mark it read straight away; the next load corrects it if the call failed
       setItems(list => list.map(n => n.id === item.id ? { ...n, read: true } : n))
       try {
         await request(API.notificationRead(item.id), { method: 'POST' })

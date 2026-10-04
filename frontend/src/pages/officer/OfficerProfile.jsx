@@ -5,11 +5,8 @@ import { Avatar, Field, Notice } from '../../components/Bits.jsx'
 import { Sidebar } from '../../components/Sidebar.jsx'
 import { useSession } from '../../hooks/useSession.jsx'
 
-/* Same two switches the student profile shows, backed by the same two
-   booleans on Officer. They are read by the Strategy in
-   notification/channel (PortalNotificationChannel.isEnabledFor and
-   EmailNotificationChannel.isEnabledFor), so turning one off here really does
-   stop that channel for this officer - it is not a cosmetic setting. */
+/* These flags are checked by the notification channels (Strategy), so
+   turning one off really stops that channel for this officer. */
 const PREFERENCES = [
   {
     key: 'emailNotificationsEnabled',
@@ -24,25 +21,12 @@ const PREFERENCES = [
 ]
 
 /**
- * An officer's own profile (F1, US-04): GET/PUT /api/officers/me.
- *
- * WHAT IS EDITABLE AND WHAT IS NOT, AND WHY
- * -----------------------------------------
- * Editable: display name, contact number, notification preferences - things
- * that are the officer's own business.
- *
- * Read-only: staff number, job title and departments. Those are set by an
- * administrator when the account is provisioned (F6), because they decide
- * what the officer is ALLOWED to do - which department queues they see.
- * Letting an officer add themselves to a department would be a privilege
- * escalation, so OfficerProfileUpdateRequest does not even have those fields;
- * this screen shows them so the officer can see what they have been given.
- *
- * Email is the login identity and is shown locked, as on the student profile.
+ * Officer's own profile (US-04). Staff number, job title and departments are
+ * read-only: an admin sets them, and they control which queues the officer
+ * sees. Email is the login, so it is locked too.
  */
 export default function OfficerProfile() {
-  // refresh() re-reads /api/auth/me, so a renamed officer sees the new name in
-  // the sidebar straight away instead of after the next sign-in.
+  // refresh() updates the name shown in the sidebar
   const { refresh } = useSession()
   const [profile, setProfile] = useState(null)
   const [form, setForm] = useState(null)
@@ -87,8 +71,7 @@ export default function OfficerProfile() {
 
   function saveProfile(event) {
     event.preventDefault()
-    // `phone` is the JSON name of OfficerProfileUpdateRequest.contactNumber
-    // (@JsonProperty("phone")), the same name the student side uses.
+    // contactNumber is sent as "phone" (@JsonProperty)
     save({ fullName: form.fullName.trim(), phone: form.phone.trim() },
          'profile', 'Your profile has been updated.')
   }

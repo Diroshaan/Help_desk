@@ -1,30 +1,24 @@
-/**
- * The only place in the app that knows what the backend looks like.
- *
- * Keeping every URL in one object means a change to a @RequestMapping is a
- * one-line change here rather than a hunt through five components.
- */
+/** All backend URLs in one place, plus the fetch helpers the pages use. */
 export const API = {
   // Auth / session
   login:    '/api/auth/login',
   logout:   '/api/auth/logout',
-  me:       '/api/auth/me',             // CurrentUserResponse for ANY role
-  password: '/api/auth/password',       // PUT -> 204, any signed-in role
+  me:       '/api/auth/me',             // works for any role
+  password: '/api/auth/password',
 
-  // Notifications inbox (any signed-in role). Written by the Observer
-  // listeners in notification/listener; this side only reads and marks.
+  // Notifications inbox (any signed-in role)
   notifications:        '/api/notifications',
   notificationsUnread:  '/api/notifications/unread-count',
   notificationRead:     (id) => '/api/notifications/' + id + '/read',
   notificationsReadAll: '/api/notifications/read-all',
 
-  // Officer's own profile (OFFICER only, US-04)
+  // Officer's own profile
   officerMe: '/api/officers/me',
 
   // Student profile (STUDENT only)
-  session:  '/api/students/me',         // full StudentResponse, students only
-  register: '/api/students',            // POST -> 201 Created
-  students: '/api/students',            // GET (OFFICER/ADMIN) -> list
+  session:  '/api/students/me',
+  register: '/api/students',            // POST
+  students: '/api/students',            // GET, officers and admins
   student:  (id) => '/api/students/' + id,
   studentAvatar: (id) => '/api/students/' + id + '/avatar',
 
@@ -36,10 +30,10 @@ export const API = {
   ticketSearch:     '/api/tickets/search',
   ticketAttachments:(id) => '/api/tickets/' + id + '/attachments',
   ticketAttachment: (id, attachmentId) => '/api/tickets/' + id + '/attachments/' + attachmentId,
-  ticketHistory:    (id) => '/api/tickets/' + id + '/history',              // F2 (#45)
-  ticketResolution: (id) => '/api/tickets/' + id + '/resolution',           // F3 (#39)
+  ticketHistory:    (id) => '/api/tickets/' + id + '/history',
+  ticketResolution: (id) => '/api/tickets/' + id + '/resolution',
   ticketResolutionFile: (id) => '/api/tickets/' + id + '/resolution/attachment',
-  ticketsArchived:  '/api/tickets/archived',                                // F3 (#41)
+  ticketsArchived:  '/api/tickets/archived',
 
   // Officer queue
   queue:           '/api/queue',
@@ -49,8 +43,8 @@ export const API = {
   queueResolution: (id) => '/api/queue/' + id + '/resolution',
   queueNotes:      (id) => '/api/queue/' + id + '/notes',
   queueNote:       (id, noteId) => '/api/queue/' + id + '/notes/' + noteId,
-  queueHistory:    (id) => '/api/queue/' + id + '/history',                 // F4 (C3)
-  queueAttachments:(id) => '/api/queue/' + id + '/attachments',             // F4 (#40)
+  queueHistory:    (id) => '/api/queue/' + id + '/history',
+  queueAttachments:(id) => '/api/queue/' + id + '/attachments',
   queueAttachment: (id, attachmentId) => '/api/queue/' + id + '/attachments/' + attachmentId,
   queueResolutionFile: (id) => '/api/queue/' + id + '/resolution/attachment',
 
@@ -88,7 +82,7 @@ export const API = {
   adminOfficers:      '/api/admin/officers',
   adminAdministrators:'/api/admin/administrators',
   adminOfficerDepartments: (id) => '/api/admin/officers/' + id + '/departments',
-  adminOfficerSupervisor: (id) => '/api/admin/officers/' + id + '/supervisor',   // F4 (#46)
+  adminOfficerSupervisor: (id) => '/api/admin/officers/' + id + '/supervisor',
 
   // Reference data
   departments:           '/api/departments',
@@ -96,11 +90,7 @@ export const API = {
   departmentCategories:  (code) => '/api/departments/' + code + '/categories'
 }
 
-/**
- * Turns { a: 1, b: undefined, c: '' } into '?a=1&c=' — keys whose value is
- * undefined or null are dropped, so callers can pass optional filters
- * without building the query string by hand.
- */
+/** Adds a query string, skipping empty values, so optional filters can be passed straight in. */
 export function withQuery(url, params) {
   if (!params) return url
   const search = new URLSearchParams()
@@ -113,14 +103,8 @@ export function withQuery(url, params) {
 }
 
 /**
- * A thin wrapper over fetch that does three jobs:
- *
- *  - sends the session cookie. Spring Security is session based, so without
- *    `credentials` every request after login would come back 403.
- *  - sets the JSON content type only when there is a body to send.
- *  - always returns the same shape, so callers never have to guess.
- *
- * @returns {Promise<{ok: boolean, status: number, data: any}>}
+ * Wrapper over fetch. Sends the session cookie (login is session based) and
+ * always resolves to { ok, status, data }.
  */
 export async function request(url, options = {}) {
   const config = {
@@ -139,10 +123,8 @@ export async function request(url, options = {}) {
 }
 
 /**
- * Same contract as request(), but sends a FormData body instead of JSON —
- * for the two multipart endpoints (ticket attachments, queue resolutions).
- * Never set Content-Type by hand on a FormData request: the browser has to
- * append the multipart boundary itself, and a hand-set header omits it.
+ * Like request() but for multipart uploads. Content-Type is left to the browser
+ * so it can add the multipart boundary.
  */
 export async function requestForm(url, { method = 'POST', form } = {}) {
   const response = await fetch(url, {
@@ -153,59 +135,21 @@ export async function requestForm(url, { method = 'POST', form } = {}) {
   return readResponse(response, url)
 }
 
-/* ---------------------------------------------------------------------------
-   SESSION EXPIRY — one place, so every screen behaves the same way.
-
-   THE PROBLEM THIS SOLVES
-   -----------------------
-   The session lives on the server. When it ends — the backend restarts, the
-   session times out, an administrator suspends the account — the browser has no
-   way of knowing. React still holds `role: 'ADMIN'` in memory from whenever the
-   page loaded, so the sidebar keeps rendering admin links and every write comes
-   back 403 with the word "Forbidden". The user sees a page that looks signed in
-   and refuses to do anything, with no explanation and no way out except
-   guessing that a refresh might help.
-
-   That is not a hypothetical: it happened on the admin Users page after a
-   backend restart, and it cost an afternoon working out that the code was fine.
-
-   WHY 401 AND 403 ARE TREATED DIFFERENTLY
-   ---------------------------------------
-   They mean different things and must not be collapsed:
-
-     401 — "I do not know who you are."  The session is gone. Sign out.
-     403 — "I know who you are, and no."  AMBIGUOUS, because SecurityConfig
-           enables neither formLogin nor httpBasic, so Spring answers an
-           ANONYMOUS request with 403 as well as a genuinely forbidden one.
-
-   So a 403 cannot be trusted on its own. Treating every 403 as a dead session
-   would sign people out for clicking something they were never allowed to click
-   — worse than the bug being fixed. Instead a 403 triggers one cheap
-   confirmation request to /api/auth/me, which is permitAll and answers the
-   question directly: 401 there means the session really is gone; 200 means the
-   session is alive and this was a real permission denial the caller should
-   handle itself.
-
-   WHY A CALLBACK RATHER THAN A REDIRECT HERE
-   ------------------------------------------
-   This module knows about HTTP and nothing else. Clearing React state and
-   navigating are the session hook's job. api.js raises the event; useSession
-   decides what happens. That keeps this file testable and free of imports from
-   React or the router.
---------------------------------------------------------------------------- */
+/* Session expiry. A 401 means the session is gone. A 403 is ambiguous (Spring
+   also sends it for anonymous requests), so we confirm with /api/auth/me first
+   and only report a lost session if that returns 401. useSession decides what
+   to do about it. */
 
 let sessionLostHandler = null
 
-/** Registered once by SessionProvider. */
 export function onSessionLost(handler) {
   sessionLostHandler = handler
 }
 
-// Paths that must never trigger the check, or it recurses: /me IS the check,
-// and a failed login is a wrong password rather than an expired session.
+// /me is the check itself, and a failed login is just a wrong password.
 const AUTH_PATHS = ['/api/auth/me', '/api/auth/login', '/api/auth/logout']
 
-let verifying = false        // one confirmation at a time, not one per request
+let verifying = false        // one check at a time
 
 async function checkSessionLost(url, status) {
   if (!sessionLostHandler) return
@@ -217,16 +161,13 @@ async function checkSessionLost(url, status) {
   }
 
   if (status === 403) {
-    // A burst of parallel 403s (a page loading four things at once) must not
-    // fire four confirmation requests.
     if (verifying) return
     verifying = true
     try {
       const check = await fetch(API.me, { credentials: 'same-origin' })
       if (check.status === 401) sessionLostHandler()
     } catch {
-      /* Server unreachable. Not a session problem — leave the caller's own
-         "could not reach the server" message to stand. */
+      /* server unreachable - not a session problem */
     } finally {
       verifying = false
     }
@@ -240,22 +181,16 @@ async function readResponse(response, url) {
     try {
       data = JSON.parse(text)
     } catch {
-      data = { message: text }        // server sent plain text, not JSON
+      data = { message: text }        // plain text, not JSON
     }
   }
 
-  // Fire and forget: the caller's own error handling still runs normally,
-  // and the sign-out (if any) happens a moment later.
   if (!response.ok) checkSessionLost(url, response.status)
 
   return { ok: response.ok, status: response.status, data }
 }
 
-/**
- * Spring returns validation failures in several shapes depending on which
- * exception was thrown. This picks the most useful line out of any of them so
- * the student never sees a raw object or a bare status code.
- */
+/** Picks a readable message out of the different error shapes Spring returns. */
 export function errorMessage(result, fallback) {
   const body = result.data
 
@@ -263,7 +198,7 @@ export function errorMessage(result, fallback) {
     if (typeof body.message === 'string' && body.message) return body.message
     if (typeof body.error === 'string' && body.error) return body.error
 
-    // A field-error map, e.g. { "email": "Must be a valid email address" }
+    // field-error map, e.g. { "email": "Must be a valid email address" }
     const firstField = Object.values(body).find(v => typeof v === 'string' && v)
     if (firstField) return firstField
   }
@@ -274,25 +209,13 @@ export function errorMessage(result, fallback) {
   return fallback || 'Something went wrong. Please try again.'
 }
 
-/* Spring's error body wraps its payload in these keys. None of them is a form
-   field, and mistaking one for a field error is not harmless: the caller sees a
-   non-empty map, decides the failure has been explained field by field, and
-   never shows the actual message. That is exactly what hid the weak-password
-   error — "path" is a string, so it was being read as a field error for an input
-   named "path" that does not exist, and the real message was swallowed. */
+/* Keys of Spring's error body. They are not form fields, so they must not be
+   read as field errors (otherwise the real message gets hidden). */
 const ENVELOPE_KEYS = new Set([
   'status', 'error', 'message', 'path', 'timestamp', 'trace', 'exception', 'errors'
 ])
 
-/**
- * Pulls a field-error map out of a response, keyed by input name.
- *
- * @param {object} result       from request()
- * @param {string[]} knownFields the inputs this form actually has. Anything not
- *                               in the list is ignored, so a response shape we
- *                               did not anticipate degrades to "show the
- *                               message" rather than to silence.
- */
+/** Field errors from a response, limited to the form's own input names. */
 export function fieldErrors(result, knownFields) {
   const body = result.data
   if (!body || typeof body !== 'object') return {}
@@ -306,17 +229,13 @@ export function fieldErrors(result, knownFields) {
   return errors
 }
 
-/* ---------------------------------------------------------------------------
-   UPLOADS — the same rule the server enforces (FileTypeDetector + the 5 MB
-   multipart limit), checked first so a wrong file is refused instantly with a
-   clear sentence instead of after a slow upload. The server still decides: it
-   reads the file's real bytes, so renaming a file does not get past it.
---------------------------------------------------------------------------- */
+/* Uploads: same type and 5 MB rules as the server, checked here first for a
+   quick message. The server still checks the real file content. */
 export const UPLOAD_ACCEPT = '.pdf,.png,.jpg,.jpeg,.gif,.webp,application/pdf,image/png,image/jpeg,image/gif,image/webp'
 export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 const UPLOAD_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp']
 
-/** null when the file may be sent, otherwise the sentence to show. */
+/** null if the file is fine, otherwise the error to show. */
 export function uploadProblem(file) {
   if (!file) return null
   const extension = (file.name.split('.').pop() || '').toLowerCase()
@@ -346,10 +265,8 @@ export function initials(name) {
   return (first + last).toUpperCase()
 }
 
-/** Renders an ISO-ish LocalDateTime string as something a person reads
- *  comfortably. ActivityLogResponse.timestamp is already pre-formatted by the
- *  backend and must NOT go through this — this is for the plain
- *  LocalDateTime fields (createdAt, updatedAt, ...) most other DTOs return. */
+/** Formats a LocalDateTime string. Not for the activity log timestamp, which
+ *  the backend already formats. */
 export function formatDateTime(value) {
   if (!value) return ''
   const date = new Date(value)

@@ -19,12 +19,7 @@ const DEPARTMENTS = [
   { value: 'Other', label: 'Other' }
 ]
 
-/**
- * Four things make a password harder to guess: length, and the presence of
- * lower case, upper case, digits and symbols. Each scores a point. This only
- * informs the student — it never blocks the submit, because the rule that
- * actually protects the account is the one on the server.
- */
+/** Rough strength score for the meter (0-5). It never blocks submit; the server enforces the rule. */
 function scorePassword(value) {
   let score = 0
   if (value.length >= 8) score++
@@ -32,7 +27,7 @@ function scorePassword(value) {
   if (/[a-z]/.test(value) && /[A-Z]/.test(value)) score++
   if (/[0-9]/.test(value)) score++
   if (/[^A-Za-z0-9]/.test(value)) score++
-  return score            // 0 to 5
+  return score
 }
 
 export default function Register() {
@@ -44,8 +39,7 @@ export default function Register() {
     givenName: '', surname: '', studentId: '', email: '', department: '',
     password: '', confirm: ''
   })
-  // Kept apart from `form` because it is a list, not a string: the student can
-  // give up to three numbers (the F1 "contact number(s)" field).
+  // up to three contact numbers
   const [phones, setPhones] = useState([''])
   const [terms, setTerms] = useState(false)
   const [errors, setErrors] = useState({})
@@ -69,9 +63,7 @@ export default function Register() {
     setErrors({})
     setNotice(null)
 
-    // Empty boxes are caught here first, so pressing "Create account" on a
-    // blank form marks every missing field and jumps to the first one, instead
-    // of only showing the policy message at the bottom.
+    // mark every empty field first, not just the policy message
     const missing = {}
     if (!form.givenName.trim()) missing.givenName = 'Enter your given name(s).'
     if (!form.surname.trim()) missing.surname = 'Enter your surname.'
@@ -84,8 +76,6 @@ export default function Register() {
       return
     }
 
-    // The two-password check has no server equivalent — the server only ever
-    // receives one — so it has to happen here.
     if (form.password !== form.confirm) {
       setErrors({ confirm: 'The two passwords do not match.' })
       return
@@ -96,15 +86,8 @@ export default function Register() {
       return
     }
 
-    /* givenName + surname rather than one fullName box. "Diroshaan S." typed
-       into a single box has to be split on its last space by the server,
-       which gets names like "Amarasinghe S. D." wrong. Two boxes let the
-       student say which part is which, and RegistrationRequest accepts
-       either shape, so the older single-box API still works.
-
-       phones is sent as the whole list. Blank boxes are sent too - the
-       entity drops empties and duplicates itself - so the form never has to
-       second-guess the rule the server owns. */
+    /* Separate given name and surname so the server doesn't have to guess where
+   to split a full name. Blank phone boxes are sent too; the server drops them. */
     const payload = {
       givenName: form.givenName.trim(),
       surname: form.surname.trim(),
@@ -121,34 +104,22 @@ export default function Register() {
       const result = await request(API.register, { method: 'POST', body: payload })
 
       if (result.status === 201 || result.ok) {
-        /* Registration creates the account. It does not create a session:
-           POST /api/students writes the row, and only POST /api/auth/login
-           puts an Authentication in it. So the next stop is the login page,
-           and the confirmation belongs there — shown to someone who has just
-           registered, and to nobody else.
-
-           What travels with them is the email, because that is what the login
-           matches on. sessionStorage belongs to this browser tab alone and is
-           discarded when the tab closes; the password is never stored. */
+        /* Registering doesn't log you in. We pass the email to the login page in
+   sessionStorage (never the password) so it can prefill it. */
         const saved = result.data || {}
 
         try {
           sessionStorage.setItem('unihelp.justRegistered', saved.email || payload.email || '')
         } catch {
-          /* Private browsing can refuse storage. The greeting and the prefill
-             are courtesies; losing them must not block a registration that
-             already succeeded. */
+          /* storage can be blocked; the account is still created */
         }
 
-        // replace, not push: the back button should not return to a filled-in
-        // form for an account that now exists.
+        // replace so Back doesn't return to the filled-in form
         navigate(next ? '/login?next=' + encodeURIComponent(next) : '/login', { replace: true })
         return
       }
 
-      // 409 is the duplicate Student ID / email case.
-      /* Only these inputs exist on this form. Anything else in the body is
-         Spring's envelope, and passing the list keeps it out. */
+      // 409 = Student ID or email already registered
       const fields = fieldErrors(result,
         ['givenName', 'surname', 'studentId', 'email', 'phones', 'department', 'password'])
       if (Object.keys(fields).length) {

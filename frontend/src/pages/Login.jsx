@@ -23,28 +23,12 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState(null)      // { kind, text }
 
-  /**
-   * Explain WHY the user is looking at a login form they did not ask for.
-   *
-   * api.js redirects here with ?expired=1 when the server stops recognising
-   * the session — a backend restart, a timeout, or an administrator suspending
-   * the account. Without this message the redirect is indistinguishable from
-   * the application randomly logging you out, which is exactly the kind of
-   * thing that makes people stop trusting a system.
-   */
+  // ?expired=1 is added when the session ran out, so we can explain the redirect
   const [searchParams] = useSearchParams()
   const expired = searchParams.get('expired') === '1'
 
-  /* --------------------------------------------------------------------
-     Arriving straight from registration
-
-     Register leaves the new account's email in sessionStorage on its way
-     here. If it is there, fill it in and say why — and only then, so a
-     normal visit to this page shows nothing.
-
-     The value is removed as soon as it is read, so a refresh does not
-     repeat the message.
-     -------------------------------------------------------------------- */
+  /* Coming from Register: prefill the new email once (it is removed after
+     reading so a refresh doesn't show the message again). */
   useEffect(() => {
     let justRegistered = null
 
@@ -52,7 +36,7 @@ export default function Login() {
       justRegistered = sessionStorage.getItem('unihelp.justRegistered')
       sessionStorage.removeItem('unihelp.justRegistered')
     } catch {
-      return      // storage unavailable; the form simply starts empty
+      return      // storage unavailable
     }
 
     if (!justRegistered) return
@@ -69,7 +53,6 @@ export default function Login() {
     event.preventDefault()
     setNotice(null)
 
-    // Check before sending, so an empty form never costs a round trip.
     if (!username.trim() || !password) {
       setNotice({ kind: 'error', text: 'Enter both your Student ID (or email) and your password.' })
       return
@@ -78,32 +61,20 @@ export default function Login() {
     setBusy(true)
 
     try {
-      /* The one value typed is sent under both names the controller might
-         expect. AuthController's LoginRequest calls this field either
-         `username` or `email`, and Spring Boot ignores JSON properties a DTO
-         does not declare, so whichever it uses binds and the other is dropped.
-         Trim this to the real name once the DTO is confirmed. */
+      /* LoginRequest reads `email`; the extra `username` key is ignored. */
       const result = await request(API.login, {
         method: 'POST',
         body: { username: username.trim(), email: username.trim(), password }
       })
 
       if (result.ok) {
-        /* Re-ask who is logged in before navigating, so the welcome page's top
-           bar already knows the answer when it renders. Without this it would
-           paint Login and Register for a moment and then swap. */
-        // Each role lands on its own page: the one they were trying to open
-        // (?next=), or their home - the student's tickets, the officer's
-        // queue, the administrator's dashboard.
+        // load the session first so the next page doesn't flash the guest view
         const me = await refresh()
         navigate(afterLogin(me?.role, location.search), { replace: true })
         return
       }
 
-      /* A suspended account and a wrong password are different failures and
-         must read differently. DisabledException is a sibling of
-         BadCredentialsException, not a subclass, so the controller has to
-         catch it separately — the 403 below is the suspended case. */
+      /* 403 here means the account is suspended, not a wrong password. */
       if (result.status === 401 || result.status === 400) {
         setNotice({ kind: 'error', text: errorMessage(result, 'That Student ID or password is not correct.') })
       } else if (result.status === 403) {

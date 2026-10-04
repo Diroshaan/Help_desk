@@ -7,28 +7,10 @@ import { useSession } from '../hooks/useSession.jsx'
 import { homeFor } from '../routes.jsx'
 
 /**
- * Change password - every signed-in role (F1, PUT /api/auth/password).
- *
- * WHY THIS SCREEN MATTERS MORE THAN ITS SIZE SUGGESTS
- * ---------------------------------------------------
- * Officers and administrators are created by an administrator who types their
- * first password for them (F6 provisioning). Until this screen existed, that
- * password could never be changed by its owner, and the only way to reset the
- * bootstrap admin was a hand-written BCrypt UPDATE in the database. Now the
- * person who owns the account is the only one who knows its password.
- *
- * WHAT THE SERVER DOES, SO THE MESSAGES BELOW ARE TRUE
- * ----------------------------------------------------
- * PasswordService checks the current password, refuses a new one equal to the
- * old, stores a fresh BCrypt hash, ends every OTHER session of this account
- * (this tab stays signed in), and publishes PasswordChangedEvent - which the
- * AccountSecurityNotifier (Observer) turns into a "Your password was changed"
- * notification. So a stolen session elsewhere is cut off, and the owner hears
- * about the change even if it was not them.
- *
- * A wrong current password is a 400, not a 401/403: the session is fine, the
- * input is not. api.js therefore does not sign the user out, and the message
- * goes beside the form like any other validation error.
+ * Change password, for every role (officers and admins are given their first
+ * password by an admin). The server ends the account's other sessions and the
+ * PasswordChangedEvent (Observer) sends a "password changed" notification.
+ * A wrong current password comes back as 400, so the user stays signed in.
  */
 export default function ChangePassword() {
   const { role } = useSession()
@@ -45,7 +27,7 @@ export default function ChangePassword() {
     event.preventDefault()
     setErrors({}); setNotice(null)
 
-    // The only check with no server equivalent: the server receives one copy.
+    // the server only gets one copy, so the match is checked here
     if (form.newPassword !== form.confirm) {
       setErrors({ confirm: 'The two new passwords do not match.' })
       return
@@ -59,8 +41,7 @@ export default function ChangePassword() {
       })
 
       if (result.status === 204 || result.ok) {
-        // Clear the boxes: leaving a password sitting in a form after it has
-        // been used is exactly what a shoulder-surfer or a shared PC exploits.
+        // don't leave passwords sitting in the form
         setForm({ currentPassword: '', newPassword: '', confirm: '' })
         setNotice({
           kind: 'info',
