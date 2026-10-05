@@ -1,6 +1,7 @@
 package com.helpdesk.knowledgebase.controller;
 
 import com.helpdesk.common.settings.HelpdeskSettings;
+
 /**
  * Clamps page and size request params so a huge or negative value can't cause
  * a lot of work in the search. Shared by both article controllers.

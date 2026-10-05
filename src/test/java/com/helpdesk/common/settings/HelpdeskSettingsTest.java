@@ -45,4 +45,29 @@ class HelpdeskSettingsTest {
         assertThat(s.getArticleMaxPageSize()).isEqualTo(50);
         assertThat(s.getMaxPage()).isEqualTo(10_000);
     }
+
+    @Test
+    void uploadLimitComesFromSpringsMultipartSetting() throws Exception {
+        java.util.Properties props = new java.util.Properties();
+        try (var in = HelpdeskSettings.class.getResourceAsStream(HelpdeskSettings.FILE)) {
+            props.load(in);
+        }
+        long springLimit = HelpdeskSettings.parseSize(props.getProperty("spring.servlet.multipart.max-file-size"));
+        assertThat(HelpdeskSettings.getInstance().getMaxUploadBytes()).isEqualTo(springLimit);
+    }
+
+    @Test
+    void parsesSpringStyleSizes() {
+        assertThat(HelpdeskSettings.parseSize("5MB")).isEqualTo(5L * 1024 * 1024);
+        assertThat(HelpdeskSettings.parseSize("512KB")).isEqualTo(512L * 1024);
+        assertThat(HelpdeskSettings.parseSize("2048")).isEqualTo(2048L);
+    }
+
+    @Test
+    void fileTypeListsMatchTheDetector() {
+        assertThat(HelpdeskSettings.getInstance().getAttachmentTypes())
+                .isEqualTo(com.helpdesk.common.files.FileTypeDetector.ATTACHMENT_TYPES);
+        assertThat(HelpdeskSettings.getInstance().getAvatarTypes())
+                .isEqualTo(com.helpdesk.common.files.FileTypeDetector.AVATAR_TYPES);
+    }
 }

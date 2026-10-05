@@ -1,8 +1,8 @@
 package com.helpdesk.ticket.service;
 
-import com.helpdesk.common.settings.HelpdeskSettings;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.files.FileTypeDetector;
+import com.helpdesk.common.settings.HelpdeskSettings;
 import com.helpdesk.ticket.dto.AttachmentResponse;
 import com.helpdesk.ticket.entity.Attachment;
 import com.helpdesk.ticket.entity.AttachmentKind;
@@ -56,7 +56,7 @@ public class AttachmentService {
 
         // Check the file's first bytes, not the Content-Type the browser sent,
         // so a renamed .exe can't pass as an image.
-        String detectedType = FileTypeDetector.detect(bytes, FileTypeDetector.ATTACHMENT_TYPES)
+        String detectedType = FileTypeDetector.detect(bytes, HelpdeskSettings.getInstance().getAttachmentTypes())
                 .orElseThrow(() -> new ValidationException(
                         "Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed"));
 
