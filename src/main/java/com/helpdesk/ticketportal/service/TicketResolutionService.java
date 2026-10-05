@@ -37,9 +37,12 @@ public class TicketResolutionService {
     public TicketResolutionResponse getForStudent(Long ticketId, Long studentId) {
         Resolution resolution = findOwnedResolution(ticketId, studentId);
 
-        String officerName = officerRepository.findById(resolution.getOfficerId())
-                .map(Officer::getFullName)
-                .orElse("Help desk officer");
+        // the officer's name, or a general label if the officer no longer exists
+        String officerName = "Help desk officer";
+        Officer officer = officerRepository.findById(resolution.getOfficerId()).orElse(null);
+        if (officer != null) {
+            officerName = officer.getFullName();
+        }
 
         return new TicketResolutionResponse(
                 resolution.getId(),
@@ -64,7 +67,10 @@ public class TicketResolutionService {
     // Checks the ticket is the student's and loads its resolution; 404 if there is none
     private Resolution findOwnedResolution(Long ticketId, Long studentId) {
         ticketService.getOwnedTicket(ticketId, studentId);
-        return resolutionRepository.findByTicketId(ticketId)
-                .orElseThrow(() -> new ResourceNotFoundException("This ticket has no answer yet"));
+        Resolution resolution = resolutionRepository.findByTicketId(ticketId).orElse(null);
+        if (resolution == null) {
+            throw new ResourceNotFoundException("This ticket has no answer yet");
+        }
+        return resolution;
     }
 }

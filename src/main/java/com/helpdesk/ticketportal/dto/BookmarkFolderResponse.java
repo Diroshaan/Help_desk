@@ -3,8 +3,8 @@ package com.helpdesk.ticketportal.dto;
 import com.helpdesk.ticketportal.entity.BookmarkFolder;
 
 /**
- * Response body for a bookmark folder. bookmarkCount isn't a column; it comes from one
- * grouped count query so we avoid a query per folder.
+ * Response body for a bookmark folder. bookmarkCount isn't a column; it is counted
+ * from one list of the student's bookmarks.
  */
 public class BookmarkFolderResponse {
 

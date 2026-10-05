@@ -60,8 +60,10 @@ public class BookmarkFolderController {
     }
 
     private Long currentStudentId(Authentication authentication) {
-        return studentService.findByEmail(authentication.getName())
-                .map(Student::getId)
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in student not found"));
+        Student student = studentService.findByEmail(authentication.getName()).orElse(null);
+        if (student == null) {
+            throw new ResourceNotFoundException("Logged-in student not found");
+        }
+        return student.getId();
     }
 }
