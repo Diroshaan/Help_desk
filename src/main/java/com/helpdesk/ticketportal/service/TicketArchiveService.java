@@ -21,6 +21,7 @@ public class TicketArchiveService {
     private final ArchivedTicketRepository archivedTicketRepository;
     private final TicketRepository ticketRepository;
 
+    // Spring injects the archive and ticket repositories
     @Autowired
     public TicketArchiveService(ArchivedTicketRepository archivedTicketRepository,
                                  TicketRepository ticketRepository) {
@@ -46,6 +47,7 @@ public class TicketArchiveService {
         return archivedTicketRepository.save(archived);
     }
 
+    // Returns the ids of the student's archived tickets
     @Transactional(readOnly = true)
     public List<Long> archivedTicketIds(Long studentId) {
         return archivedTicketRepository.findTicketIdsByStudentId(studentId);
@@ -59,6 +61,7 @@ public class TicketArchiveService {
                 .toList();
     }
 
+    // Moves an archived ticket back to the student's active list
     @Transactional
     public void unarchiveTicket(Long studentId, Long ticketId) {
         ArchivedTicket archived = archivedTicketRepository.findByStudentIdAndTicketId(studentId, ticketId)

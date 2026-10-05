@@ -21,6 +21,7 @@ public class BookmarkService {
     private final BookmarkFolderRepository bookmarkFolderRepository;
     private final TicketService ticketService;
 
+    // Spring injects the repositories and TicketService this service needs
     @Autowired
     public BookmarkService(BookmarkRepository bookmarkRepository,
                             BookmarkFolderRepository bookmarkFolderRepository,
@@ -30,9 +31,10 @@ public class BookmarkService {
         this.ticketService = ticketService;
     }
 
+    //Creates a new bookmarked ticket
     @Transactional
     public Bookmark createBookmark(Long studentId, Long ticketId, Long folderId) {
-        // must be the student's own ticket; someone else's is a 404 so ids can't be probed
+        // must be the student's own ticket;
         ticketService.getOwnedTicket(ticketId, studentId);
         if (folderId != null) {
             requireOwnedFolder(folderId, studentId);
@@ -55,14 +57,17 @@ public class BookmarkService {
         }
     }
 
+    // Returns all of the student's bookmarks
     public List<Bookmark> findByStudentId(Long studentId) {
         return bookmarkRepository.findByStudentId(studentId);
     }
 
+    // Returns the student's bookmarks in one folder
     public List<Bookmark> findByStudentIdAndFolderId(Long studentId, Long folderId) {
         return bookmarkRepository.findByStudentIdAndFolderId(studentId, folderId);
     }
 
+    // Loads a bookmark; 404 if it is missing or belongs to another student
     public Bookmark findByIdAndStudentId(Long id, Long studentId) {
         Bookmark bookmark = bookmarkRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Bookmark not found"));
@@ -73,6 +78,7 @@ public class BookmarkService {
         return bookmark;
     }
 
+    // Moves a bookmark into one of the student's folders (null unfiles it)
     @Transactional
     public Bookmark moveToFolder(Long id, Long studentId, Long folderId) {
         Bookmark bookmark = findByIdAndStudentId(id, studentId);
@@ -83,6 +89,7 @@ public class BookmarkService {
         return bookmarkRepository.save(bookmark);
     }
 
+    // Deletes one of the student's bookmarks
     @Transactional
     public void deleteBookmark(Long id, Long studentId) {
         Bookmark bookmark = findByIdAndStudentId(id, studentId);

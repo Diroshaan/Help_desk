@@ -37,7 +37,6 @@ public class FeedbackService implements FeedbackSubject {
     private final CategoryRepository categoryRepository;
 
     // Observer pattern: the subscribed observers. CopyOnWriteArrayList so add/remove
-    // can't clash with a notify that is running at the same time.
     private final List<FeedbackObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
@@ -50,6 +49,8 @@ public class FeedbackService implements FeedbackSubject {
         initialObservers.forEach(this::addObserver);
     }
 
+
+    // Subscribes an observer, skipping duplicates
     @Override
     public void addObserver(FeedbackObserver observer) {
         if (!observers.contains(observer)) {
@@ -57,11 +58,13 @@ public class FeedbackService implements FeedbackSubject {
         }
     }
 
+    // Unsubscribes an observer
     @Override
     public void removeObserver(FeedbackObserver observer) {
         observers.remove(observer);
     }
 
+    // Calls update() on every subscribed observer with the new feedback details
     @Override
     public void notifyObservers(Long ticketId, String ticketSubject, int rating, String comment) {
         for (FeedbackObserver observer : observers) {
@@ -115,6 +118,7 @@ public class FeedbackService implements FeedbackSubject {
         return feedbackRepository.save(feedback);
     }
 
+    // Returns the student's feedback for one of their tickets
     public Feedback getByTicketId(Long ticketId, Long studentId) {
         findOwnedTicket(ticketId, studentId);
         return findByTicketId(ticketId);
@@ -150,6 +154,7 @@ public class FeedbackService implements FeedbackSubject {
         return new FeedbackSummaryResponse(averageRating, totalCount, ratingBreakdown);
     }
 
+    // Loads a ticket, 404 if it is missing or belongs to another student
     private Ticket findOwnedTicket(Long ticketId, Long studentId) {
         Ticket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
@@ -160,6 +165,7 @@ public class FeedbackService implements FeedbackSubject {
         return ticket;
     }
 
+    // Loads a ticket's feedback, 404 if there is none
     private Feedback findByTicketId(Long ticketId) {
         return feedbackRepository.findByTicketId(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Feedback not found"));

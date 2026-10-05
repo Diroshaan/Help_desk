@@ -1,7 +1,7 @@
 package com.helpdesk.ticketportal.service;
 
 /**
- * Observer pattern - Subject interface.
+ * Subject interface.
  * Something other classes can subscribe to, to hear about new feedback.
  */
 public interface FeedbackSubject {

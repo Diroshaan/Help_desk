@@ -23,6 +23,7 @@ public class BookmarkFolderService {
     private final BookmarkFolderRepository bookmarkFolderRepository;
     private final BookmarkRepository bookmarkRepository;
 
+    // Spring injects the folder and bookmark repositories
     @Autowired
     public BookmarkFolderService(BookmarkFolderRepository bookmarkFolderRepository,
                                   BookmarkRepository bookmarkRepository) {
@@ -30,6 +31,7 @@ public class BookmarkFolderService {
         this.bookmarkRepository = bookmarkRepository;
     }
 
+    // Creates a folder after checking the name is valid and not already used
     public BookmarkFolder createFolder(Long studentId, String name, String colour) {
         String cleanName = validateName(name);
 
@@ -45,10 +47,12 @@ public class BookmarkFolderService {
         return saveOrTranslateDuplicate(folder);
     }
 
+    // Returns all of the student's folders
     public List<BookmarkFolder> findByStudentId(Long studentId) {
         return bookmarkFolderRepository.findByStudentId(studentId);
     }
 
+    // Returns the student's folders with their bookmark counts (one count query)
     public List<BookmarkFolderResponse> findResponsesByStudentId(Long studentId) {
         List<BookmarkFolder> folders = bookmarkFolderRepository.findByStudentId(studentId);
 
@@ -62,6 +66,7 @@ public class BookmarkFolderService {
                 .collect(Collectors.toList());
     }
 
+    // Builds the response for one folder, including its bookmark count
     public BookmarkFolderResponse toResponse(BookmarkFolder folder) {
         long bookmarkCount = bookmarkRepository.countByStudentIdAndFolderId(folder.getStudentId(), folder.getId());
         return BookmarkFolderResponse.from(folder, bookmarkCount);
@@ -79,6 +84,7 @@ public class BookmarkFolderService {
         return folder;
     }
 
+    // Renames or recolours a folder after checking the new name is not a duplicate
     public BookmarkFolder updateFolder(Long id, Long studentId, String newName, String colour) {
         BookmarkFolder folder = findByIdAndStudentId(id, studentId);
         String cleanName = validateName(newName);

@@ -21,6 +21,7 @@ public final class HelpdeskSettings {
 
     static final String FILE = "/application.properties";
 
+    //static HelpdeskSettings instance variable
     private static volatile HelpdeskSettings instance;
 
     private final long maxUploadBytes;        // F2 attachments, F4 resolution files
@@ -30,6 +31,7 @@ public final class HelpdeskSettings {
     private final int articleMaxPageSize;     // F5 knowledge base
     private final int maxPage;                // F3 and F5 paging
 
+    //Constructor is private preventing other classes from making new instances
     private HelpdeskSettings() {
         Properties props = new Properties();
         try (InputStream in = HelpdeskSettings.class.getResourceAsStream(FILE)) {
@@ -47,6 +49,7 @@ public final class HelpdeskSettings {
         maxPage = intValue(props, "helpdesk.limits.max-page", 10_000);
     }
 
+    //Static method to get instance
     public static HelpdeskSettings getInstance() {
         if (instance == null) {
             synchronized (HelpdeskSettings.class) {
