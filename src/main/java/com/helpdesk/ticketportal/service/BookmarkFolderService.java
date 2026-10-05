@@ -3,6 +3,7 @@ package com.helpdesk.ticketportal.service;
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.ticketportal.dto.BookmarkFolderResponse;
+import com.helpdesk.ticketportal.entity.Bookmark;
 import com.helpdesk.ticketportal.entity.BookmarkFolder;
 import com.helpdesk.ticketportal.repository.BookmarkFolderRepository;
 import com.helpdesk.ticketportal.repository.BookmarkRepository;
@@ -12,13 +13,14 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /** Folders a student uses to group their ticket bookmarks. */
 @Service
 public class BookmarkFolderService {
+
+    private static final String DUPLICATE_NAME = "A folder with this name already exists";
 
     private final BookmarkFolderRepository bookmarkFolderRepository;
     private final BookmarkRepository bookmarkRepository;
@@ -26,7 +28,7 @@ public class BookmarkFolderService {
     // Spring injects the folder and bookmark repositories
     @Autowired
     public BookmarkFolderService(BookmarkFolderRepository bookmarkFolderRepository,
-                                  BookmarkRepository bookmarkRepository) {
+                                 BookmarkRepository bookmarkRepository) {
         this.bookmarkFolderRepository = bookmarkFolderRepository;
         this.bookmarkRepository = bookmarkRepository;
     }
@@ -34,89 +36,72 @@ public class BookmarkFolderService {
     // Creates a folder after checking the name is valid and not already used
     public BookmarkFolder createFolder(Long studentId, String name, String colour) {
         String cleanName = validateName(name);
-
         if (bookmarkFolderRepository.existsByStudentIdAndNameIgnoreCase(studentId, cleanName)) {
-            throw new DuplicateResourceException("A folder with this name already exists");
+            throw new DuplicateResourceException(DUPLICATE_NAME);
         }
 
         BookmarkFolder folder = new BookmarkFolder();
         folder.setStudentId(studentId);
         folder.setName(cleanName);
         folder.setColour(colour);
-
-        return saveOrTranslateDuplicate(folder);
+        return save(folder);
     }
 
-    // Returns all of the student's folders
-    public List<BookmarkFolder> findByStudentId(Long studentId) {
-        return bookmarkFolderRepository.findByStudentId(studentId);
-    }
-
-    // Returns the student's folders with their bookmark counts (one count query)
+    // Returns the student's folders, each with its bookmark count
     public List<BookmarkFolderResponse> findResponsesByStudentId(Long studentId) {
-        List<BookmarkFolder> folders = bookmarkFolderRepository.findByStudentId(studentId);
-
-        Map<Long, Long> countsByFolderId = bookmarkRepository.countByFolderIdForStudent(studentId).stream()
-                .collect(Collectors.toMap(
-                        BookmarkRepository.FolderBookmarkCount::getFolderId,
-                        BookmarkRepository.FolderBookmarkCount::getCount));
-
-        return folders.stream()
-                .map(folder -> BookmarkFolderResponse.from(folder, countsByFolderId.getOrDefault(folder.getId(), 0L)))
-                .collect(Collectors.toList());
+        List<BookmarkFolderResponse> responses = new ArrayList<>();
+        for (BookmarkFolder folder : bookmarkFolderRepository.findByStudentId(studentId)) {
+            responses.add(toResponse(folder));
+        }
+        return responses;
     }
 
     // Builds the response for one folder, including its bookmark count
     public BookmarkFolderResponse toResponse(BookmarkFolder folder) {
-        long bookmarkCount = bookmarkRepository.countByStudentIdAndFolderId(folder.getStudentId(), folder.getId());
-        return BookmarkFolderResponse.from(folder, bookmarkCount);
+        long count = bookmarkRepository.countByStudentIdAndFolderId(folder.getStudentId(), folder.getId());
+        return BookmarkFolderResponse.from(folder, count);
     }
 
-    // another student's folder is a 404, not a 403
+    // Loads a folder; another student's folder is a 404, the same as a missing one
     public BookmarkFolder findByIdAndStudentId(Long id, Long studentId) {
-        BookmarkFolder folder = bookmarkFolderRepository.findById(id)
-
-                .orElseThrow(() -> new ResourceNotFoundException("Bookmark folder not found"));
-
+        BookmarkFolder folder = bookmarkFolderRepository.findById(id).orElse(null);
+        if (folder == null) {
+            throw new ResourceNotFoundException("Bookmark folder not found");
+        }
         if (!folder.getStudentId().equals(studentId)) {
             throw new ResourceNotFoundException("Bookmark folder not found");
         }
         return folder;
     }
 
-    // Renames or recolours a folder after checking the new name is not a duplicate
+    // Renames a folder, and changes its colour if a new one was sent
     public BookmarkFolder updateFolder(Long id, Long studentId, String newName, String colour) {
         BookmarkFolder folder = findByIdAndStudentId(id, studentId);
         String cleanName = validateName(newName);
 
-        // excludes this folder, so changing only the capitalisation isn't a duplicate
-        if (bookmarkFolderRepository
-                .existsByStudentIdAndNameIgnoreCaseAndIdNot(studentId, cleanName, id)) {
-            throw new DuplicateResourceException("A folder with this name already exists");
+        // ignores this folder, so changing only the capitalisation is allowed
+        if (bookmarkFolderRepository.existsByStudentIdAndNameIgnoreCaseAndIdNot(studentId, cleanName, id)) {
+            throw new DuplicateResourceException(DUPLICATE_NAME);
         }
 
         folder.setName(cleanName);
-
-        // null means the field was left out (the rename dialog only sends a name), so keep the colour
         if (colour != null) {
             folder.setColour(colour);
         }
-        return saveOrTranslateDuplicate(folder);
+        return save(folder);
     }
 
-    // One transaction, so a failure can't leave half the bookmarks unfiled.
+    // Deletes a folder and moves its bookmarks to "no folder", all in one transaction
     @Transactional
     public void deleteFolder(Long id, Long studentId) {
         BookmarkFolder folder = findByIdAndStudentId(id, studentId);
-
-        // bookmarks are kept, just unfiled (dirty checking saves the change)
-        bookmarkRepository.findByStudentIdAndFolderId(studentId, id)
-                .forEach(bookmark -> bookmark.setFolderId(null));
-
+        for (Bookmark bookmark : bookmarkRepository.findByStudentIdAndFolderId(studentId, id)) {
+            bookmark.setFolderId(null);
+        }
         bookmarkFolderRepository.delete(folder);
     }
 
-    // same rules as the entity, since a plain String parameter skips bean validation
+    // Checks the name is present and at most 60 characters, and removes extra spaces
     private String validateName(String name) {
         if (name == null || name.isBlank()) {
             throw new ValidationException("Folder name is required");
@@ -128,13 +113,13 @@ public class BookmarkFolderService {
         return trimmed;
     }
 
-    // Two requests can both pass the exists check; the unique (student_id, name)
-    // constraint catches the second and we turn it into the same 409.
-    private BookmarkFolder saveOrTranslateDuplicate(BookmarkFolder folder) {
+    // Saves the folder; if two requests create the same name at once, the database
+    // blocks the second and we return the same "already exists" error
+    private BookmarkFolder save(BookmarkFolder folder) {
         try {
             return bookmarkFolderRepository.save(folder);
-        } catch (DataIntegrityViolationException ex) {
-            throw new DuplicateResourceException("A folder with this name already exists");
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateResourceException(DUPLICATE_NAME);
         }
     }
 }

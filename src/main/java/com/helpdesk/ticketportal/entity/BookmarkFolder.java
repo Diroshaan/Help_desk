@@ -42,7 +42,11 @@ public class BookmarkFolder {
     @PreUpdate
     private void syncNameKey() {
         // Locale.ROOT so the server's language can't change the result
-        this.nameKey = (name == null) ? null : name.toLowerCase(Locale.ROOT);
+        if (name == null) {
+            this.nameKey = null;
+        } else {
+            this.nameKey = name.toLowerCase(Locale.ROOT);
+        }
     }
 
     public BookmarkFolder() {}

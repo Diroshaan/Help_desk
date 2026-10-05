@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** Student endpoints for ticket bookmarks. Only the student's own bookmarks are reachable. */
@@ -43,10 +44,18 @@ public class BookmarkController {
     public List<BookmarkResponse> findAll(@RequestParam(required = false) Long folderId,
                                            Authentication authentication) {
         Long studentId = currentStudentId(authentication);
-        List<Bookmark> bookmarks = (folderId != null)
-                ? bookmarkService.findByStudentIdAndFolderId(studentId, folderId)
-                : bookmarkService.findByStudentId(studentId);
-        return bookmarks.stream().map(BookmarkResponse::from).toList();
+        List<Bookmark> bookmarks;
+        if (folderId != null) {
+            bookmarks = bookmarkService.findByStudentIdAndFolderId(studentId, folderId);
+        } else {
+            bookmarks = bookmarkService.findByStudentId(studentId);
+        }
+
+        List<BookmarkResponse> responses = new ArrayList<>();
+        for (Bookmark bookmark : bookmarks) {
+            responses.add(BookmarkResponse.from(bookmark));
+        }
+        return responses;
     }
 
     @PatchMapping("/{id}/folder")
@@ -65,8 +74,10 @@ public class BookmarkController {
     }
 
     private Long currentStudentId(Authentication authentication) {
-        return studentService.findByEmail(authentication.getName())
-                .map(Student::getId)
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in student not found"));
+        Student student = studentService.findByEmail(authentication.getName()).orElse(null);
+        if (student == null) {
+            throw new ResourceNotFoundException("Logged-in student not found");
+        }
+        return student.getId();
     }
 }
