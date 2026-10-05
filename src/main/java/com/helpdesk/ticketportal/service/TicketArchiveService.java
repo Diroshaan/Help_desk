@@ -5,6 +5,7 @@ import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticket.entity.TicketStatus;
 import com.helpdesk.ticket.repository.TicketRepository;
+import com.helpdesk.ticket.service.TicketService;
 import com.helpdesk.ticketportal.entity.ArchivedTicket;
 import com.helpdesk.ticketportal.repository.ArchivedTicketRepository;
 import jakarta.validation.ValidationException;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** Lets a student archive finished tickets to hide them from their active list. */
@@ -20,19 +22,22 @@ public class TicketArchiveService {
 
     private final ArchivedTicketRepository archivedTicketRepository;
     private final TicketRepository ticketRepository;
+    private final TicketService ticketService;
 
-    // Spring injects the archive and ticket repositories
+    // Spring injects the archive and ticket repositories and the ticket service
     @Autowired
     public TicketArchiveService(ArchivedTicketRepository archivedTicketRepository,
-                                 TicketRepository ticketRepository) {
+                                 TicketRepository ticketRepository,
+                                 TicketService ticketService) {
         this.archivedTicketRepository = archivedTicketRepository;
         this.ticketRepository = ticketRepository;
+        this.ticketService = ticketService;
     }
 
     // Only RESOLVED or WITHDRAWN tickets can be archived - both are final states.
     @Transactional
     public ArchivedTicket archiveTicket(Long studentId, Long ticketId) {
-        Ticket ticket = findOwnedTicket(ticketId, studentId);
+        Ticket ticket = ticketService.getOwnedTicket(ticketId, studentId);
 
         if (ticket.getStatus() != TicketStatus.RESOLVED && ticket.getStatus() != TicketStatus.WITHDRAWN) {
             throw new ValidationException("Only a finished ticket (resolved or withdrawn) can be archived");
@@ -56,26 +61,22 @@ public class TicketArchiveService {
     // filtered to the caller's own tickets again as a second guard
     @Transactional(readOnly = true)
     public List<Ticket> archivedTickets(Long studentId) {
-        return ticketRepository.findAllById(archivedTicketIds(studentId)).stream()
-                .filter(ticket -> studentId.equals(ticket.getStudentId()))
-                .toList();
+        List<Ticket> result = new ArrayList<>();
+        for (Ticket ticket : ticketRepository.findAllById(archivedTicketIds(studentId))) {
+            if (ticket.getStudentId().equals(studentId)) {
+                result.add(ticket);
+            }
+        }
+        return result;
     }
 
     // Moves an archived ticket back to the student's active list
     @Transactional
     public void unarchiveTicket(Long studentId, Long ticketId) {
-        ArchivedTicket archived = archivedTicketRepository.findByStudentIdAndTicketId(studentId, ticketId)
-                .orElseThrow(() -> new ResourceNotFoundException("Archived ticket not found"));
-        archivedTicketRepository.delete(archived);
-    }
-
-    // someone else's ticket is a 404, not a 403, so ids can't be probed
-    private Ticket findOwnedTicket(Long ticketId, Long studentId) {
-        Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
-        if (!ticket.getStudentId().equals(studentId)) {
-            throw new ResourceNotFoundException("Ticket not found");
+        ArchivedTicket archived = archivedTicketRepository.findByStudentIdAndTicketId(studentId, ticketId).orElse(null);
+        if (archived == null) {
+            throw new ResourceNotFoundException("Archived ticket not found");
         }
-        return ticket;
+        archivedTicketRepository.delete(archived);
     }
 }
