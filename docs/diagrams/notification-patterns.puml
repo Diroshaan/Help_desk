@@ -1,0 +1,144 @@
+@startuml
+' UNIHELP notifications: Observer (Spring events + F3's GoF subject/observer) and Strategy (channels)
+skinparam classAttributeIconSize 0
+skinparam dpi 150
+skinparam linetype polyline
+skinparam nodesep 40
+skinparam ranksep 60
+hide empty members
+
+package "Strategy" {
+interface NotificationChannel {
++ String getName()
++ boolean isEnabledFor(NotificationRecipient)
++ void send(NotificationRecipient,NotificationMessage)
+}
+class PortalNotificationChannel {
+- NotificationRepository notificationRepository
++ String getName()
++ boolean isEnabledFor(NotificationRecipient)
++ void send(NotificationRecipient,NotificationMessage)
+}
+class EmailNotificationChannel {
++ String getName()
++ boolean isEnabledFor(NotificationRecipient)
++ void send(NotificationRecipient,NotificationMessage)
+}
+class NotificationService {
+- List<NotificationChannel> channels
++ List<String> notify(NotificationRecipient,NotificationMessage)
+}
+class NotificationRecipient <<record>> {
+- Long userId
+- String email
+- String displayName
+- boolean emailEnabled
+- boolean portalEnabled
++ {static} NotificationRecipient from(AppUser)
+}
+class NotificationMessage <<record>> {
+- String title
+- String body
+- String link
+}
+class Notification <<entity>> {
+- Long recipientUserId
+- String title
+- String body
+- String link
+- LocalDateTime readAt
+}
+}
+
+package "Observer: events" {
+class TicketSubmittedEvent <<record>> {
+- Long ticketId
+- String subject
+- String categoryName
+- String assignedDepartmentCode
+}
+class TicketStatusChangedEvent <<record>> {
+- Long ticketId
+- Long studentId
+- String subject
+- TicketStatus fromStatus
+- TicketStatus toStatus
+- Long changedByOfficerId
+}
+class PasswordChangedEvent <<record>> {
+- Long userId
+}
+}
+
+package "Observer: publishers" {
+class TicketService {
++ Ticket createTicket(Long,TicketCreateRequest)
+}
+class QueueService {
++ Ticket updateStatus(Long,Long,TicketStatus)
+~ Ticket markResolved(Ticket,Long)
+~ Ticket reopen(Ticket,Long)
+}
+class PasswordService {
++ void changePassword(String,String,PasswordChangeRequest)
+}
+}
+
+package "Observer: F3 feedback (GoF subject and observer)" {
+interface FeedbackSubject {
++ void addObserver(FeedbackObserver)
++ void removeObserver(FeedbackObserver)
++ void notifyObservers(Long,String,int,String)
+}
+interface FeedbackObserver {
++ void update(Long,String,int,String)
+}
+class FeedbackService {
+- List<FeedbackObserver> observers
++ Feedback submitFeedback(Long,Long,Integer,String)
+}
+class FeedbackReceivedNotifier {
++ void update(Long,String,int,String)
+}
+}
+
+package "Observer: listeners" {
+class QueueArrivalNotifier {
++ void onTicketSubmitted(TicketSubmittedEvent)
+}
+class TicketStatusNotifier {
++ void onTicketStatusChanged(TicketStatusChangedEvent)
+}
+class TicketHistoryRecorder {
++ void on(TicketStatusChangedEvent)
+}
+class AccountSecurityNotifier {
++ void onPasswordChanged(PasswordChangedEvent)
+}
+}
+
+TicketService ..> TicketSubmittedEvent : publishes
+QueueService ..> TicketStatusChangedEvent : publishes
+PasswordService ..> PasswordChangedEvent : publishes
+
+QueueArrivalNotifier ..> TicketSubmittedEvent : listens
+TicketStatusNotifier ..> TicketStatusChangedEvent : listens
+' two observers of the same event: the publisher didn't change when the history was added
+TicketHistoryRecorder ..> TicketStatusChangedEvent : listens
+AccountSecurityNotifier ..> PasswordChangedEvent : listens
+FeedbackSubject <|.. FeedbackService
+FeedbackObserver <|.. FeedbackReceivedNotifier
+FeedbackService o-- "0..*" FeedbackObserver : notifies
+
+QueueArrivalNotifier ..> NotificationService : uses
+TicketStatusNotifier ..> NotificationService : uses
+AccountSecurityNotifier ..> NotificationService : uses
+FeedbackReceivedNotifier ..> NotificationService : uses
+
+NotificationChannel <|.. PortalNotificationChannel
+NotificationChannel <|.. EmailNotificationChannel
+NotificationService o-- "1..*" NotificationChannel
+NotificationService ..> NotificationRecipient
+NotificationService ..> NotificationMessage
+PortalNotificationChannel ..> Notification : saves
+@enduml

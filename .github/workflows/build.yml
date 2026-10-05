@@ -1,0 +1,62 @@
+# CI: on every pull request and push to develop, build and test the backend
+# (H2 and the "test" profile, so no database or secrets) and build the frontend.
+
+name: Build
+
+on:
+  pull_request:
+    branches: [ develop ]
+  push:
+    branches: [ develop ]
+
+jobs:
+  backend:
+    name: Backend compiles and tests pass
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          # matches <java.version> in pom.xml
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      # verify compiles and runs every test; -B keeps the log plain
+      - name: Compile and test
+        run: mvn -B verify
+
+  frontend:
+    name: Frontend builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci installs exactly what package-lock.json pins
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      # The built bundle is committed (Spring serves it from src/main/resources/static),
+      # so fail if someone changed the frontend source without rebuilding it.
+      - name: Fail if the committed bundle is out of date
+        run: |
+          if [ -n "$(git status --porcelain src/main/resources/static)" ]; then
+            echo "::error::The committed bundle does not match the frontend source."
+            echo "Run 'npm run build' in frontend/ and commit src/main/resources/static."
+            git status --porcelain src/main/resources/static
+            exit 1
+          fi
+          echo "Committed bundle is up to date."

@@ -1,0 +1,92 @@
+package com.helpdesk.ticketportal.entity;
+
+import jakarta.persistence.*;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import java.time.LocalDateTime;
+
+/** A student's rating (1-5) and optional comment on a resolved ticket. */
+@Entity
+// one feedback per ticket, enforced by the DB since the service check can be raced
+@Table(
+    name = "feedback",
+    uniqueConstraints = @UniqueConstraint(name = "uq_feedback_ticket", columnNames = {"ticket_id"})
+)
+public class Feedback {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @NotNull(message = "Ticket ID is required")
+    @Column(nullable = false)
+    private Long ticketId;
+
+    @NotNull(message = "Student ID is required")
+    @Column(nullable = false)
+    private Long studentId;
+
+    @NotNull(message = "Rating is required")
+    @Min(value = 1, message = "Rating must be at least 1")
+    @Max(value = 5, message = "Rating must be at most 5")
+    @Column(nullable = false)
+    private Integer rating;
+
+    @Column(length = 1000)
+    private String comment;
+
+    private LocalDateTime createdAt = LocalDateTime.now();
+
+    private LocalDateTime updatedAt = LocalDateTime.now();
+
+    public Feedback() {}
+
+    @PreUpdate
+    private void touchUpdatedAt() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public Long getId() {
+        return id;
+    }
+    public void setId(Long id) {
+        this.id = id;
+    }
+    public Long getTicketId() {
+        return ticketId;
+    }
+    public void setTicketId(Long ticketId) {
+        this.ticketId = ticketId;
+    }
+    public Long getStudentId() {
+        return studentId;
+    }
+    public void setStudentId(Long studentId) {
+        this.studentId = studentId;
+    }
+    public Integer getRating() {
+        return rating;
+    }
+    public void setRating(Integer rating) {
+        this.rating = rating;
+    }
+    public String getComment() {
+        return comment;
+    }
+    public void setComment(String comment) {
+        this.comment = comment;
+    }
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+}
