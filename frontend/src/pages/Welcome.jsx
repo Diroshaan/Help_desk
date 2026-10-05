@@ -50,7 +50,7 @@ const TOPICS = [
 ]
 
 const DESKS = [
-  { name: 'IT Services',   email: 'itdesk@university.lk',    phone: '+94 11 000 0001' },
+  { name: 'IT Services',   email: 'diros25ultra@gmail.com',  phone: '+94 11 000 0001' },
   { name: 'Registration',  email: 'registrar@university.lk', phone: '+94 11 000 0002' },
   { name: 'Financial Aid', email: 'finaid@university.lk',    phone: '+94 11 000 0003' }
 ]
@@ -75,7 +75,7 @@ const FOOT_INFO = [
       'Every page works with a keyboard: Tab moves between fields and buttons, Enter submits.',
       'Form fields have labels, and when a form has a mistake the page takes you straight to it.',
       'Text grows with your browser zoom, and the layout adjusts down to phone size.',
-      'If something is hard to use, email itdesk@university.lk and tell us which page.'
+      'If something is hard to use, email diros25ultra@gmail.com and tell us which page.'
     ]
   },
   {
@@ -85,7 +85,7 @@ const FOOT_INFO = [
       'We keep only what you enter: your name, Student ID, email, phone numbers and your tickets.',
       'A ticket is seen by you, the officers of the department handling it, and administrators.',
       'Passwords are stored hashed, never as plain text, and staff cannot read them.',
-      'You can delete your account from My profile. To ask about your data, email itdesk@university.lk.'
+      'You can delete your account from My profile. To ask about your data, email diros25ultra@gmail.com.'
     ]
   }
 ]
