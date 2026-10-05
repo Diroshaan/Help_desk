@@ -17,10 +17,17 @@ export default function Queue() {
   const [departments, setDepartments] = useState([])
   const [status, setStatus] = useState('')
   const [departmentId, setDepartmentId] = useState('')
-  const [studentId, setStudentId] = useState('')
+  const [studentInput, setStudentInput] = useState('')
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // Accepts the record number as shown on a ticket row: "5", "#5" or "Student #5".
+  const studentText = studentInput.trim().replace(/^student\s*/i, '').replace(/^#\s*/, '')
+  const studentId = /^\d+$/.test(studentText) ? studentText : ''
+  const studentError = studentInput.trim() && !studentId
+    ? 'Enter the record number shown on a ticket as "Student #N", for example 5. Registration numbers such as IT25101580 are not searchable here.'
+    : ''
 
   useEffect(() => {
     request(API.departments).then(r => { if (r.ok) setDepartments(r.data || []) })
@@ -60,9 +67,10 @@ export default function Queue() {
               <SelectField id="status" label="Status" options={STATUSES}
                            value={status} onChange={e => setStatus(e.target.value)} />
             </div>
-            <Field id="studentId" label="Or find one student's tickets by student record ID" type="number"
-                   value={studentId} onChange={e => setStudentId(e.target.value)}
-                   hint="Entering a student ID here overrides the filters above." />
+            <Field id="studentRecord" label="Or find one student's tickets by student record number" type="text"
+                   inputMode="numeric" autoComplete="off" placeholder="e.g. 5 or Student #5"
+                   value={studentInput} onChange={e => setStudentInput(e.target.value)} error={studentError}
+                   hint="Use the number shown as Student #N on a ticket. It overrides the filters above." />
           </section>
 
           <section className="section">
