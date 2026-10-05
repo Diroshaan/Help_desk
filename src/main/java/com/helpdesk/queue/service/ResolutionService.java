@@ -3,6 +3,7 @@ package com.helpdesk.queue.service;
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.files.FileTypeDetector;
+import com.helpdesk.common.settings.HelpdeskSettings;
 import com.helpdesk.common.user.entity.Officer;
 import com.helpdesk.common.user.repository.OfficerRepository;
 import com.helpdesk.queue.entity.Resolution;
@@ -29,7 +30,7 @@ import java.util.Optional;
 public class ResolutionService {
 
     // Same limit as student attachments.
-    private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = HelpdeskSettings.getInstance().getMaxUploadBytes();
 
     private final ResolutionRepository resolutionRepository;
     private final QueueService queueService;
@@ -157,7 +158,7 @@ public class ResolutionService {
             throw new UncheckedIOException("Failed to read uploaded file", e);
         }
         // Type is taken from the file's bytes, not the client's label.
-        String type = FileTypeDetector.detect(bytes, FileTypeDetector.ATTACHMENT_TYPES)
+        String type = FileTypeDetector.detect(bytes, HelpdeskSettings.getInstance().getAttachmentTypes())
                 .orElseThrow(() -> new ValidationException(
                         "Only PDF and image files (PNG, JPEG, GIF, WEBP) are allowed"));
 

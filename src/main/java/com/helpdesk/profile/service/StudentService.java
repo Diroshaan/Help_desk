@@ -8,6 +8,7 @@ import java.util.Set;
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.files.FileTypeDetector;
 import com.helpdesk.common.exception.ResourceNotFoundException;
+import com.helpdesk.common.settings.HelpdeskSettings;
 import com.helpdesk.profile.dto.ProfileUpdateRequest;
 import com.helpdesk.profile.dto.RegistrationRequest;
 import com.helpdesk.profile.entity.ActivityType;
@@ -227,10 +228,9 @@ public class StudentService {
     }
 
     // allow-list, so anything we didn't think of is rejected
-    private static final Set<String> ALLOWED_AVATAR_TYPES =
-            Set.of("image/jpeg", "image/png", "image/webp");
+    private static final Set<String> ALLOWED_AVATAR_TYPES = HelpdeskSettings.getInstance().getAvatarTypes();
 
-    private static final long MAX_AVATAR_BYTES = 2L * 1024 * 1024;
+    private static final long MAX_AVATAR_BYTES = HelpdeskSettings.getInstance().getMaxAvatarBytes();
 
     /**
      * Saves a new profile picture. The declared type is client-supplied, so we also
@@ -283,7 +283,7 @@ public class StudentService {
 
     /** MIME type from the file's magic bytes (JPEG, PNG or WebP), or null. */
     private String detectImageType(byte[] bytes) {
-        return FileTypeDetector.detect(bytes, FileTypeDetector.AVATAR_TYPES).orElse(null);
+        return FileTypeDetector.detect(bytes, ALLOWED_AVATAR_TYPES).orElse(null);
     }
 
     @Transactional(readOnly = true)

@@ -1,5 +1,7 @@
 package com.helpdesk.knowledgebase.controller;
 
+import com.helpdesk.common.settings.HelpdeskSettings;
+
 /**
  * Clamps page and size request params so a huge or negative value can't cause
  * a lot of work in the search. Shared by both article controllers.
@@ -7,8 +9,8 @@ package com.helpdesk.knowledgebase.controller;
 final class PageBounds {
 
     private static final int MIN_SIZE = 1;
-    private static final int MAX_SIZE = 50;
-    private static final int MAX_PAGE = 10_000;
+    private static final int MAX_SIZE = HelpdeskSettings.getInstance().getArticleMaxPageSize();
+    private static final int MAX_PAGE = HelpdeskSettings.getInstance().getMaxPage();
 
     private PageBounds() {
     }
