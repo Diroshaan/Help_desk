@@ -1,5 +1,5 @@
 @startuml
-' UNIHELP notifications: Observer (events and listeners) and Strategy (channels)
+' UNIHELP notifications: Observer (Spring events + F3's GoF subject/observer) and Strategy (channels)
 skinparam classAttributeIconSize 0
 skinparam dpi 150
 skinparam linetype polyline
@@ -68,11 +68,6 @@ class TicketStatusChangedEvent <<record>> {
 class PasswordChangedEvent <<record>> {
 - Long userId
 }
-class FeedbackSubmittedEvent <<record>> {
-- Long ticketId
-- String ticketSubject
-- int rating
-}
 }
 
 package "Observer: publishers" {
@@ -87,8 +82,23 @@ class QueueService {
 class PasswordService {
 + void changePassword(String,String,PasswordChangeRequest)
 }
+}
+
+package "Observer: F3 feedback (GoF subject and observer)" {
+interface FeedbackSubject {
++ void addObserver(FeedbackObserver)
++ void removeObserver(FeedbackObserver)
++ void notifyObservers(Long,String,int,String)
+}
+interface FeedbackObserver {
++ void update(Long,String,int,String)
+}
 class FeedbackService {
+- List<FeedbackObserver> observers
 + Feedback submitFeedback(Long,Long,Integer,String)
+}
+class FeedbackReceivedNotifier {
++ void update(Long,String,int,String)
 }
 }
 
@@ -105,22 +115,20 @@ class TicketHistoryRecorder {
 class AccountSecurityNotifier {
 + void onPasswordChanged(PasswordChangedEvent)
 }
-class FeedbackReceivedNotifier {
-+ void onFeedbackSubmitted(FeedbackSubmittedEvent)
-}
 }
 
 TicketService ..> TicketSubmittedEvent : publishes
 QueueService ..> TicketStatusChangedEvent : publishes
 PasswordService ..> PasswordChangedEvent : publishes
-FeedbackService ..> FeedbackSubmittedEvent : publishes
 
 QueueArrivalNotifier ..> TicketSubmittedEvent : listens
 TicketStatusNotifier ..> TicketStatusChangedEvent : listens
 ' two observers of the same event: the publisher didn't change when the history was added
 TicketHistoryRecorder ..> TicketStatusChangedEvent : listens
 AccountSecurityNotifier ..> PasswordChangedEvent : listens
-FeedbackReceivedNotifier ..> FeedbackSubmittedEvent : listens
+FeedbackSubject <|.. FeedbackService
+FeedbackObserver <|.. FeedbackReceivedNotifier
+FeedbackService o-- "0..*" FeedbackObserver : notifies
 
 QueueArrivalNotifier ..> NotificationService : uses
 TicketStatusNotifier ..> NotificationService : uses
