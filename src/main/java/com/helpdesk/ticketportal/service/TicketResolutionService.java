@@ -22,6 +22,7 @@ public class TicketResolutionService {
     private final ResolutionRepository resolutionRepository;
     private final OfficerRepository officerRepository;
 
+    // Spring injects TicketService and the resolution and officer repositories
     @Autowired
     public TicketResolutionService(TicketService ticketService,
                                     ResolutionRepository resolutionRepository,
@@ -60,6 +61,7 @@ public class TicketResolutionService {
         return resolution;
     }
 
+    // Checks the ticket is the student's and loads its resolution; 404 if there is none
     private Resolution findOwnedResolution(Long ticketId, Long studentId) {
         ticketService.getOwnedTicket(ticketId, studentId);
         return resolutionRepository.findByTicketId(ticketId)

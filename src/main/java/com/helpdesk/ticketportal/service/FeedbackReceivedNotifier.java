@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Concrete Observer: when new feedback is submitted, tells the officer
  * who answered the ticket that it was rated.
+ * Implements observer interface
  */
 @Component
 public class FeedbackReceivedNotifier implements FeedbackObserver {
@@ -24,6 +25,7 @@ public class FeedbackReceivedNotifier implements FeedbackObserver {
     private final OfficerRepository officerRepository;
     private final NotificationService notificationService;
 
+    // Spring injects the repositories and NotificationService
     public FeedbackReceivedNotifier(ResolutionRepository resolutionRepository,
                                     OfficerRepository officerRepository,
                                     NotificationService notificationService) {
@@ -32,6 +34,7 @@ public class FeedbackReceivedNotifier implements FeedbackObserver {
         this.notificationService = notificationService;
     }
 
+    // Observer update: notifies the officer who answered the ticket that it was rated
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void update(Long ticketId, String ticketSubject, int rating, String comment) {
@@ -44,6 +47,7 @@ public class FeedbackReceivedNotifier implements FeedbackObserver {
                         NotificationRecipient.from(officer), messageFor(ticketId, ticketSubject, rating, comment)));
     }
 
+    // Builds the notification text, shortening long comments to fit 500 characters
     static NotificationMessage messageFor(Long ticketId, String ticketSubject, int rating, String comment) {
         String body = "\"" + ticketSubject + "\" was rated " + rating + "/5.";
         if (comment != null && !comment.isBlank()) {
