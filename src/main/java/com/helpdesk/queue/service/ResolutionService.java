@@ -1,5 +1,6 @@
 package com.helpdesk.queue.service;
 
+import com.helpdesk.common.settings.HelpdeskSettings;
 import com.helpdesk.common.exception.DuplicateResourceException;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.files.FileTypeDetector;
@@ -29,7 +30,7 @@ import java.util.Optional;
 public class ResolutionService {
 
     // Same limit as student attachments.
-    private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = HelpdeskSettings.getInstance().getMaxUploadBytes();
 
     private final ResolutionRepository resolutionRepository;
     private final QueueService queueService;

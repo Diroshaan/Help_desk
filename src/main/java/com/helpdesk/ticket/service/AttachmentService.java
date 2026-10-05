@@ -1,5 +1,6 @@
 package com.helpdesk.ticket.service;
 
+import com.helpdesk.common.settings.HelpdeskSettings;
 import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.common.files.FileTypeDetector;
 import com.helpdesk.ticket.dto.AttachmentResponse;
@@ -24,7 +25,7 @@ import java.util.List;
 public class AttachmentService {
 
     // Only PDFs and images are allowed (see FileTypeDetector). No SVG, since it can contain scripts.
-    private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = HelpdeskSettings.getInstance().getMaxUploadBytes();
 
     private final AttachmentRepository attachmentRepository;
     private final TicketService ticketService;

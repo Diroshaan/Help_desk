@@ -1,5 +1,6 @@
 package com.helpdesk.ticket.service;
 
+import com.helpdesk.common.settings.HelpdeskSettings;
 import com.helpdesk.ticket.dto.TicketSearchCriteria;
 import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticket.entity.TicketPriority;
@@ -28,11 +29,11 @@ public class StudentTicketQueryService {
     private static final Set<String> SORTABLE_FIELDS =
             Set.of("createdAt", "updatedAt", "subject", "category", "priority", "status");
 
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 100;
+    private static final int DEFAULT_PAGE_SIZE = HelpdeskSettings.getInstance().getTicketDefaultPageSize();
+    private static final int MAX_PAGE_SIZE = HelpdeskSettings.getInstance().getTicketMaxPageSize();
 
     // Capped because page * size overflows int for huge page numbers and gave a 500.
-    private static final int MAX_PAGE = 10_000;
+    private static final int MAX_PAGE = HelpdeskSettings.getInstance().getMaxPage();
 
     private final TicketRepository ticketRepository;
     private final ArchivedTicketRepository archivedTicketRepository;

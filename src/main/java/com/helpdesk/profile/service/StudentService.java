@@ -1,5 +1,6 @@
 package com.helpdesk.profile.service;
 
+import com.helpdesk.common.settings.HelpdeskSettings;
 import com.helpdesk.auth.SessionRevoker;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -230,7 +231,7 @@ public class StudentService {
     private static final Set<String> ALLOWED_AVATAR_TYPES =
             Set.of("image/jpeg", "image/png", "image/webp");
 
-    private static final long MAX_AVATAR_BYTES = 2L * 1024 * 1024;
+    private static final long MAX_AVATAR_BYTES = HelpdeskSettings.getInstance().getMaxAvatarBytes();
 
     /**
      * Saves a new profile picture. The declared type is client-supplied, so we also
