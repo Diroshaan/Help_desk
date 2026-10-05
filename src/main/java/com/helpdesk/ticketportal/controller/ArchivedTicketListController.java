@@ -4,12 +4,14 @@ import com.helpdesk.common.exception.ResourceNotFoundException;
 import com.helpdesk.profile.entity.Student;
 import com.helpdesk.profile.service.StudentService;
 import com.helpdesk.ticket.dto.TicketResponse;
+import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticketportal.service.TicketArchiveService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,14 +32,18 @@ public class ArchivedTicketListController {
 
     @GetMapping("/api/tickets/archived")
     public List<TicketResponse> findArchived(Authentication authentication) {
-        return ticketArchiveService.archivedTickets(currentStudentId(authentication)).stream()
-                .map(TicketResponse::from)
-                .toList();
+        List<TicketResponse> responses = new ArrayList<>();
+        for (Ticket ticket : ticketArchiveService.archivedTickets(currentStudentId(authentication))) {
+            responses.add(TicketResponse.from(ticket));
+        }
+        return responses;
     }
 
     private Long currentStudentId(Authentication authentication) {
-        return studentService.findByEmail(authentication.getName())
-                .map(Student::getId)
-                .orElseThrow(() -> new ResourceNotFoundException("Logged-in student not found"));
+        Student student = studentService.findByEmail(authentication.getName()).orElse(null);
+        if (student == null) {
+            throw new ResourceNotFoundException("Logged-in student not found");
+        }
+        return student.getId();
     }
 }

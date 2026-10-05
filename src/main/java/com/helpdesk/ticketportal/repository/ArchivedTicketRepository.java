@@ -9,8 +9,6 @@ import java.util.Optional;
 
 public interface ArchivedTicketRepository extends JpaRepository<ArchivedTicket, Long> {
 
-    List<ArchivedTicket> findByStudentId(Long studentId);
-
     Optional<ArchivedTicket> findByStudentIdAndTicketId(Long studentId, Long ticketId);
 
     boolean existsByStudentIdAndTicketId(Long studentId, Long ticketId);
