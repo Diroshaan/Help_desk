@@ -1,170 +1,194 @@
 # Technical Guide
 
-How the UNIHELP code fits together. Read the [README](README.md) first for how to run it.
+How the UNIHELP code is organised. See the [README](README.md) for setup.
 
 ## 1. Architecture
 
 The backend is a Spring Boot JSON API. The React frontend is built into
-`src/main/resources/static`, so Spring serves both from port 8080. The frontend uses
-a `HashRouter`, so refreshing a page only ever asks Spring for `index.html`.
+`src/main/resources/static`, so Spring serves both on port 8080. The frontend uses a
+`HashRouter`, so a page refresh only ever requests `index.html`.
 
-The code is split by feature, not by layer. Each team member owns one package under
-`com.helpdesk`, and inside it the layers are always the same:
+The code is organised by feature. Each function has its own package under
+`com.helpdesk`, and every package uses the same layers:
 
-```
-controller/   REST endpoints, kept thin
-service/      business rules and transactions
-repository/   Spring Data JPA interfaces
-entity/       JPA entities (database tables)
-dto/          request and response classes
-```
-
-Controllers never return entities directly. They return DTOs, so fields like the
-password hash can't leak into a response.
-
-Shared code lives outside the feature packages:
-
-| Package | What it holds |
+| Layer | Responsibility |
 |---|---|
-| `auth` | Login, logout, `/api/auth/me`, password change, ending sessions |
-| `config` | `SecurityConfig` |
-| `common/user` | The user model: `AppUser`, `Student`, `Officer`, `Administrator`, `Role` |
-| `common/reference` | Departments and categories, plus the seeder that loads them |
-| `common/files` | `FileTypeDetector` - checks uploads by their first bytes |
+| `controller` | REST endpoints, kept thin |
+| `service` | Business rules and transactions |
+| `repository` | Spring Data JPA interfaces |
+| `entity` | JPA entities (database tables) |
+| `dto` | Request and response objects; entities are never returned directly |
+
+Shared packages:
+
+| Package | Contents |
+|---|---|
+| `auth` | Login, logout, `/api/auth/me`, password change, session revocation |
+| `config` | `SecurityConfig` (URL and role rules) |
+| `common/user` | `AppUser` with `Student`, `Officer`, `Administrator` subtypes |
+| `common/reference` | Departments and categories, and their seeder |
+| `common/settings` | `HelpdeskSettings`, the shared system limits (Singleton) |
+| `common/files` | `FileTypeDetector`, which checks uploads by their first bytes |
 | `common/exception` | `GlobalExceptionHandler` and shared exceptions |
 | `common/validation` | Shared validation rules |
-| `notification` | Notifications (see section 4) |
+| `notification` | Notification delivery (Strategy) and listeners (Observer) |
 
 ## 2. Users and roles
 
-All users share one `users` table. `AppUser` is an abstract entity with JOINED
-inheritance, and `students`, `officers` and `administrators` each hold the fields only
-that type has, keyed by the same id. There is no role column: `getRole()` returns
-`STUDENT`, `OFFICER` or `ADMIN` depending on the subclass.
+All users share the `users` table. `AppUser` uses JOINED inheritance, with
+`students`, `officers` and `administrators` tables holding type-specific fields. The
+role comes from the subtype: `STUDENT`, `OFFICER` or `ADMIN`.
 
-Accounts can be:
-
-- active
-- suspended (`active = false`) - can be undone by an admin
-- removed (`deleted_at` set) - final; the row stays so old tickets still show a name
-
-Students register themselves. Officers and administrators are created by an admin
-(F6). The first administrator is created at startup by `AdminBootstrapSeeder` when no
-active admin exists, and on H2 `DevQueueDataSeeder` adds a demo officer.
-
-## 3. Login and access rules
-
-- `POST /api/auth/login` checks the email and password through Spring Security
-  (`StudentUserDetailsService` loads any type of user) and starts a session. The
-  browser sends the session cookie with every later request.
-- Passwords are stored as BCrypt hashes.
-- Suspended and removed users can't log in, and `SessionRevoker` ends their open
-  sessions straight away. An ended session gets a 401 and the frontend signs out.
-- CSRF is turned off because this is a JSON API with no server-rendered forms.
-
-`SecurityConfig` holds the URL rules:
-
-| Path | Who |
+| State | Meaning |
 |---|---|
-| `POST /api/students`, `POST /api/auth/login`, `GET /api/auth/me`, static files | Anyone |
-| `/api/queue/**`, `/api/officers/**`, article writing endpoints | Officers |
+| Active | Can sign in |
+| Suspended | `active = false`; an administrator can reverse it |
+| Removed | `deleted_at` set; final, but the row stays so past tickets keep a name |
+
+Students register themselves. Officers and administrators are created by an
+administrator (F6). The first administrator is created at startup by
+`AdminBootstrapSeeder`; on H2, `DevQueueDataSeeder` also adds a demo officer.
+
+## 3. Security
+
+- Login (`POST /api/auth/login`) starts a server session; the browser sends the session cookie afterwards.
+- Passwords are stored as BCrypt hashes.
+- Suspending or removing a user ends their open sessions through `SessionRevoker`.
+- CSRF protection is off because the app is a JSON API with no server-rendered forms.
+
+| Path | Access |
+|---|---|
+| Registration, login, `/api/auth/me`, static files | Anyone |
+| `/api/queue/**`, `/api/officers/**`, article editing | Officers |
 | `/api/admin/**` | Administrators |
 | `GET /api/students`, `GET /api/feedback/summary` | Officers and administrators |
-| Everything else | Any logged-in user |
+| Everything else | Any signed-in user |
 
-Ownership is checked in the services. A student asking for someone else's ticket gets
-404, not 403, so ticket ids can't be probed.
+Ownership is checked in the services. Requesting another user's record returns
+404 rather than 403, so record IDs cannot be probed.
 
 ## 4. Design patterns
 
-Both are in `com.helpdesk.notification`.
+### Observer
 
-- **Strategy** - `NotificationChannel` is the strategy interface, with
-  `PortalNotificationChannel` (saves to the in-app inbox) and
-  `EmailNotificationChannel` (logs the email, as there is no mail server).
-  `NotificationService` sends through every channel the recipient has switched on.
-- **Observer** - services publish events instead of calling the notifier directly:
-  `TicketSubmittedEvent`, `TicketStatusChangedEvent`, `PasswordChangedEvent` and
-  `FeedbackSubmittedEvent`. Listeners such as `TicketStatusNotifier` and
-  `QueueArrivalNotifier` react to them. They run after the transaction commits, and
-  in their own transaction, so a failed notification can't undo the real change.
+Actions announce what happened, and separate listeners react, so the code that
+performs an action does not depend on notifications or history.
 
-The diagram is `docs/diagrams/notification-patterns.puml`.
+| Action | Announced by | Reacting listeners |
+|---|---|---|
+| Ticket submitted (F2) | `TicketService` → `TicketSubmittedEvent` | `QueueArrivalNotifier` alerts the department's officers |
+| Status changed (F4) | `QueueService` → `TicketStatusChangedEvent` | `TicketStatusNotifier` tells the student; `TicketHistoryRecorder` writes the timeline |
+| Password changed (F1) | `PasswordService` → `PasswordChangedEvent` | `AccountSecurityNotifier` sends a security alert |
+| Feedback submitted (F3) | `FeedbackService` (subject) | `FeedbackReceivedNotifier` (observer) tells the answering officer |
+
+- F1, F2 and F4 use Spring application events. Notifiers run after the transaction
+  commits, so a rolled-back change is never announced; the history recorder runs
+  inside the transaction, so the status and its history are saved together.
+- F3 uses the classic GoF form: `FeedbackSubject` and `FeedbackObserver` interfaces.
+  `FeedbackService` keeps a list of observers and notifies each one after saving. A
+  failing observer is logged and does not affect the others or the saved rating.
+
+### Strategy
+
+`NotificationService` delivers each message through every `NotificationChannel` the
+recipient has enabled. The two strategies are `PortalNotificationChannel` (in-app inbox)
+and `EmailNotificationChannel` (logs the email; no mail server is configured). A new
+channel, such as SMS, is one new class.
+
+### Singleton
+
+`HelpdeskSettings` (`common/settings`) holds the system-wide limits used by F1 to F5.
+It has a private constructor, a private static `volatile` instance and a public
+`getInstance()` with double-checked locking. On first use it reads the limits from
+`application.properties` once, and every function shares that one object.
+
+Diagram: `docs/diagrams/notification-patterns.puml` (Observer and Strategy).
 
 ## 5. Ticket lifecycle
 
 ```
-OPEN --(officer takes it)--> IN_PROGRESS --(officer posts resolution)--> RESOLVED
+OPEN --(officer picks up)--> IN_PROGRESS --(officer posts resolution)--> RESOLVED
 OPEN --(student withdraws)--> WITHDRAWN
 ```
 
-- F2: a student submits a ticket with a category and priority. The category decides
-  the department it is routed to. Students can edit, withdraw or add attachments only
-  while the ticket is OPEN. Every status change is saved in `ticket_status_changes`
-  and shown as a timeline.
-- F4: officers see the queue for their departments, move tickets to IN_PROGRESS, add
-  staff notes (never shown to students) and post one resolution per ticket, which
-  marks it RESOLVED. Deleting the resolution puts the ticket back to IN_PROGRESS.
-- F3: the student reads the resolution, gives one feedback rating per resolved
-  ticket, bookmarks tickets into folders, and archives RESOLVED or WITHDRAWN tickets.
+- **F2:** the student submits a ticket with a category and priority. The category
+  routes it to a department. Edits, withdrawal and attachments are allowed only while
+  OPEN. Each status change is recorded and shown as a timeline.
+- **F4:** officers see their departments' queues, pick tickets up, add staff notes
+  (never shown to students) and post one resolution per ticket, which marks it RESOLVED.
+- **F3:** the student reads the resolution, rates it once, bookmarks tickets into
+  folders, searches their tickets and archives RESOLVED or WITHDRAWN tickets.
 
-`Ticket` has an `@Version` field, so if two people save the same ticket at once the
-second save gets a 409 instead of silently overwriting the first.
+`Ticket` has a `@Version` field, so concurrent saves return 409 instead of overwriting.
 
-## 6. Files
+## 6. Configuration
 
-Attachments, resolution files and avatars are stored in the database (`MEDIUMBLOB`
-on MySQL). The type is checked from the file's first bytes, not its name:
+| Setting | Where | Default |
+|---|---|---|
+| Upload limit (attachments, resolution files) | `spring.servlet.multipart.max-file-size` | 5MB |
+| Profile picture limit | `helpdesk.limits.avatar-max-size` | 2MB |
+| Ticket search page size / maximum | `helpdesk.limits.ticket-default-page-size` / `ticket-max-page-size` | 20 / 100 |
+| Article page size maximum | `helpdesk.limits.article-max-page-size` | 50 |
+| Highest page number | `helpdesk.limits.max-page` | 10000 |
+| MySQL connection | Environment variables (see `.env.example`) | local server |
 
-- ticket attachments and resolution files: PDF, PNG, JPEG, GIF, WebP, up to 5MB
-- profile pictures: PNG, JPEG, WebP, up to 2MB
+`HelpdeskSettings` reads the limits from the base `application.properties` only.
 
-## 7. Database
+## 7. Files
 
-- H2 (default): created from the entities on every start, nothing to set up.
-- MySQL (`mysql` profile): Hibernate runs with `ddl-auto=update`, which only adds
-  tables and columns. Changes it can't make (dropping or retyping columns, foreign keys
-  on id fields, unique constraints on old data) are in `docs/migrations`. Run those in
-  date order on a database created by older code; each file says what it does and
-  whether it is safe to run again.
-- `docs/demo_queries.sql` holds read-only queries for showing the schema.
+Attachments, resolution files and profile pictures are stored in the database
+(`MEDIUMBLOB` on MySQL). The real type is detected from the file's first bytes:
 
-## 8. API overview
+- attachments and resolution files: PDF, PNG, JPEG, GIF or WebP
+- profile pictures: PNG, JPEG or WebP
+
+## 8. Database
+
+- **H2 (default):** created from the entities on every start.
+- **MySQL (`mysql` profile):** Hibernate runs with `ddl-auto=update`, which only adds
+  tables and columns. Other changes (constraints, column types, data fixes) are in
+  `docs/migrations`; run them in date order on databases created by older code.
+- `docs/demo_queries.sql` contains read-only queries for demonstrating the schema.
+
+## 9. API overview
 
 | Function | Main endpoints |
 |---|---|
-| F1 | `/api/auth/*`, `/api/students`, `/api/students/{id}/avatar`, `/api/officers/me`, `/api/notifications` |
-| F2 | `/api/tickets`, `/api/tickets/search`, `/api/tickets/{id}/attachments`, `/api/tickets/{id}/history`, `/api/tickets/{id}/withdraw` |
-| F3 | `/api/tickets/{id}/resolution`, `/api/tickets/{id}/feedback`, `/api/bookmarks`, `/api/bookmark-folders`, `/api/tickets/{id}/archive`, `/api/tickets/archived` |
+| F1 | `/api/auth/*`, `/api/students`, `/api/officers/me`, `/api/notifications` |
+| F2 | `/api/tickets`, `/api/tickets/{id}/attachments`, `/api/tickets/{id}/history`, `/api/tickets/{id}/withdraw` |
+| F3 | `/api/tickets/search`, `/api/tickets/{id}/resolution`, `/api/tickets/{id}/feedback`, `/api/bookmarks`, `/api/bookmark-folders`, `/api/tickets/{id}/archive`, `/api/tickets/archived` |
 | F4 | `/api/queue`, `/api/queue/{id}/status`, `/api/queue/{id}/assign`, `/api/queue/{id}/resolution`, `/api/queue/{id}/notes`, `/api/admin/officers/{id}/supervisor` |
 | F5 | `/api/articles`, `/api/articles/manage`, `/api/articles/{id}/publish`, `/api/articles/{id}/related`, `/api/articles/{id}/bookmark` |
 | F6 | `/api/admin/dashboard`, `/api/admin/officers`, `/api/admin/administrators`, `/api/admin/users`, `/api/admin/announcements`, `/api/announcements` |
 | Shared | `/api/departments`, `/api/categories` |
 
-Errors come back as JSON from `GlobalExceptionHandler`: 400 for invalid input, 403 when
-not logged in or the wrong role, 404 when not found (or not yours), 409 for duplicates
-and edit conflicts. `GET /api/auth/me` and an ended session return 401.
+Errors are returned as JSON by `GlobalExceptionHandler`:
 
-## 9. Tests
+| Status | Meaning |
+|---|---|
+| 400 | Invalid input or a broken business rule |
+| 401 | Not signed in, or the session has ended |
+| 403 | Wrong role |
+| 404 | Not found, or not yours |
+| 409 | Duplicate or concurrent edit |
+| 413 | Upload too large |
 
-```bash
-mvn test
-```
+## 10. Testing and CI
 
-Tests are in `src/test/java`, in the same packages as the code. Unit tests use JUnit 5
-and Mockito. Integration tests use `@SpringBootTest` with the `test` profile on H2 and
-Spring Security Test to log in as a student, officer or admin. GitHub Actions
-(`.github/workflows/build.yml`) runs `mvn -B verify` and builds the frontend on every
-pull request into `develop`, and fails if the committed frontend bundle is out of date.
+- Tests live in `src/test/java`, in the same packages as the code.
+- Unit tests use JUnit 5 and Mockito.
+- Integration tests use `@SpringBootTest` with the `test` profile on H2.
+- GitHub Actions (`.github/workflows/build.yml`) runs `mvn -B verify` and builds the
+  frontend on every pull request into `develop`. It fails if the committed frontend
+  bundle does not match the source.
 
-## 10. Frontend
+## 11. Frontend
 
-`frontend/src` contains:
+| Path | Purpose |
+|---|---|
+| `frontend/src/api.js` | All calls to the backend |
+| `frontend/src/hooks/useSession.jsx` | The signed-in user |
+| `frontend/src/routes.jsx`, `App.jsx` | Routes and role guards |
+| `frontend/src/pages/` | Shared pages, plus `student/`, `officer/`, `kb/` and `admin/` |
 
-- `api.js` - one place for all calls to the backend
-- `hooks/useSession.jsx` - the logged-in user, loaded from `/api/auth/me`
-- `routes.jsx`, `App.jsx` - the routes and which roles may open each page
-- `pages/` - shared pages (login, register, profile, notifications) plus `student/`,
-  `officer/`, `kb/` and `admin/`
-
-Run `npm run dev` while working on it, and `npm run build` before committing.
+Use `npm run dev` while developing and `npm run build` before committing.
