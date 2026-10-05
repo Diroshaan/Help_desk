@@ -4,7 +4,7 @@ import com.helpdesk.ticketportal.entity.BookmarkFolder;
 
 /**
  * Response body for a bookmark folder. bookmarkCount isn't a column; it is counted
- * separately for each folder.
+ * from one list of the student's bookmarks.
  */
 public class BookmarkFolderResponse {
 

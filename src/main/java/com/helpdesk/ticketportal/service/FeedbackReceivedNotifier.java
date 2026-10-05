@@ -22,6 +22,8 @@ public class FeedbackReceivedNotifier implements FeedbackObserver {
     // Notification text is limited to 500 characters. A ticket subject is at most 150,
     // so a comment of up to 300 characters always fits.
     static final int MAX_COMMENT = 300;
+    // Notification.body column limit
+    static final int MAX_BODY = 500;
 
     private final ResolutionRepository resolutionRepository;
     private final OfficerRepository officerRepository;
@@ -52,8 +54,14 @@ public class FeedbackReceivedNotifier implements FeedbackObserver {
             return;
         }
 
-        notificationService.notify(NotificationRecipient.from(officer),
-                messageFor(ticketId, ticketSubject, rating, comment));
+        //defines who gets the notification, the officer who answered the ticket
+        NotificationRecipient recipient = NotificationRecipient.from(officer);
+
+        //defines what the notification says, the subject, rating and comment
+        NotificationMessage message = messageFor(ticketId, ticketSubject, rating, comment);
+
+        //send it through the notification module (portal and email channels)
+        notificationService.notify(recipient, message);
     }
 
     // Builds the notification text, shortening long comments to fit 500 characters
@@ -65,6 +73,10 @@ public class FeedbackReceivedNotifier implements FeedbackObserver {
                 text = text.substring(0, MAX_COMMENT) + "\u2026";
             }
             body = body + " Comment: \"" + text + "\"";
+        }
+        // keeps the whole body within the column limit
+        if (body.length() > MAX_BODY) {
+            body = body.substring(0, MAX_BODY - 1) + "\u2026";
         }
         return new NotificationMessage("A student rated your answer", body, "#/queue/" + ticketId);
     }

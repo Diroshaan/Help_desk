@@ -49,9 +49,22 @@ public class BookmarkFolderService {
 
     // Returns the student's folders, each with its bookmark count
     public List<BookmarkFolderResponse> findResponsesByStudentId(Long studentId) {
+        // 2 queries in total (folders + bookmarks), then count in memory - no query per folder
+        List<BookmarkFolder> folders = bookmarkFolderRepository.findByStudentId(studentId);
+        List<Bookmark> bookmarks = bookmarkRepository.findByStudentId(studentId);
         List<BookmarkFolderResponse> responses = new ArrayList<>();
-        for (BookmarkFolder folder : bookmarkFolderRepository.findByStudentId(studentId)) {
-            responses.add(toResponse(folder));
+
+        // go through each of the student's folders, one at a time
+        for (BookmarkFolder folder : folders) {
+            long count = 0;
+            // check every one of the student's bookmarks
+            for (Bookmark bookmark : bookmarks) {
+                if (folder.getId().equals(bookmark.getFolderId())) {
+                    count++;
+                }
+            }
+            // turn the folder and its count into a response and add it to the list
+            responses.add(BookmarkFolderResponse.from(folder, count));
         }
         return responses;
     }

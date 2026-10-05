@@ -157,7 +157,11 @@ public class FeedbackService implements FeedbackSubject {
         for (Feedback feedback : feedbackEntries) {
             totalCount++;
             ratingSum += feedback.getRating();
-            starCounts[feedback.getRating()]++;
+            // skip any out-of-range value so a bad row can't crash the summary
+            int rating = feedback.getRating();
+            if (rating >= 1 && rating <= 5) {
+                starCounts[rating]++;
+            }
         }
 
         double averageRating = 0.0;
