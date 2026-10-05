@@ -8,11 +8,11 @@ import com.helpdesk.ticket.entity.TicketStatus;
 import com.helpdesk.ticket.repository.TicketRepository;
 import com.helpdesk.ticketportal.dto.FeedbackSummaryResponse;
 import com.helpdesk.ticketportal.entity.Feedback;
-import com.helpdesk.ticketportal.event.FeedbackSubmittedEvent;
 import com.helpdesk.ticketportal.repository.FeedbackRepository;
 import jakarta.validation.ValidationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
@@ -20,28 +20,60 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 /**
  * Student feedback (1-5 rating and comment) on their resolved tickets, plus per-category stats.
+ * Observer pattern - Concrete Subject: tells its observers when new feedback is submitted.
  */
 @Service
-public class FeedbackService {
+public class FeedbackService implements FeedbackSubject {
+
+    private static final Logger log = LoggerFactory.getLogger(FeedbackService.class);
 
     private final FeedbackRepository feedbackRepository;
     private final TicketRepository ticketRepository;
     private final CategoryRepository categoryRepository;
 
-    // Observer publisher: announces FeedbackSubmittedEvent without knowing who listens
-    private final ApplicationEventPublisher eventPublisher;
+    // Observer pattern: the subscribed observers. CopyOnWriteArrayList so add/remove
+    // can't clash with a notify that is running at the same time.
+    private final List<FeedbackObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
     public FeedbackService(FeedbackRepository feedbackRepository, TicketRepository ticketRepository,
-                           CategoryRepository categoryRepository, ApplicationEventPublisher eventPublisher) {
+                           CategoryRepository categoryRepository, List<FeedbackObserver> initialObservers) {
         this.feedbackRepository = feedbackRepository;
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
-        this.eventPublisher = eventPublisher;
+        // Spring passes in every FeedbackObserver bean, so each one is attached at startup
+        initialObservers.forEach(this::addObserver);
+    }
+
+    @Override
+    public void addObserver(FeedbackObserver observer) {
+        if (!observers.contains(observer)) {
+            observers.add(observer);
+        }
+    }
+
+    @Override
+    public void removeObserver(FeedbackObserver observer) {
+        observers.remove(observer);
+    }
+
+    @Override
+    public void notifyObservers(Long ticketId, String ticketSubject, int rating, String comment) {
+        for (FeedbackObserver observer : observers) {
+            // One failing observer must not stop the others or fail the student's request:
+            // the feedback is already saved at this point.
+            try {
+                observer.update(ticketId, ticketSubject, rating, comment);
+            } catch (RuntimeException e) {
+                log.warn("Feedback observer {} failed for ticket {}",
+                        observer.getClass().getSimpleName(), ticketId, e);
+            }
+        }
     }
 
     // Only for the student's own RESOLVED ticket, and only once per ticket.
@@ -61,8 +93,7 @@ public class FeedbackService {
         feedback.setRating(rating);
         feedback.setComment(comment);
 
-        // Two submits at once can both pass the check above; the unique constraint
-        // catches the second one and we turn it into the same 409.
+
         Feedback saved;
         try {
             saved = feedbackRepository.saveAndFlush(feedback);
@@ -70,8 +101,7 @@ public class FeedbackService {
             throw new DuplicateResourceException("Feedback has already been submitted for this ticket");
         }
 
-        // Observer: publish only for new feedback, so an edit doesn't alert the officer again
-        eventPublisher.publishEvent(new FeedbackSubmittedEvent(ticketId, ticket.getSubject(), rating));
+        notifyObservers(ticketId, ticket.getSubject(), rating, comment);
         return saved;
     }
 
@@ -90,9 +120,9 @@ public class FeedbackService {
         return findByTicketId(ticketId);
     }
 
+    //Calculates Rating statistics for all tickets in a single category
     public FeedbackSummaryResponse summaryByCategory(String category) {
-        // Unknown category is a 400 rather than "0 ratings". Retired categories are
-        // still allowed since they have old feedback.
+
         if (category == null || category.isBlank() || !categoryRepository.existsByName(category)) {
             throw new IllegalArgumentException("Unknown category: " + category);
         }
@@ -120,7 +150,6 @@ public class FeedbackService {
         return new FeedbackSummaryResponse(averageRating, totalCount, ratingBreakdown);
     }
 
-    // someone else's ticket is a 404, not a 403, so ids can't be probed
     private Ticket findOwnedTicket(Long ticketId, Long studentId) {
         Ticket ticket = ticketRepository.findById(ticketId)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
