@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Observer: rating an answer publishes FeedbackSubmittedEvent and the answering officer is told. */
+/** Observer: rating an answer notifies the observers and the answering officer is told. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
