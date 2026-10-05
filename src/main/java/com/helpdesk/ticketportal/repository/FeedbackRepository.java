@@ -7,8 +7,6 @@ import java.util.Optional;
 
 public interface FeedbackRepository extends JpaRepository<Feedback, Long> {
 
-    List<Feedback> findByStudentId(Long studentId);
-
     Optional<Feedback> findByTicketId(Long ticketId);
 
     List<Feedback> findByTicketIdIn(List<Long> ticketIds);

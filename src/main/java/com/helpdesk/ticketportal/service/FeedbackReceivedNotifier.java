@@ -1,5 +1,6 @@
 package com.helpdesk.ticketportal.service;
 
+import com.helpdesk.common.user.entity.Officer;
 import com.helpdesk.common.user.repository.OfficerRepository;
 import com.helpdesk.notification.service.NotificationMessage;
 import com.helpdesk.notification.service.NotificationRecipient;
@@ -18,8 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 public class FeedbackReceivedNotifier implements FeedbackObserver {
 
-    // Notification.body is limited to 500 characters, so long comments are shortened
-    static final int MAX_BODY = 500;
+    // Notification text is limited to 500 characters. A ticket subject is at most 150,
+    // so a comment of up to 300 characters always fits.
+    static final int MAX_COMMENT = 300;
 
     private final ResolutionRepository resolutionRepository;
     private final OfficerRepository officerRepository;
@@ -38,26 +40,31 @@ public class FeedbackReceivedNotifier implements FeedbackObserver {
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void update(Long ticketId, String ticketSubject, int rating, String comment) {
-        resolutionRepository.findByTicketId(ticketId)
-                .map(Resolution::getOfficerId)
-                .flatMap(officerRepository::findById)
-                // inactive officers can't sign in, so skip them
-                .filter(officer -> officer.isActive())
-                .ifPresent(officer -> notificationService.notify(
-                        NotificationRecipient.from(officer), messageFor(ticketId, ticketSubject, rating, comment)));
+        // find the answer to this ticket; no answer means no one to notify
+        Resolution resolution = resolutionRepository.findByTicketId(ticketId).orElse(null);
+        if (resolution == null) {
+            return;
+        }
+
+        // find the officer who wrote it; skip them if missing or inactive (they can't sign in)
+        Officer officer = officerRepository.findById(resolution.getOfficerId()).orElse(null);
+        if (officer == null || !officer.isActive()) {
+            return;
+        }
+
+        notificationService.notify(NotificationRecipient.from(officer),
+                messageFor(ticketId, ticketSubject, rating, comment));
     }
 
     // Builds the notification text, shortening long comments to fit 500 characters
     static NotificationMessage messageFor(Long ticketId, String ticketSubject, int rating, String comment) {
         String body = "\"" + ticketSubject + "\" was rated " + rating + "/5.";
         if (comment != null && !comment.isBlank()) {
-            String prefix = body + " Comment: \"";
-            int room = MAX_BODY - prefix.length() - 1; // leave space for the closing quote
             String text = comment.strip();
-            if (text.length() > room) {
-                text = text.substring(0, Math.max(0, room - 1)) + "\u2026";
+            if (text.length() > MAX_COMMENT) {
+                text = text.substring(0, MAX_COMMENT) + "\u2026";
             }
-            body = prefix + text + "\"";
+            body = body + " Comment: \"" + text + "\"";
         }
         return new NotificationMessage("A student rated your answer", body, "#/queue/" + ticketId);
     }

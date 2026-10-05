@@ -6,6 +6,7 @@ import com.helpdesk.common.reference.repository.CategoryRepository;
 import com.helpdesk.ticket.entity.Ticket;
 import com.helpdesk.ticket.entity.TicketStatus;
 import com.helpdesk.ticket.repository.TicketRepository;
+import com.helpdesk.ticket.service.TicketService;
 import com.helpdesk.ticketportal.dto.FeedbackSummaryResponse;
 import com.helpdesk.ticketportal.entity.Feedback;
 import com.helpdesk.ticketportal.repository.FeedbackRepository;
@@ -16,12 +17,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.stream.Collectors;
 
 /**
  * Student feedback (1-5 rating and comment) on their resolved tickets, plus per-category stats.
@@ -32,21 +32,28 @@ public class FeedbackService implements FeedbackSubject {
 
     private static final Logger log = LoggerFactory.getLogger(FeedbackService.class);
 
+    private static final String ALREADY_SUBMITTED = "Feedback has already been submitted for this ticket";
+
     private final FeedbackRepository feedbackRepository;
     private final TicketRepository ticketRepository;
     private final CategoryRepository categoryRepository;
+    private final TicketService ticketService;
 
     // Observer pattern: the subscribed observers. CopyOnWriteArrayList so add/remove
     private final List<FeedbackObserver> observers = new CopyOnWriteArrayList<>();
 
     @Autowired
     public FeedbackService(FeedbackRepository feedbackRepository, TicketRepository ticketRepository,
-                           CategoryRepository categoryRepository, List<FeedbackObserver> initialObservers) {
+                           CategoryRepository categoryRepository, TicketService ticketService,
+                           List<FeedbackObserver> initialObservers) {
         this.feedbackRepository = feedbackRepository;
         this.ticketRepository = ticketRepository;
         this.categoryRepository = categoryRepository;
+        this.ticketService = ticketService;
         // Spring passes in every FeedbackObserver bean, so each one is attached at startup
-        initialObservers.forEach(this::addObserver);
+        for (FeedbackObserver observer : initialObservers) {
+            addObserver(observer);
+        }
     }
 
 
@@ -81,13 +88,13 @@ public class FeedbackService implements FeedbackSubject {
 
     // Only for the student's own RESOLVED ticket, and only once per ticket.
     public Feedback submitFeedback(Long studentId, Long ticketId, Integer rating, String comment) {
-        Ticket ticket = findOwnedTicket(ticketId, studentId);
+        Ticket ticket = ticketService.getOwnedTicket(ticketId, studentId);
 
         if (ticket.getStatus() != TicketStatus.RESOLVED) {
             throw new ValidationException("Feedback can only be submitted for resolved tickets");
         }
         if (feedbackRepository.existsByTicketId(ticketId)) {
-            throw new DuplicateResourceException("Feedback has already been submitted for this ticket");
+            throw new DuplicateResourceException(ALREADY_SUBMITTED);
         }
 
         Feedback feedback = new Feedback();
@@ -101,7 +108,7 @@ public class FeedbackService implements FeedbackSubject {
         try {
             saved = feedbackRepository.saveAndFlush(feedback);
         } catch (DataIntegrityViolationException e) {
-            throw new DuplicateResourceException("Feedback has already been submitted for this ticket");
+            throw new DuplicateResourceException(ALREADY_SUBMITTED);
         }
 
         notifyObservers(ticketId, ticket.getSubject(), rating, comment);
@@ -110,7 +117,7 @@ public class FeedbackService implements FeedbackSubject {
 
     // status isn't re-checked, so existing feedback can still be corrected later
     public Feedback updateFeedback(Long ticketId, Long studentId, Integer rating, String comment) {
-        findOwnedTicket(ticketId, studentId);
+        ticketService.getOwnedTicket(ticketId, studentId);
         Feedback feedback = findByTicketId(ticketId);
 
         feedback.setRating(rating);
@@ -120,54 +127,59 @@ public class FeedbackService implements FeedbackSubject {
 
     // Returns the student's feedback for one of their tickets
     public Feedback getByTicketId(Long ticketId, Long studentId) {
-        findOwnedTicket(ticketId, studentId);
+        ticketService.getOwnedTicket(ticketId, studentId);
         return findByTicketId(ticketId);
     }
 
-    //Calculates Rating statistics for all tickets in a single category
+    // Calculates rating statistics for all tickets in a single category
     public FeedbackSummaryResponse summaryByCategory(String category) {
 
         if (category == null || category.isBlank() || !categoryRepository.existsByName(category)) {
             throw new IllegalArgumentException("Unknown category: " + category);
         }
 
-        List<Long> ticketIds = ticketRepository.findByCategory(category).stream()
-                .map(Ticket::getId)
-                .toList();
+        // ids of every ticket in this category
+        List<Long> ticketIds = new ArrayList<>();
+        for (Ticket ticket : ticketRepository.findByCategory(category)) {
+            ticketIds.add(ticket.getId());
+        }
 
-        List<Feedback> feedbackEntries = ticketIds.isEmpty()
-                ? Collections.emptyList()
-                : feedbackRepository.findByTicketIdIn(ticketIds);
+        // the feedback on those tickets (none if the category has no tickets)
+        List<Feedback> feedbackEntries = new ArrayList<>();
+        if (!ticketIds.isEmpty()) {
+            feedbackEntries = feedbackRepository.findByTicketIdIn(ticketIds);
+        }
 
-        long totalCount = feedbackEntries.size();
-        double averageRating = feedbackEntries.stream()
-                .mapToInt(Feedback::getRating)
-                .average()
-                .orElse(0.0);
+        // count the ratings, add them up, and count how many of each star (index 1-5)
+        long totalCount = 0;
+        long ratingSum = 0;
+        long[] starCounts = new long[6];
+        for (Feedback feedback : feedbackEntries) {
+            totalCount++;
+            ratingSum += feedback.getRating();
+            starCounts[feedback.getRating()]++;
+        }
 
-        Map<Integer, Long> ratingBreakdown = new TreeMap<>(feedbackEntries.stream()
-                .collect(Collectors.groupingBy(Feedback::getRating, Collectors.counting())));
+        double averageRating = 0.0;
+        if (totalCount > 0) {
+            averageRating = (double) ratingSum / totalCount;
+        }
+
+        // every star from 1 to 5, in order, even if its count is 0
+        Map<Integer, Long> ratingBreakdown = new TreeMap<>();
         for (int star = 1; star <= 5; star++) {
-            ratingBreakdown.putIfAbsent(star, 0L);
+            ratingBreakdown.put(star, starCounts[star]);
         }
 
         return new FeedbackSummaryResponse(averageRating, totalCount, ratingBreakdown);
     }
 
-    // Loads a ticket, 404 if it is missing or belongs to another student
-    private Ticket findOwnedTicket(Long ticketId, Long studentId) {
-        Ticket ticket = ticketRepository.findById(ticketId)
-                .orElseThrow(() -> new ResourceNotFoundException("Ticket not found"));
-
-        if (!ticket.getStudentId().equals(studentId)) {
-            throw new ResourceNotFoundException("Ticket not found");
-        }
-        return ticket;
-    }
-
     // Loads a ticket's feedback, 404 if there is none
     private Feedback findByTicketId(Long ticketId) {
-        return feedbackRepository.findByTicketId(ticketId)
-                .orElseThrow(() -> new ResourceNotFoundException("Feedback not found"));
+        Feedback feedback = feedbackRepository.findByTicketId(ticketId).orElse(null);
+        if (feedback == null) {
+            throw new ResourceNotFoundException("Feedback not found");
+        }
+        return feedback;
     }
 }
